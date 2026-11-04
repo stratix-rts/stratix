@@ -329,6 +329,9 @@ describe('装配进 main-screen（dev 页走的就是这条路径）', () => {
       },
       mount: () => () => { /* 本用例不关心 core 订阅 */ },
       latest: null,
+      // 皮肤真相（@since task_115）：主屏要读当前皮肤，装配用的假 adapter 也要给一份。
+      themeId: 'default' as const,
+      subscribeTheme: () => () => undefined,
     };
 
     const host = document.createElement('div');

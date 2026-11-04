@@ -261,6 +261,8 @@ describe('闭环：HudCommand → core 状态机 → WorldState 广播 → 面�
   const themeController: ThemeController = {
     apply: () => {},
     get current(): null { return null; },
+    // 皮肤订阅（@since task_115）：本用例只关心任务链，订阅给个空实现。
+    subscribe: () => () => undefined,
   };
 
   test('指派 → 确认 → 状态更新 → 面板收到（真总线 + 真 runtime + 真 adapter）', () => {

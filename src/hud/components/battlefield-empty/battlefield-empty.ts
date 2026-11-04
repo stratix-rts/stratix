@@ -93,7 +93,7 @@ const BATTLEFIELD_EMPTY_STYLE = `
   .ring.r1 { width: 116px; height: 116px; }
   .ring.r2 { width: 72px; height: 72px; }
   .ring.r3 { width: 30px; height: 30px; opacity: 0.8; }
-  /* 扫描扫线：绕中心转（2.4s 一圈）。 */
+  /* 扫描扫线：绕中心转（--srf-motion-loop-sweep：2.4s 一圈）。 */
   .sweep {
     position: absolute;
     left: 50%;
@@ -102,7 +102,7 @@ const BATTLEFIELD_EMPTY_STYLE = `
     height: 2px;
     transform-origin: 0 50%;
     background: linear-gradient(90deg, var(--srf-accent), transparent);
-    animation: srf-sweep 2.4s linear infinite;
+    animation: srf-sweep var(--srf-motion-loop-sweep) linear infinite;
   }
   /* 待命光标：中心十字 + 呼吸点。 */
   .cursor {
@@ -114,7 +114,7 @@ const BATTLEFIELD_EMPTY_STYLE = `
     transform: translate(-50%, -50%);
     border: var(--srf-border-width) solid var(--srf-accent);
     border-radius: var(--srf-radius-pill);
-    animation: srf-pulse 1.8s ease-in-out infinite;
+    animation: srf-pulse var(--srf-motion-loop-pulse) ease-in-out infinite;
   }
   .title {
     margin: 0;
@@ -143,7 +143,7 @@ const BATTLEFIELD_EMPTY_STYLE = `
     color: var(--srf-text);
     font-family: inherit;
     font-size: var(--srf-font-size-body, var(--srf-font-size-sm));
-    transition: border-color var(--srf-transition), color var(--srf-transition), background var(--srf-transition);
+    transition: border-color var(--srf-motion-hover), color var(--srf-motion-hover), background var(--srf-motion-hover);
   }
   .action:hover { border-color: var(--srf-accent); color: var(--srf-accent-hover); }
   .action.primary {

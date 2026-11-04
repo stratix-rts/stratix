@@ -27,6 +27,7 @@ import type { HudCommand, InfoLayer } from '../../core/types';
 
 import { INFO_LAYER_LABELS, type InfoLayerController } from './info-layer';
 import { zVar } from '../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 /** 开关里按钮的稳定角色（测试 / 调试按它定位）。 */
 export const LAYER_SWITCH_BUTTON_ROLE = 'layer-switch-button';
@@ -95,7 +96,7 @@ const LAYER_SWITCH_STYLE = `
   color: var(--srf-text-muted);
   font: inherit;
   /* 微交互（@since v3.6）：hover 变亮 + 上浮 1px；按下压回。 */
-  transition: color 140ms ease-out, background 140ms ease-out, border-color 140ms ease-out, transform 140ms ease-out;
+  transition: color var(--srf-motion-hover), background var(--srf-motion-hover), border-color var(--srf-motion-hover), transform var(--srf-motion-hover);
 }
 .hud-layer-switch-btn:hover { color: var(--srf-text); border-color: var(--srf-border-strong); transform: translateY(-1px); }
 .hud-layer-switch-btn:active { transform: translateY(0); }
@@ -121,6 +122,7 @@ const LAYER_SWITCH_STYLE = `
   color: var(--srf-text);
   white-space: nowrap;
 }
+${MOTION_REDUCED_CSS}
 `;
 
 /**

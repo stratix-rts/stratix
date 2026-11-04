@@ -42,6 +42,7 @@
 import type { TaskStatus, WorldState } from '../../../core/types';
 import type { HudBusAdapter } from '../../bridge/bus-adapter';
 import { enhanceMarkdown, MARKDOWN_CLASS, MARKDOWN_CSS, renderMarkdown } from '../../lib/markdown';
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 import {
   TASK_PHASE_LABELS,
@@ -257,7 +258,7 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
             border-radius: var(--srf-radius);
             cursor: pointer;
             user-select: none;
-            transition: background var(--srf-transition);
+            transition: background var(--srf-motion-hover);
           }
           .head:hover { background: var(--srf-panel); }
           .head:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
@@ -287,7 +288,7 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-xs);
             cursor: pointer;
-            transition: color var(--srf-transition), border-color var(--srf-transition);
+            transition: color var(--srf-motion-hover), border-color var(--srf-motion-hover);
           }
           button.follow:hover { border-color: var(--srf-accent); color: var(--srf-accent); }
           button.follow:active { color: var(--srf-accent-hover); }
@@ -318,6 +319,7 @@ export function defineTaskOutputPanel(): typeof HTMLElement {
           .output::-webkit-scrollbar { width: var(--srf-spacing-sm); }
           .output::-webkit-scrollbar-thumb { background: var(--srf-border-strong); border-radius: var(--srf-radius-pill); }
           ${MARKDOWN_CSS}
+        ${MOTION_REDUCED_CSS}
         </style>
         <section class="section" data-role="root" data-expanded="false" hidden>
           <div class="head" data-role="toggle">

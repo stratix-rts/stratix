@@ -420,8 +420,9 @@ describe('Z3 小地图：hover 提升亮度（有过渡）', () => {
     const { el } = host();
     const css = el.shadowRoot?.querySelector('style')?.textContent ?? '';
     expect(css).toMatch(/\.frame\s*\{[^}]*transition:\s*filter/);
-    expect(css).toContain(`${MINIMAP_METRICS.hoverTransitionMs}ms`);
-    expect(MINIMAP_METRICS.hoverTransitionMs).toBeGreaterThan(0);
+    // @since v3.9（task_147）：过渡时长收编进 motion token ——
+    //   hover 一律走 --srf-motion-hover（fast 档），不再由小地图自带一套（原来 180ms）。
+    expect(css).toContain('var(--srf-motion-hover)');
   });
 
   test('只动 filter（合成层属性）—— 不触发布局重排', () => {

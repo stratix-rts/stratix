@@ -280,6 +280,8 @@ describe('闭环：前置收尾 → 依赖行自己从警示翻成就绪', () =>
   const themeController: ThemeController = {
     apply: () => {},
     get current(): null { return null; },
+    // 皮肤订阅（@since task_115）：本用例只关心任务链，订阅给个空实现。
+    subscribe: () => () => undefined,
   };
 
   test('前置取消 → 下游解锁；未解锁时确认被 core 拒绝', () => {

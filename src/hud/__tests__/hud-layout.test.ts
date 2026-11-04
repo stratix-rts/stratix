@@ -37,12 +37,17 @@ function fakeAdapter(): {
   subscribe: (handler: (state: WorldState) => void) => () => void;
   mount: () => () => void;
   latest: null;
+  themeId: 'default';
+  subscribeTheme: (listener: (themeId: 'default' | 'pixel') => void) => () => void;
 } {
   return {
     dispatch: () => undefined,
     subscribe: () => () => undefined,
     mount: () => () => undefined,
     latest: null,
+    // 皮肤真相（@since task_115）：主屏要读当前皮肤，假 adapter 也要给一份。
+    themeId: 'default',
+    subscribeTheme: () => () => undefined,
   };
 }
 

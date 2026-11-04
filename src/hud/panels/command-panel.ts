@@ -628,7 +628,7 @@ export function defineCommandPanel(): typeof HTMLElement {
             border-radius: var(--srf-radius);
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-sm);
-            transition: border-color var(--srf-transition), box-shadow var(--srf-transition);
+            transition: border-color var(--srf-motion-hover), box-shadow var(--srf-motion-hover);
           }
           input:hover { border-color: var(--srf-border-strong); }
           input:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
@@ -656,7 +656,7 @@ export function defineCommandPanel(): typeof HTMLElement {
             white-space: pre-wrap;
             word-break: break-word;
             overflow-wrap: anywhere;
-            transition: border-color var(--srf-transition), box-shadow var(--srf-transition);
+            transition: border-color var(--srf-motion-hover), box-shadow var(--srf-motion-hover);
           }
           textarea.composer:hover { border-color: var(--srf-border-strong); }
           textarea.composer::placeholder { color: var(--srf-text-muted); }
@@ -704,10 +704,10 @@ export function defineCommandPanel(): typeof HTMLElement {
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-sm);
             cursor: pointer;
-            transition: background var(--srf-transition), border-color var(--srf-transition), color var(--srf-transition),
+            transition: background var(--srf-motion-hover), border-color var(--srf-motion-hover), color var(--srf-motion-hover),
               /* 列表项 hover 光标过渡（@since v3.8，task_138）：整行朝光标方向挪 2px ——
                  why 挪而不是只变色：变色只改颜色，挪动才「指向」那一行（长列表里眼睛更容易跟上）。 */
-              transform var(--srf-motion-fast, 120ms) var(--srf-motion-ease-enter, ease-out);
+              transform var(--srf-motion-hover);
           }
           button.command:hover:not(:disabled) {
             border-color: var(--srf-border-strong);

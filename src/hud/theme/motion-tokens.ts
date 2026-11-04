@@ -8,7 +8,8 @@
  *
  * 输入：无（纯 CSS 字符串常量；core 的常量 + 本文件的 class 名）。
  * 输出：MOTION_TOKENS_CSS（:root 变量表）/ MOTION_COMPONENT_CSS（关键帧 + 工具类 + 降级动效兜底）
- *      / installMotionTokens（把 token 表注入 document.head，幂等）。
+ *      / MOTION_REDUCED_CSS（降级动效兜底块，组件自挂）/ installMotionTokens（把 token 表注入
+ *      document.head，幂等）/ installReducedMotionChannel（文档级降级通道）。
  * 禁止事项：
  *   1. 手写时长 / 缓动字面量 —— 一律 var(--srf-motion-*)；
  *   2. import world / phaser / app —— 铁律：hud 只认识 core；
@@ -131,6 +132,50 @@ export function motionTokensCss(doc: Document = document): string {
 }
 
 /**
+ * **降级动效兜底块**（@since v3.9，task_147 拆出）——
+ *   `prefers-reduced-motion: reduce` 时把 animation / transition 全部禁用。
+ *
+ * why 单独导出一份（而不是只埋在 MOTION_COMPONENT_CSS 里）：
+ *   收编后 HUD 里**每个带动效的组件**都必须挂上这条通道 ——
+ *   文档级规则穿不进影子树（shadow root 自成样式作用域），
+ *   所以「谁的影子树里有 transition，谁的样式表里就得有这块」是硬约束。
+ *   组件把这一块拼进自己的 <style>，也就是「统一走既有禁用通道」这条纪律落地。
+ *
+ * 用 none（而非 0.001ms）：computed animationName 直接是 "none"、transitionDuration 是 "0s"，
+ * 可被自动化断言；也真的不产生任何合成开销。
+ */
+export const MOTION_REDUCED_CSS = `
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+`;
+
+/** 文档级降级动效通道的样式表 id（幂等覆盖）。 */
+export const MOTION_REDUCED_STYLE_ID = 'srf-motion-reduced';
+
+/**
+ * 装上**文档级**降级动效通道（浅 DOM 的 HUD 样式全归它管）。
+ *
+ * why 需要文档级这一份：HUD 有一批样式是直接注入 document.head 的浅 DOM 样式
+ *   （弹窗壳 / 层级切换 / 主屏 / 信息层），它们不在任何影子树里 ——
+ *   影子树里的兜底块管不到它们，文档级规则才管得到。
+ *
+ * 幂等：同 id 重复注入覆盖旧标签（多个组件都调 installMotionTokens 也不会堆叠）。
+ */
+export function installReducedMotionChannel(doc: Document = document): void {
+  doc.getElementById(MOTION_REDUCED_STYLE_ID)?.remove();
+  const style = doc.createElement('style');
+  style.id = MOTION_REDUCED_STYLE_ID;
+  style.setAttribute('data-srf-motion-reduced', 'true');
+  style.textContent = MOTION_REDUCED_CSS;
+  doc.head.appendChild(style);
+}
+
+/**
  * 动效关键帧 + 工具类 + 降级动效兜底 —— **组件样式表里带这一份**即可用全套动效。
  *
  * 结构：
@@ -177,16 +222,8 @@ export const MOTION_COMPONENT_CSS = `
   animation: ${MOTION_KEYFRAMES.inputPulse} var(--srf-motion-fast, 120ms) var(--srf-motion-ease-enter, ease-out) both;
 }
 
-/* —— 降级动效兜底：prefers-reduced-motion: reduce 时全部禁用 ——
-   用 none（而非 0.001ms）：computed animationName 直接是 "none"、transitionDuration 是 "0s"，
-   可被自动化断言；也真的不产生任何合成开销。 */
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation: none !important;
-    transition: none !important;
-    scroll-behavior: auto !important;
-  }
-}
+/* —— 降级动效兜底：prefers-reduced-motion: reduce 时全部禁用（与文档级通道同一块）—— */
+${MOTION_REDUCED_CSS}
 `;
 
 /**
@@ -205,6 +242,8 @@ export function installMotionTokens(doc: Document = document): () => void {
   style.setAttribute('data-srf-motion-tokens', 'true');
   style.textContent = motionTokensCss(doc);
   doc.head.appendChild(style);
+  // 文档级降级动效通道（浅 DOM 的 HUD 样式归它管；影子树里的由各组件自带的兜底块管）。
+  installReducedMotionChannel(doc);
   ensureSkinSync(doc);
   subscribers += 1;
   let removed = false;

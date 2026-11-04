@@ -250,8 +250,7 @@ test('像素皮走 steps() 重帧感（皮肤语言差异，task_138 加分项�
   expect(pixel.panelTiming).toMatch(/^steps\(3\)/);
 });
 
-test('prefers-reduced-motion: reduce 下全部动效禁用（task_138）', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'reduce' });
+test('prefers-reduced-motion: reduce 下全部动效禁用（task_138）', async ({ page }) => {  await page.emulateMedia({ reducedMotion: 'reduce' });
   await boot(page);
 
   const reduced = await page.evaluate(() => {
@@ -278,4 +277,119 @@ test('prefers-reduced-motion: reduce 下全部动效禁用（task_138）', async
   expect(reduced.panelTransitionDuration).toBe('0s');
   expect(reduced.checkAnimationName).toBe('none');
   expect(reduced.checkTransitionDuration).toBe('0s');
+});
+
+/**
+ * 交互节拍统一（@since v3.9，task_147）——
+ *   收编前：hover 有 140ms / 160ms / 120ms / 180ms 四种，面板开合 140ms，
+ *           横幅 / toast 入场 200ms（138 已 token 化）—— 同屏不同速。
+ *   收编后：hover 一律 --srf-motion-hover（120ms），面板 / 横幅开合一律
+ *           --srf-motion-panel（200ms），微反馈 --srf-motion-tap（60ms），
+ *           签名瞬间 --srf-motion-signature（360ms）。
+ *
+ *   本例断言的是**数值**（运动快慢在静态帧里看不见），并抓一组 toast 入场序列帧
+ *   （-r7-motion 后缀）作为视觉留档。
+ */
+test('交互节拍统一：hover 一档 / 面板一档（task_147 收编）', async ({ page }) => {
+  await boot(page);
+
+  // ── ① token 表：四档时长 + 复合节拍档 + 环境循环档 ────────────────
+  const tokens = await page.evaluate(() => {
+    const cs = getComputedStyle(document.documentElement);
+    const names = [
+      '--srf-motion-instant',
+      '--srf-motion-fast',
+      '--srf-motion-base',
+      '--srf-motion-slow',
+      '--srf-motion-tap',
+      '--srf-motion-hover',
+      '--srf-motion-panel',
+      '--srf-motion-panel-exit',
+      '--srf-motion-signature',
+      '--srf-motion-loop-scan',
+      '--srf-motion-loop-caret',
+    ];
+    const out: Record<string, string> = {};
+    for (const name of names) out[name] = cs.getPropertyValue(name).trim();
+    return out;
+  });
+  console.log(`T147_TOKENS ${JSON.stringify(tokens)}`);
+  expect(tokens['--srf-motion-instant']).toBe('60ms');
+  expect(tokens['--srf-motion-fast']).toBe('120ms');
+  expect(tokens['--srf-motion-base']).toBe('200ms');
+  expect(tokens['--srf-motion-slow']).toBe('360ms');
+  // 复合节拍档 = 时长 + 缓动（组件只认这五档）
+  expect(tokens['--srf-motion-tap']).toBe('60ms ease-out');
+  expect(tokens['--srf-motion-hover']).toBe('120ms ease-out');
+  expect(tokens['--srf-motion-panel']).toBe('200ms ease-out');
+  expect(tokens['--srf-motion-panel-exit']).toBe('200ms ease-in');
+  expect(tokens['--srf-motion-signature']).toBe('360ms cubic-bezier(0.34, 1.56, 0.64, 1)');
+  // 环境循环档独立（不进交互节拍表）
+  expect(tokens['--srf-motion-loop-scan']).toBe('12000ms');
+  expect(tokens['--srf-motion-loop-caret']).toBe('900ms');
+
+  // ── ② hover 一档：命令面板里的可点条目 ─────────────────────────────
+  const hoverTiming = await page.evaluate(() => {
+    const btn = document
+      .querySelector('strat-command-panel')
+      ?.shadowRoot?.querySelector('button.command');
+    if (!btn) return { missing: '1' };
+    const cs = getComputedStyle(btn);
+    return { duration: cs.transitionDuration, timing: cs.transitionTimingFunction };
+  });
+  console.log(`T147_HOVER ${JSON.stringify(hoverTiming)}`);
+  // hover 反馈 = fast 档 120ms（收编前这里是 160ms 的 --srf-transition）
+  expect(hoverTiming.duration.split(',')[0].trim()).toBe('0.12s');
+
+  // ── ③ 面板一档：命令面板入场 = base 档 200ms ───────────────────────
+  const panelTiming = await page.evaluate(() => {
+    const panel = document.querySelector('strat-command-panel')?.shadowRoot?.querySelector('.panel');
+    if (!panel) return { missing: '1' };
+    const cs = getComputedStyle(panel);
+    return { duration: cs.animationDuration, timing: cs.animationTimingFunction };
+  });
+  console.log(`T147_PANEL ${JSON.stringify(panelTiming)}`);
+  expect(panelTiming.duration).toBe('0.2s');
+
+  // ── ④ toast 入场序列帧（横幅进出 = panel 档 200ms）──────────────────
+  const host = page.locator('strat-toast-host');
+  await host.evaluate((el) => {
+    (el as HTMLElement & { show?: (text: string, tone?: string) => void })?.show?.('阿尔法 完成任务', 'success');
+  });
+  for (const [label, wait] of [['0000ms', 0], ['0100ms', 100], ['0200ms', 100]] as const) {
+    await page.waitForTimeout(wait);
+    await page.screenshot({ path: `reports/shots/toast-r7-motion-${label}.png` });
+  }
+  await page.screenshot({ path: 'reports/shots/toast-r7-motion.png' });
+  await page.screenshot({ path: 'reports/shots/motion-r7-full.png' });
+  console.log('T147_SHOTS reports/shots/toast-r7-motion*.png + motion-r7-full.png');
+});
+
+test('reduced-motion 通道覆盖全 HUD（task_147 抽查：浅 DOM + 影子树）', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await boot(page);
+
+  const reduced = await page.evaluate(() => {
+    // ① 影子树里的组件（命令面板：自带降级块）
+    const panel = document.querySelector('strat-command-panel')?.shadowRoot?.querySelector('.panel');
+    const panelCs = panel ? getComputedStyle(panel) : null;
+    // ② 影子树里的 hover 过渡（小地图：自带降级块）
+    const mini = document.querySelector('strat-minimap')?.shadowRoot?.querySelector('.frame');
+    const miniCs = mini ? getComputedStyle(mini) : null;
+    // ③ 浅 DOM 的样式（层级切换按钮：文档级通道兜底）
+    const layerBtn = document.querySelector('.hud-layer-switch-btn');
+    const layerCs = layerBtn ? getComputedStyle(layerBtn) : null;
+    return {
+      panelAnimation: panelCs?.animationName ?? 'MISSING',
+      panelTransition: panelCs?.transitionDuration ?? 'MISSING',
+      miniTransition: miniCs?.transitionDuration ?? 'MISSING',
+      layerTransition: layerCs?.transitionDuration ?? 'MISSING',
+    };
+  });
+  console.log(`T147_REDUCED ${JSON.stringify(reduced)}`);
+
+  expect(reduced.panelAnimation).toBe('none');
+  expect(reduced.panelTransition).toBe('0s');
+  expect(reduced.miniTransition).toBe('0s');
+  expect(reduced.layerTransition).toBe('0s');
 });

@@ -366,6 +366,6 @@ export const MARKDOWN_CSS = `
 
 /* 动效只在「允许动效」时开（reduced-motion 下复制按钮保持静态） */
 @media (prefers-reduced-motion: no-preference) {
-  .md-code-copy { transition: color 120ms ease, border-color 120ms ease; }
+  .md-code-copy { transition: color var(--srf-motion-hover), border-color var(--srf-motion-hover); }
 }
 `;

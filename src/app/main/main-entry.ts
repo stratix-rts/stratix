@@ -155,6 +155,7 @@ import pixelLayerCss from '../../hud/theme/skin-pixel-layer.css?inline';
 import { pixelFontFaceCss, pixelFontUrl } from '../../hud/theme/pixel-font';
 import { installLayerTokens } from '../../hud/theme/layer-tokens';
 import { installVisualTokens } from '../../hud/theme/visual-tokens';
+import { installMotionTokens } from '../../hud/theme/motion-tokens';
 import { defineStratButton } from '../../hud/widgets/strat-button';
 import { mountCharacterChatDrawer, CHARACTER_CHAT_DRAWER_TAG, type StratCharacterChatDrawerElement } from '../../hud/components/chat-drawer/chat-drawer';
 // 音效服务（@since v3.36，task_060）：hud 侧服务（懒建 AudioContext + WebAudio 合成），
@@ -393,6 +394,12 @@ async function boot(): Promise<void> {
   // 视觉调色板 token（@since v3.3，task_110）：把唯一事实源（core/theme/visual-spec.ts）的
   // 七色语义色注入成 CSS 变量（--srf-visual-*）—— HUD 与战场读同一份色值。
   installVisualTokens();
+  // 动效 token（@since v3.9，task_147）：把唯一事实源（core/theme/motion-spec.ts）的
+  //   时长 / 缓动 / 环境循环时长注入成 CSS 变量（--srf-motion-*）——
+  //   **必须早于任何 HUD 组件挂载**：组件样式里写的 var(--srf-motion-hover) 等
+  //   全靠这张表解析，缺了它过渡会静默失效（变成瞬变）。
+  //   顺带装上文档级降级动效通道（浅 DOM 的 HUD 样式在 reduce 下全部禁用）。
+  installMotionTokens();
   const themeController = createThemeController({
     sources: {
       default: defaultCss,

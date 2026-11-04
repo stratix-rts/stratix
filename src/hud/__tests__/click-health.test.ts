@@ -73,7 +73,12 @@ function makeState(partial: Partial<WorldState> = {}): WorldState {
 
 /** 主题控制器桩：只落皮肤不发命令（换皮肤与本体检无关）。 */
 function stubThemeController(): ThemeController {
-  return { apply: (_id: ThemeId) => undefined, get current(): ThemeId | null { return null; } };
+  return {
+    apply: (_id: ThemeId) => undefined,
+    get current(): ThemeId | null { return null; },
+    // 皮肤订阅（@since v3.6，task_115）：桩不通知任何人，但接口必须齐 —— 否则类型不过。
+    subscribe: () => () => undefined,
+  };
 }
 
 interface Hud {

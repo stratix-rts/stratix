@@ -19,6 +19,7 @@
 
 import { SCREEN_FX_METRICS, VISUAL_PALETTE } from '../../../core/theme/visual-spec';
 import { zVar } from '../../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 export const ERROR_GLOW_TAG = 'strat-error-glow';
 
@@ -84,13 +85,14 @@ export function defineStratErrorGlow(): typeof HTMLElement {
           }
           /* 呼吸：一次亮起 + 一次熄灭算一轮，轮数 = --glow-pulses（规格钦定 2）。 */
           .glow.pulsing {
-            animation: srf-error-glow-pulse var(--glow-pulse-ms, 650ms) ease-in-out var(--glow-pulses, 2);
+            animation: srf-error-glow-pulse var(--glow-pulse-ms, var(--srf-motion-loop-glow)) ease-in-out var(--glow-pulses, 2);
           }
           @keyframes srf-error-glow-pulse {
             0% { opacity: 0; }
             50% { opacity: var(--glow-peak, 0.28); }
             100% { opacity: 0; }
           }
+        ${MOTION_REDUCED_CSS}
         </style>
         <div class="glow" data-role="glow" aria-hidden="true"></div>
       `;

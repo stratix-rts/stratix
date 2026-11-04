@@ -78,6 +78,7 @@ import {
   type PipelineFormInput,
 } from './pipeline-catalog';
 import { agentKindLabel } from '../screens/onboarding-catalog';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 export const AGENT_PANEL_TAG = 'strat-agent-panel';
 
@@ -329,7 +330,7 @@ export function defineAgentPanel(): typeof HTMLElement {
             border: var(--srf-border-width) solid var(--srf-border);
             border-radius: var(--srf-radius);
             background: var(--srf-panel-elevated);
-            transition: border-color var(--srf-transition), background var(--srf-transition);
+            transition: border-color var(--srf-motion-hover), background var(--srf-motion-hover);
           }
           .row:hover { border-color: var(--srf-border-strong); }
           .row-main {
@@ -345,7 +346,7 @@ export function defineAgentPanel(): typeof HTMLElement {
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-sm);
             cursor: pointer;
-            transition: color var(--srf-transition), background var(--srf-transition);
+            transition: color var(--srf-motion-hover), background var(--srf-motion-hover);
           }
           .row-main:hover { color: var(--srf-accent-hover); background: var(--srf-panel); }
           .row-main:active { color: var(--srf-accent); }
@@ -359,7 +360,7 @@ export function defineAgentPanel(): typeof HTMLElement {
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-sm);
             cursor: pointer;
-            transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
+            transition: color var(--srf-motion-hover), background var(--srf-motion-hover), border-color var(--srf-motion-hover);
           }
           button.action { padding: var(--srf-spacing-xs) var(--srf-spacing-sm); border-color: var(--srf-border-strong); }
           button.action:hover { border-color: var(--srf-accent); color: var(--srf-accent); }
@@ -450,7 +451,7 @@ export function defineAgentPanel(): typeof HTMLElement {
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-sm);
             line-height: var(--srf-line-height);
-            transition: border-color var(--srf-transition), box-shadow var(--srf-transition);
+            transition: border-color var(--srf-motion-hover), box-shadow var(--srf-motion-hover);
           }
           .task-input, .station-input { width: 100%; resize: vertical; }
           .task-input { min-height: 3em; }
@@ -484,6 +485,7 @@ export function defineAgentPanel(): typeof HTMLElement {
           .pipeline-stations { display: flex; flex-direction: column; gap: var(--srf-spacing-xxs); }
           .station-index { color: var(--srf-text-muted); font-family: var(--srf-font-mono); font-size: var(--srf-font-size-xs); }
           .station-title { color: var(--srf-text); }
+        ${MOTION_REDUCED_CSS}
         </style>
         <div class="panel" part="panel">
           <div class="head">

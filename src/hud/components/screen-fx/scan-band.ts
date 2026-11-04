@@ -15,6 +15,7 @@
 
 import { SCREEN_FX_METRICS } from '../../../core/theme/visual-spec';
 import { zVar } from '../../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 export const SCAN_BAND_TAG = 'strat-scan-band';
 
@@ -75,7 +76,7 @@ export function defineStratScanBand(): typeof HTMLElement {
           .track {
             position: absolute;
             inset: 0;
-            animation: srf-scan-sweep var(--scan-band-period, 12000ms) linear infinite;
+            animation: srf-scan-sweep var(--scan-band-period, var(--srf-motion-loop-scan)) linear infinite;
           }
           /* 光带：竖条（宽 = --scan-band-width），横贯全屏；两端淡出 → 软边无硬边。 */
           .band {
@@ -95,6 +96,7 @@ export function defineStratScanBand(): typeof HTMLElement {
             from { transform: translateX(calc(-1 * var(--scan-band-width, 120px))); }
             to { transform: translateX(100%); }
           }
+        ${MOTION_REDUCED_CSS}
         </style>
         <div class="track" data-role="track">
           <div class="band" data-role="band"></div>

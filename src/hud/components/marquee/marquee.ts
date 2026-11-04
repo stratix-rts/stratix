@@ -1,7 +1,7 @@
 /**
  * 文件职责：**事件轨（Z2）** Web Component（`<strat-marquee>`）—— 屏幕左下角的最近 5 条
  *   事件流：图标 + 短句 + 相对时间（刚刚 / N 分钟前），分级配色（完成绿 / 报错红 / 派活蓝 / 里程碑金）。
- *   动效：新消息从左侧滑入（250ms），旧消息整体下移一行，超出 5 条时最旧一条淡出（300ms）后移除。
+ *   动效：新消息从左侧滑入（--srf-motion-panel：200ms），旧消息整体下移一行，超出 5 条时最旧一条淡出（同档 200ms）后移除。
  *   来源：docs/DEMO-PLAN.md §6（事件跑马灯）+ §8（演示模式强制开启）；
  *   v3.4 升级依据：docs/hud-redesign-proposal.html §2.5（分区规格表 Z2 行）。
  * 输入：push(entry) 的显式调用（组合根订阅 core 总线后喂进来 —— hud 组件只被驱动、不订阅总线，
@@ -20,7 +20,7 @@
  *   整体下移一行；第 6 条进来时最旧一条落到栈底之外并淡出。
  *   「下移」是位移动画：插队后给旧条目一个 translateY(-一行) 的初值（FLIP 的 First），
  *   下一帧撤掉（Last）→ 浏览器用 transition 把它送回新位置。动画时长取自唯一事实源
- *   （MARQUEE_METRICS.enterDurationMs = 250ms）。
+ *   （入场 / 退场时长统一取 --srf-motion-panel / --srf-motion-panel-exit，见 core/theme/motion-spec.ts）。
  *
  * ============ v3.4 · Z2 事件轨（@since task_091）============
  *   proposal §2.5 Z2 的规格逐条落地：
@@ -41,6 +41,7 @@
  */
 
 import { MARQUEE_METRICS } from '../../../core/theme/visual-spec';
+import { MOTION_DURATIONS } from '../../../core/theme/motion-spec';
 import type { HudCommand } from '../../../core/types';
 
 import {
@@ -49,6 +50,7 @@ import {
   type MarqueeEntry,
 } from './marquee-catalog';
 import { zVar } from '../../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 export const MARQUEE_TAG = 'strat-marquee';
 
@@ -229,8 +231,8 @@ export function defineStratMarquee(): typeof HTMLElement {
             font-size: var(--srf-font-size-sm, 12px);
             line-height: 1;
             white-space: nowrap;
-            transition: transform 250ms cubic-bezier(0.22, 1, 0.36, 1);
-            animation: marquee-enter 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+            transition: transform var(--srf-motion-panel);
+            animation: marquee-enter var(--srf-motion-panel) both;
           }
           /* 分级色不写在这里 —— 由 push() 按 MARQUEE_TONE_KEYS 从唯一事实源取，
              写成行内 --entry-color（见 marquee-catalog.ts 的 marqueeToneColor）。
@@ -243,7 +245,7 @@ export function defineStratMarquee(): typeof HTMLElement {
             to { opacity: 1; transform: translateX(0); }
           }
           /* 最旧一条淡出：绝对定位钉在栈底（不占流 —— 否则会顶开下面的「展开」按钮）。 */
-          .entry.leaving { position: absolute; left: 0; right: 0; bottom: 0; animation: marquee-leave 300ms ease-in both; }
+          .entry.leaving { position: absolute; left: 0; right: 0; bottom: 0; animation: marquee-leave var(--srf-motion-panel-exit) both; }
           @keyframes marquee-leave {
             from { opacity: 1; }
             to { opacity: 0; }
@@ -282,7 +284,7 @@ export function defineStratMarquee(): typeof HTMLElement {
             opacity: 0;
             visibility: hidden;
             pointer-events: none;
-            transition: opacity 120ms ease;
+            transition: opacity var(--srf-motion-hover);
           }
           .entry[data-hover="true"] .detail { opacity: 1; visibility: visible; }
           /* 栈最底下那条：详情翻到上方（往下翻会出屏）。 */
@@ -307,6 +309,7 @@ export function defineStratMarquee(): typeof HTMLElement {
           }
           .toggle:hover { color: var(--srf-text); }
           .toggle[hidden] { display: none; }
+        ${MOTION_REDUCED_CSS}
         </style>
         <div class="stack" data-role="stack" aria-live="polite"></div>
         <button class="toggle" type="button" data-role="toggle" hidden></button>
@@ -497,7 +500,7 @@ export function defineStratMarquee(): typeof HTMLElement {
       });
     }
 
-    /** 超出条数上限：最旧一条淡出（300ms）后移除。 */
+    /** 超出条数上限：最旧一条淡出（--srf-motion-panel-exit：200ms）后移除 —— 与 CSS 退场动效同拍。 */
     private trimOverflow(): void {
       while (this._items.length > MARQUEE_METRICS.maxEntries) {
         const oldest = this._items.pop();
@@ -507,7 +510,7 @@ export function defineStratMarquee(): typeof HTMLElement {
         const timer = setTimeout(() => {
           this._leaving.delete(oldest.node);
           oldest.node.remove();
-        }, MARQUEE_METRICS.exitDurationMs);
+        }, MOTION_DURATIONS.base);
         this._leaving.set(oldest.node, timer);
       }
     }

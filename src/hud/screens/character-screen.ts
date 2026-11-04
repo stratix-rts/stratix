@@ -85,6 +85,7 @@ import {
 import type { AppearancePreviewPort } from './appearance-preview-port';
 import { cloneAppearance } from './onboarding-catalog';
 import { PERSONA_PRESETS, presetsForKind } from './persona-presets';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 import {
   characterSignature,
   personaSectionSummary,
@@ -515,7 +516,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
             background: var(--srf-panel-elevated);
             border: var(--srf-border-width) solid var(--srf-border);
             border-radius: var(--srf-radius);
-            transition: border-color var(--srf-transition), box-shadow var(--srf-transition);
+            transition: border-color var(--srf-motion-hover), box-shadow var(--srf-motion-hover);
           }
           .card:hover { border-color: var(--srf-border-strong); }
           .card[data-focused="true"] { border-color: var(--srf-accent); box-shadow: var(--srf-shadow); }
@@ -523,7 +524,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
           .card-meta { display: flex; gap: var(--srf-spacing-sm); flex-wrap: wrap; color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
           .level { color: var(--srf-accent); font-size: var(--srf-font-size-sm); font-weight: var(--srf-font-weight-semibold); }
           .bar { height: var(--srf-spacing-sm); background: var(--srf-panel); border: var(--srf-border-width) solid var(--srf-border); border-radius: var(--srf-radius-pill); overflow: hidden; }
-          .bar-fill { height: 100%; background: var(--srf-accent); transition: background var(--srf-transition); }
+          .bar-fill { height: 100%; background: var(--srf-accent); transition: background var(--srf-motion-panel); }
           .card[data-maxed="true"] .bar-fill, .bar[data-pulse="true"] .bar-fill { background: var(--srf-success); }
           .persona { color: var(--srf-text); font-size: var(--srf-font-size-sm); white-space: pre-wrap; overflow-wrap: anywhere; }
           .persona:empty { display: none; }
@@ -558,7 +559,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
             border: var(--srf-border-width) solid var(--srf-border);
             border-radius: var(--srf-radius);
             padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
-            transition: border-color var(--srf-transition), box-shadow var(--srf-transition);
+            transition: border-color var(--srf-motion-hover), box-shadow var(--srf-motion-hover);
           }
           .appearance-field select:hover, .persona-textarea:hover, .name-input:hover { border-color: var(--srf-border-strong); }
           .appearance-field select:focus-visible, .persona-textarea:focus-visible, .name-input:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
@@ -576,7 +577,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
             border: var(--srf-border-width) solid var(--srf-border);
             border-radius: var(--srf-radius);
             cursor: pointer;
-            transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
+            transition: color var(--srf-motion-hover), background var(--srf-motion-hover), border-color var(--srf-motion-hover);
           }
           .editor-tab:hover, .preset-chip:hover, .rank-chip:hover { color: var(--srf-text); border-color: var(--srf-border-strong); }
           .editor-tab:active, .preset-chip:active, .rank-chip:active { background: var(--srf-panel-elevated); }
@@ -628,6 +629,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
           .tl-what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
           .name-field { display: grid; gap: var(--srf-spacing-xs); font-size: var(--srf-font-size-sm); max-width: 320px; }
           .name-input { background: var(--srf-panel-elevated); }
+        ${MOTION_REDUCED_CSS}
         </style>
         <div class="screen" part="screen">
           <div class="topbar">

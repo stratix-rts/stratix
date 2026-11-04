@@ -11,15 +11,19 @@
  */
 
 import {
+  MOTION_BEAT_CSS_VARS,
   MOTION_CSS_VARS,
   MOTION_DURATIONS,
   MOTION_EASINGS,
   MOTION_KEYFRAMES,
+  MOTION_LOOP_DURATIONS,
   motionTokenValue,
 } from '../../core/theme/motion-spec';
 import {
   MOTION_CLASS,
   MOTION_COMPONENT_CSS,
+  MOTION_REDUCED_CSS,
+  MOTION_REDUCED_STYLE_ID,
   MOTION_SKIN_ID,
   MOTION_TOKEN_STYLE_ID,
   MOTION_TOKENS_CSS,
@@ -37,8 +41,8 @@ import {
 import type { MissionView, WorldState } from '../../core/types';
 
 describe('动效 token：core 事实源 → HUD CSS 变量', () => {
-  test('三档时长 / 三档缓动冻结在 core', () => {
-    expect(MOTION_DURATIONS).toEqual({ fast: 120, base: 200, slow: 360 });
+  test('四档时长 / 三档缓动冻结在 core（@since v3.9，task_147 补 instant 档）', () => {
+    expect(MOTION_DURATIONS).toEqual({ instant: 60, fast: 120, base: 200, slow: 360 });
     expect(MOTION_EASINGS).toEqual({
       enter: 'ease-out',
       exit: 'ease-in',
@@ -46,13 +50,46 @@ describe('动效 token：core 事实源 → HUD CSS 变量', () => {
     });
   });
 
+  test('环境循环时长与交互节拍分表（装饰性 infinite 动画不占交互档位）', () => {
+    expect(MOTION_LOOP_DURATIONS).toEqual({
+      sweep: 2400,
+      pulse: 1800,
+      scan: 12_000,
+      glow: 650,
+      caret: 900,
+    });
+  });
+
   test('HUD 的 CSS 变量表与 core 数值逐项一致（双 token 体系不漂移）', () => {
     for (const name of Object.values(MOTION_CSS_VARS)) {
       expect(MOTION_TOKENS_CSS).toContain(`${name}: ${motionTokenValue(name)};`);
     }
+    for (const name of Object.values(MOTION_BEAT_CSS_VARS)) {
+      expect(MOTION_TOKENS_CSS).toContain(`${name}: ${motionTokenValue(name)};`);
+    }
+    expect(MOTION_TOKENS_CSS).toContain('--srf-motion-instant: 60ms;');
     expect(MOTION_TOKENS_CSS).toContain('--srf-motion-fast: 120ms;');
     expect(MOTION_TOKENS_CSS).toContain('--srf-motion-base: 200ms;');
     expect(MOTION_TOKENS_CSS).toContain('--srf-motion-slow: 360ms;');
+  });
+
+  test('交互节拍复合档：时长 + 缓动打包（组件只认这五档）', () => {
+    // hover = fast + ease-enter；panel = base + ease-enter；panelExit = base + ease-exit。
+    expect(motionTokenValue(MOTION_BEAT_CSS_VARS.hover)).toBe(
+      'var(--srf-motion-fast) var(--srf-motion-ease-enter)',
+    );
+    expect(motionTokenValue(MOTION_BEAT_CSS_VARS.panel)).toBe(
+      'var(--srf-motion-base) var(--srf-motion-ease-enter)',
+    );
+    expect(motionTokenValue(MOTION_BEAT_CSS_VARS.panelExit)).toBe(
+      'var(--srf-motion-base) var(--srf-motion-ease-exit)',
+    );
+    expect(motionTokenValue(MOTION_BEAT_CSS_VARS.tap)).toBe(
+      'var(--srf-motion-instant) var(--srf-motion-ease-enter)',
+    );
+    expect(motionTokenValue(MOTION_BEAT_CSS_VARS.signature)).toBe(
+      'var(--srf-motion-slow) var(--srf-motion-ease-spring)',
+    );
   });
 
   test('未知 token 名报错（不静默兜底成错误值）', () => {
@@ -95,6 +132,25 @@ describe('动效工具类：关键帧 + 降级动效兜底', () => {
     expect(MOTION_COMPONENT_CSS).toContain('@media (prefers-reduced-motion: reduce)');
     expect(MOTION_COMPONENT_CSS).toContain('animation: none !important;');
     expect(MOTION_COMPONENT_CSS).toContain('transition: none !important;');
+  });
+
+  test('降级块单独可取（组件自挂用；@since v3.9，task_147）', () => {
+    expect(MOTION_REDUCED_CSS).toContain('@media (prefers-reduced-motion: reduce)');
+    expect(MOTION_REDUCED_CSS).toContain('animation: none !important;');
+    expect(MOTION_REDUCED_CSS).toContain('transition: none !important;');
+    // 组件样式表里的降级块与独立导出的是同一块（组件把这一块拼进自己的 <style>）。
+    expect(MOTION_COMPONENT_CSS).toContain(MOTION_REDUCED_CSS);
+  });
+
+  test('文档级降级通道幂等装上（浅 DOM 的 HUD 样式归它管）', () => {
+    document.head.innerHTML = '';
+    installMotionTokens();
+    const first = document.getElementById(MOTION_REDUCED_STYLE_ID);
+    expect(first).not.toBeNull();
+    expect(first?.textContent).toContain('prefers-reduced-motion: reduce');
+    // 幂等：重复安装仍只有一张
+    installMotionTokens();
+    expect(document.querySelectorAll(`#${MOTION_REDUCED_STYLE_ID}`)).toHaveLength(1);
   });
 });
 

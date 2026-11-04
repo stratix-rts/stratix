@@ -43,6 +43,7 @@ import { MINIMAP_METRICS, VISUAL_PALETTE } from '../../../core/theme/visual-spec
 import { WORLD_BOUNDS } from '../../../core/types';
 import type { Bounds, HudCommand, Point, UnitStatus } from '../../../core/types';
 import { zVar } from '../../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 export const MINIMAP_TAG = 'strat-minimap';
 
@@ -286,7 +287,7 @@ export function defineStratMinimap(): typeof HTMLElement {
             line-height: 1;
             /* hover 提亮要有过渡（Z3 规格「hover 提升亮度」）——
                只动 filter（合成层属性），不触发布局重排（性能铁律）。 */
-            transition: filter ${MINIMAP_METRICS.hoverTransitionMs}ms ease;
+            transition: filter var(--srf-motion-hover);
           }
           :host(:hover) .frame { filter: brightness(${MINIMAP_METRICS.hoverBrightness}); }
           .head {
@@ -297,6 +298,7 @@ export function defineStratMinimap(): typeof HTMLElement {
           }
           .label { font-size: var(--srf-font-size-xs); color: var(--srf-text-muted); font-weight: var(--srf-font-weight-semibold); user-select: none; }
           canvas { display: block; touch-action: none; }
+        ${MOTION_REDUCED_CSS}
         </style>
         <div class="frame" part="frame">
           <div class="head">

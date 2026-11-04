@@ -89,6 +89,7 @@ import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/stra
 // 自定义 agent 注册端口（@since v3.32，task_056）：类型 only —— hud 不 import electron（铁律）。
 import type { CustomAgentsPort, CustomAgentView } from './custom-agents-port';
 import { zVar } from '../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 export const SETTINGS_SCREEN_TAG = 'strat-settings-screen';
 
@@ -580,7 +581,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-body);
             cursor: pointer;
-            transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
+            transition: color var(--srf-motion-hover), background var(--srf-motion-hover), border-color var(--srf-motion-hover);
           }
           button.ctl:hover { background: var(--srf-panel); border-color: var(--srf-accent); }
           button.ctl:active { color: var(--srf-accent-hover); }
@@ -628,6 +629,7 @@ export function defineSettingsScreen(): typeof HTMLElement {
           .confirm-title { font-size: var(--srf-font-size-title); font-weight: var(--srf-font-weight-semibold); }
           .confirm-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); }
           .confirm-actions { display: flex; justify-content: flex-end; gap: var(--srf-spacing-sm); }
+        ${MOTION_REDUCED_CSS}
         </style>
         <div class="screen" part="screen">
           <div class="topbar">

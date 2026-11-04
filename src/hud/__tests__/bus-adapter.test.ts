@@ -39,6 +39,8 @@ function makeHarness(): Harness {
   const themeController: ThemeController = {
     apply: (id) => { applyThemeCalls.push(id); },
     get current(): null { return null; },
+    // 皮肤订阅（@since task_115）：本用例只关心派发链，订阅给个空实现。
+    subscribe: () => () => undefined,
   };
 
   const adapter = createHudBusAdapter({

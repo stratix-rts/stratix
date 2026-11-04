@@ -73,6 +73,7 @@ import {
   type StreamBuffer,
 } from './chat-catalog';
 import { zVar } from '../../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 export const CHARACTER_CHAT_DRAWER_TAG = 'strat-character-chat-drawer';
 
@@ -681,7 +682,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             font-size: var(--srf-font-size-md);
             line-height: var(--srf-line-height);
             transform: translateX(calc(100% + var(--srf-spacing-md)));
-            transition: transform var(--srf-transition), visibility var(--srf-transition);
+            transition: transform var(--srf-motion-panel), visibility var(--srf-motion-panel);
             visibility: hidden;
             pointer-events: none;
             z-index: ${zVar('localMid')};
@@ -699,7 +700,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             background: var(--srf-backdrop);
             opacity: 0;
             pointer-events: none;
-            transition: opacity var(--srf-transition);
+            transition: opacity var(--srf-motion-panel);
             z-index: ${zVar('localBase')};
           }
           .rail-dim[data-active="true"] { opacity: 1; }
@@ -718,7 +719,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-sm);
             cursor: pointer;
-            transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
+            transition: color var(--srf-motion-hover), background var(--srf-motion-hover), border-color var(--srf-motion-hover);
           }
           button.close:hover, button.peer-exit:hover, button.peer-cancel:hover { color: var(--srf-text); border-color: var(--srf-border-strong); }
           button.close:active, button.retry:active, button.stop:active, button.send:active, button.peer-open:active, button.peer-exit:active, button.peer-begin:active, button.peer-cancel:active { background: var(--srf-panel); }
@@ -749,7 +750,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           /* 流式气泡还没成型（纯文本增量）—— 保留 pre-wrap 语义；定稿后才按 markdown 渲染 */
           .bubble[data-streaming="true"] .bubble-text { white-space: pre-wrap; }
           .system-message { align-self: center; max-width: 92%; color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); text-align: center; white-space: pre-wrap; word-break: break-word; padding: var(--srf-spacing-xxs) var(--srf-spacing-sm); }
-          .caret { display: inline-block; width: var(--srf-spacing-xxs); height: 1em; margin-left: var(--srf-spacing-xxs); vertical-align: text-bottom; background: var(--srf-accent); animation: caret-blink 900ms step-end infinite; }
+          .caret { display: inline-block; width: var(--srf-spacing-xxs); height: 1em; margin-left: var(--srf-spacing-xxs); vertical-align: text-bottom; background: var(--srf-accent); animation: caret-blink var(--srf-motion-loop-caret) step-end infinite; }
           @keyframes caret-blink { 50% { opacity: 0; } }
           .empty { align-self: center; color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); text-align: center; padding: var(--srf-spacing-xl) var(--srf-spacing-md); }
           .composer { display: grid; gap: var(--srf-spacing-xs); padding-top: var(--srf-spacing-sm); border-top: var(--srf-border-width) solid var(--srf-border); }
@@ -762,7 +763,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             border-radius: var(--srf-radius);
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-sm);
-            transition: border-color var(--srf-transition), box-shadow var(--srf-transition);
+            transition: border-color var(--srf-motion-hover), box-shadow var(--srf-motion-hover);
           }
           textarea { width: 100%; min-height: 48px; resize: vertical; }
           textarea:hover, .peer-setup select:hover { border-color: var(--srf-border-strong); }
@@ -788,6 +789,7 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           button.peer-begin:disabled, button.peer-cancel:disabled, button.peer-exit:disabled, button.peer-open:disabled, button.stop:disabled, button.retry:disabled { background: var(--srf-panel-elevated); color: var(--srf-text-disabled); border-color: var(--srf-border); cursor: not-allowed; opacity: 0.6; }
           button.peer-cancel { padding-inline: var(--srf-spacing-md); }
           ${MARKDOWN_CSS}
+        ${MOTION_REDUCED_CSS}
         </style>
         <div class="rail-dim" data-role="rail-dim" data-active="false"></div>
         <div class="rail" data-role="rail" data-open="false">

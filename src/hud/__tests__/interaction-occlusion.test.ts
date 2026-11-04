@@ -41,6 +41,8 @@ function stubThemeController(): ThemeController {
   return {
     apply: (_id: ThemeId) => undefined,
     get current(): ThemeId | null { return null; },
+    // 皮肤订阅（@since task_115）：路由测试用不到皮肤变化，订阅给个空实现。
+    subscribe: () => () => undefined,
   };
 }
 

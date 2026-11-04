@@ -22,6 +22,7 @@ import {
   type ShortcutCategoryId,
 } from './shortcut-catalog';
 import { zVar } from '../../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 export const SHORTCUT_HELP_TAG = 'strat-shortcut-help';
 
@@ -194,7 +195,7 @@ export function defineShortcutHelp(): typeof HTMLElement {
             font-size: var(--srf-font-size-md);
             padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
             border-radius: var(--srf-radius);
-            transition: color var(--srf-transition), background var(--srf-transition);
+            transition: color var(--srf-motion-hover), background var(--srf-motion-hover);
           }
           button:hover { color: var(--srf-text); background: var(--srf-panel-elevated); }
           button:active { color: var(--srf-accent); }
@@ -217,6 +218,7 @@ export function defineShortcutHelp(): typeof HTMLElement {
           .row + .row { border-top: var(--srf-border-width) solid var(--srf-border); }
           .keys { flex-shrink: 0; color: var(--srf-accent); font-family: var(--srf-font-mono); }
           .desc { text-align: right; color: var(--srf-text-muted); }
+        ${MOTION_REDUCED_CSS}
         </style>
         <div class="backdrop" data-role="backdrop">
           <div class="panel" data-role="panel">

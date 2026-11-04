@@ -20,6 +20,8 @@
  *   既统一了外观，又不把各面板的措辞塞进组件里硬编码。
  */
 
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
+
 export const EMPTY_STATE_TAG = 'strat-empty-state';
 
 /** 动作点击事件名（冒泡 + composed → 面板在自身 shadow 外也能收到）。 */
@@ -92,7 +94,7 @@ const EMPTY_STATE_STYLE = `
     color: var(--srf-text);
     font-family: inherit;
     font-size: var(--srf-font-size-body, var(--srf-font-size-sm));
-    transition: border-color var(--srf-transition), color var(--srf-transition);
+    transition: border-color var(--srf-motion-hover), color var(--srf-motion-hover);
   }
   .action:hover { border-color: var(--srf-accent); color: var(--srf-accent-hover); }
   .action[hidden] { display: none; }
@@ -123,7 +125,7 @@ export class StratEmptyStateElement extends HTMLElement {
     {
       const root = this.attachShadow({ mode: 'open' });
       const style = document.createElement('style');
-      style.textContent = EMPTY_STATE_STYLE;
+      style.textContent = EMPTY_STATE_STYLE + MOTION_REDUCED_CSS;
       const wrap = document.createElement('div');
       wrap.className = 'wrap';
       wrap.setAttribute('part', 'wrap');

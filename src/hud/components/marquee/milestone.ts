@@ -23,6 +23,7 @@ import { MARQUEE_METRICS, VISUAL_PALETTE, hexToRgba } from '../../../core/theme/
 import type { HudCommand } from '../../../core/types';
 import { isMilestoneCount, milestoneText } from './marquee-catalog';
 import { zVar } from '../../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 export const MILESTONE_TAG = 'strat-milestone';
 
@@ -141,7 +142,7 @@ export function defineStratMilestone(): typeof HTMLElement {
             transform: scale(0.9);
             white-space: nowrap;
           }
-          .big.show { animation: milestone-pop var(--milestone-duration, 1500ms) cubic-bezier(0.22, 1, 0.36, 1) both; }
+          .big.show { animation: milestone-pop var(--milestone-duration, var(--srf-motion-slow)) var(--srf-motion-ease-enter) both; }
           @keyframes milestone-pop {
             0% { opacity: 0; transform: scale(0.86); }
             12% { opacity: 1; transform: scale(1.05); }
@@ -149,6 +150,7 @@ export function defineStratMilestone(): typeof HTMLElement {
             76% { opacity: 1; transform: scale(1); }
             100% { opacity: 0; transform: scale(1.02); }
           }
+        ${MOTION_REDUCED_CSS}
         </style>
         <div class="big" data-role="big" role="status"></div>
       `;

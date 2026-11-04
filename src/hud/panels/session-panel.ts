@@ -32,6 +32,7 @@
 import type { HudCommand, SessionRecord, WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 import {
   SESSION_KIND_FILTERS,
@@ -473,7 +474,7 @@ export function defineSessionPanel(): typeof HTMLElement {
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-caption);
             cursor: pointer;
-            transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
+            transition: color var(--srf-motion-hover), background var(--srf-motion-hover), border-color var(--srf-motion-hover);
           }
           button.chip:hover { color: var(--srf-text); border-color: var(--srf-border-strong); }
           button.chip:active { background: var(--srf-panel); }
@@ -492,12 +493,12 @@ export function defineSessionPanel(): typeof HTMLElement {
             display: grid;
             gap: var(--srf-spacing-sm);
             min-height: 0;
-            /* 出入场过渡（@since v3.6）：展开 / 收起各有 140ms 淡入淡出。
+            /* 出入场过渡（@since v3.6）：展开 / 收起各有 200ms 淡入淡出（--srf-motion-panel）。
                why 用 allow-discrete + @starting-style：display:none 会掐断过渡，
                改成离散过渡后收起能播完淡出、展开能播淡入（纯 CSS，无 JS 计时器）。 */
             opacity: 1;
             transform: translateY(0);
-            transition: opacity 140ms ease-out, transform 140ms ease-out, display 140ms allow-discrete;
+            transition: opacity var(--srf-motion-panel), transform var(--srf-motion-panel), display var(--srf-motion-panel) allow-discrete;
           }
           :host([collapsed]) .body { display: none; opacity: 0; transform: translateY(-6px); }
           @starting-style {
@@ -596,6 +597,7 @@ export function defineSessionPanel(): typeof HTMLElement {
           .entry[data-tone="warn"] .entry-text { color: var(--srf-warn); }
           .entry[data-tone="error"] .entry-text { color: var(--srf-danger); }
           .drawer-note { color: var(--srf-text-muted); font-size: var(--srf-font-size-caption); text-align: center; padding: var(--srf-spacing-xs); }
+        ${MOTION_REDUCED_CSS}
         </style>
         <div class="panel" part="panel">
           <div class="head">

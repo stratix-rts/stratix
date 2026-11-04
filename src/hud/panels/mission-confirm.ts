@@ -582,7 +582,7 @@ export function defineMissionConfirm(): typeof HTMLElement {
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-sm);
             cursor: pointer;
-            transition: color var(--srf-transition), background var(--srf-transition), border-color var(--srf-transition);
+            transition: color var(--srf-motion-hover), background var(--srf-motion-hover), border-color var(--srf-motion-hover);
           }
           button.decision:hover { background: var(--srf-panel); border-color: var(--srf-accent); }
           button.decision:active { background: var(--srf-panel-elevated); }

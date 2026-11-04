@@ -30,7 +30,7 @@ const TOUR_STYLE = `
   :host { position: fixed; inset: 0; z-index: ${zVar('spotlight')}; pointer-events: none; font-family: var(--srf-font-ui); }
   :host([hidden]) { display: none; }
   .veil { position: fixed; display: none; background: rgba(0, 0, 0, 0.62); }
-  .ring { position: fixed; display: none; box-sizing: border-box; border: var(--srf-border-width) solid var(--srf-accent); border-radius: var(--srf-radius); transition: left var(--srf-transition), top var(--srf-transition), width var(--srf-transition), height var(--srf-transition); }
+  .ring { position: fixed; display: none; box-sizing: border-box; border: var(--srf-border-width) solid var(--srf-accent); border-radius: var(--srf-radius); transition: left var(--srf-motion-panel), top var(--srf-motion-panel), width var(--srf-motion-panel), height var(--srf-motion-panel); }
   .bubble { position: fixed; pointer-events: auto; box-sizing: border-box; width: min(320px, calc(100vw - 24px)); padding: var(--srf-spacing-md); border: var(--srf-border-width) solid var(--srf-border-strong); border-radius: var(--srf-radius); background: var(--srf-panel-elevated); color: var(--srf-text); box-shadow: var(--srf-double-shadow, var(--srf-shadow)); }
   .head { display: flex; align-items: baseline; gap: var(--srf-spacing-xs); }
   .title { font-size: var(--srf-font-size-body, var(--srf-font-size-md)); font-weight: var(--srf-font-weight-bold); }

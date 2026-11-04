@@ -44,8 +44,8 @@ import {
   layerL2Opacity,
   normalizeInfoLayer,
 } from '../../core/info-layer';
-import { HUD_LAYER_METRICS } from '../../core/theme/visual-spec';
 import type { InfoLayer } from '../../core/types';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 /** 注入样式表的稳定 id（幂等覆盖，便于重复挂载与测试定位）。 */
 export const INFO_LAYER_STYLE_ID = 'srf-info-layers';
@@ -142,7 +142,7 @@ export function infoLayerVars(
     [INFO_LAYER_CSS_VARS.l1Opacity]: String(composeL1Opacity(layer, dimSources)),
     [INFO_LAYER_CSS_VARS.l2Opacity]: String(layerL2Opacity(layer)),
     [INFO_LAYER_CSS_VARS.l2Visibility]: layerL2Collapsed(layer) ? 'hidden' : 'visible',
-    [INFO_LAYER_CSS_VARS.transitionMs]: `${HUD_LAYER_METRICS.transitionMs}ms`,
+    [INFO_LAYER_CSS_VARS.transitionMs]: 'var(--srf-motion-base)',
   };
 }
 
@@ -154,28 +154,29 @@ export function buildInfoLayerCss(): string {
   const l1 = [...HUD_LAYER_REGIONS.L1, '[data-srf-layer="L1"]'].join(',\n');
   const l2 = [...HUD_LAYER_REGIONS.L2, '[data-srf-layer="L2"]'].join(',\n');
   const l3 = [...HUD_LAYER_REGIONS.L3, '[data-srf-layer="L3"]'].join(',\n');
-  const transition = `var(${INFO_LAYER_CSS_VARS.transitionMs}, ${HUD_LAYER_METRICS.transitionMs}ms)`;
+  const transition = `var(${INFO_LAYER_CSS_VARS.transitionMs}, var(--srf-motion-base))`;
   return `:root {
   ${INFO_LAYER_CSS_VARS.l1Opacity}: 1;
   ${INFO_LAYER_CSS_VARS.l2Opacity}: 1;
   ${INFO_LAYER_CSS_VARS.l2Visibility}: visible;
-  ${INFO_LAYER_CSS_VARS.transitionMs}: ${HUD_LAYER_METRICS.transitionMs}ms;
+  ${INFO_LAYER_CSS_VARS.transitionMs}: var(--srf-motion-base);
 }
 ${l1} {
   opacity: var(${INFO_LAYER_CSS_VARS.l1Opacity}, 1);
-  transition: opacity ${transition} ease;
+  transition: opacity ${transition} var(--srf-motion-ease-enter);
 }
 ${l2} {
   opacity: var(${INFO_LAYER_CSS_VARS.l2Opacity}, 1);
   visibility: var(${INFO_LAYER_CSS_VARS.l2Visibility}, visible);
-  transition: opacity ${transition} ease, visibility ${transition} ease;
+  transition: opacity ${transition} var(--srf-motion-ease-enter), visibility ${transition} var(--srf-motion-ease-enter);
 }
 /* L3 沉浸层元素（@since v3.4）：始终满对比 —— L3 期间 L1 降对比、L2 收起，
    沉浸的那几件（回放时间戳角标）必须是画面里最清楚的东西。 */
 ${l3} {
   opacity: 1;
-  transition: opacity ${transition} ease;
+  transition: opacity ${transition} var(--srf-motion-ease-enter);
 }
+${MOTION_REDUCED_CSS}
 `;
 }
 

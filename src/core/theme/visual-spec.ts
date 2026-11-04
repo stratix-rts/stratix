@@ -598,8 +598,9 @@ export const MINIMAP_METRICS = Object.freeze({
   frameBorderPx: 1,
   /** hover 提升亮度的倍数（>1 = 变亮）—— Z3 规格「hover 提升亮度」（@since v3.4，task_093）。 */
   hoverBrightness: 1.12,
-  /** hover 提亮的过渡时长（ms）—— 提亮不许「啪」地一下变亮，要有过渡。 */
-  hoverTransitionMs: 180,
+  // 注（@since v3.9，task_147）：hover 提亮的**过渡时长**已收编进动效 token
+  //   （--srf-motion-hover = fast 档）—— 时长只有一个事实源（core/theme/motion-spec.ts），
+  //   本块不再自带第二份时长常量。
 });
 
 /**

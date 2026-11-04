@@ -98,6 +98,7 @@ import type { CustomAgentsPort } from './custom-agents-port';
 import type { GrowthStatsPort } from './growth-catalog';
 import { mountSettingsScreen } from './settings-screen';
 import { mountStatusScreen } from './status-screen';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 /** currentScreen 缺省回落（与读取 WorldState.currentScreen 的各处共用）。 */
 const DEFAULT_SCREEN: WorldState['currentScreen'] = 'main';
@@ -290,12 +291,12 @@ const MAIN_SCREEN_STYLE = `
     background: var(--srf-panel-elevated);
     box-shadow: var(--srf-shadow);
     pointer-events: auto;
-    /* 出入场过渡（@since v3.6）：140ms 淡入淡出 + 轻微上浮。
+    /* 出入场过渡（@since v3.6）：200ms 淡入淡出（--srf-motion-panel）+ 轻微上浮。
        why 用 allow-discrete + @starting-style：hidden 属性的 display:none 会**掐断**过渡，
        改成"display 离散过渡"后收起时能播完淡出、展开时能播淡入（纯 CSS，无 JS 计时器）。 */
     opacity: 1;
     transform: translateY(0);
-    transition: opacity 140ms ease-out, transform 140ms ease-out, display 140ms allow-discrete;
+    transition: opacity var(--srf-motion-panel), transform var(--srf-motion-panel), display var(--srf-motion-panel) allow-discrete;
   }
   .hud-popover[hidden] { display: none; opacity: 0; transform: translateY(-6px); }
   @starting-style {
@@ -442,6 +443,7 @@ const MAIN_SCREEN_STYLE = `
   }
   /* 统一截断规则（@since v3.8，task_137）：单行 ellipsis，完整文本由 title 属性兜底。 */
 ${TRUNCATE_CSS}
+${MOTION_REDUCED_CSS}
 `;
 
 export const MAIN_SCREEN_TAG = 'strat-main-screen';

@@ -33,6 +33,7 @@ import { PIPELINE_PRESETS, buildPipelineStartCommand } from '../../panels/pipeli
 import { recommendAssignees } from '../../panels/task-assign-catalog';
 import type { ToastTone } from '../toast/toast-host';
 import { zVar } from '../../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 export const NEW_TASK_DIALOG_TAG = 'strat-new-task-dialog';
 
@@ -330,7 +331,7 @@ export function defineNewTaskDialog(): typeof HTMLElement {
             font-size: var(--srf-font-size-sm);
             line-height: var(--srf-line-height);
             cursor: pointer;
-            transition: background var(--srf-transition), border-color var(--srf-transition), color var(--srf-transition);
+            transition: background var(--srf-motion-hover), border-color var(--srf-motion-hover), color var(--srf-motion-hover);
           }
           button.option:hover { border-color: var(--srf-border-strong); background: var(--srf-panel); }
           button.option:active { border-color: var(--srf-accent); }
@@ -348,6 +349,7 @@ export function defineNewTaskDialog(): typeof HTMLElement {
           }
           button.close:hover { color: var(--srf-text); background: var(--srf-panel-elevated); }
           button.close:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+        ${MOTION_REDUCED_CSS}
         </style>
         <div class="backdrop" data-role="backdrop">
           <div class="panel" data-role="panel">

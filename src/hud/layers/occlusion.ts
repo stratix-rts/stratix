@@ -36,6 +36,7 @@
 import { HUD_LAYER_METRICS } from '../../core/theme/visual-spec';
 
 import type { L1DimSink } from './info-layer';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 /** 注入样式表的稳定 id（幂等覆盖，便于重复挂载与测试定位）。 */
 export const OCCLUSION_STYLE_ID = 'srf-occlusion';
@@ -317,7 +318,7 @@ export const MODAL_SHELL_STYLE_ID = 'srf-modal-shell';
  *   面板是内容面（弹窗本体）。
  *
  * ============ 出入场过渡（@since v3.6，task_121）============
- *   入场：遮罩淡入 + 面板「升起」（140ms）—— 纯 CSS（@starting-style），零 JS 计时器。
+ *   入场：遮罩淡入 + 面板「升起」（--srf-motion-panel：200ms）—— 纯 CSS（@starting-style），零 JS 计时器。
  *   退场：**同步摘除**（不是过渡）—— 遮挡契约要求遮罩一关就消失、
  *     四角常驻件的降对比立刻解除（见 interaction-occlusion 单测的同步断言），
  *     所以这一层不能延迟卸载。退场的"余韵"交给各子屏自己的内容过渡。
@@ -329,7 +330,7 @@ const MODAL_SHELL_STYLE = `
   background: var(--srf-backdrop);
   pointer-events: auto;
   opacity: 1;
-  transition: opacity 140ms ease-out;
+  transition: opacity var(--srf-motion-panel);
 }
 .hud-modal-panel {
   position: absolute;
@@ -346,12 +347,13 @@ const MODAL_SHELL_STYLE = `
   pointer-events: auto;
   opacity: 1;
   transform: translateY(0) scale(1);
-  transition: opacity 140ms ease-out, transform 140ms ease-out;
+  transition: opacity var(--srf-motion-panel), transform var(--srf-motion-panel);
 }
 @starting-style {
   .hud-modal-mask { opacity: 0; }
   .hud-modal-panel { opacity: 0; transform: translateY(10px) scale(0.985); }
 }
+${MOTION_REDUCED_CSS}
 `;
 
 /** 弹窗壳依赖。 */

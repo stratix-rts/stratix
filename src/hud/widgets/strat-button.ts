@@ -27,6 +27,7 @@
  */
 
 import { iconSvg, isIconName } from './icon-set';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 export const STRAT_BUTTON_TAG = 'strat-button';
 
@@ -122,7 +123,7 @@ export function defineStratButton(): typeof HTMLElement {
             display: inline-block;
             /* 图标颜色从 host 继承（currentColor）—— hover 时整枚图标跟着变色。 */
             color: var(--srf-text);
-            transition: color var(--srf-transition);
+            transition: color var(--srf-motion-hover);
           }
           /* 微交互（@since v3.6）：hover = 变主色（图标随之变色）+ 上浮 1px。
              why 挂在 :host 上而不是 button 上：图标按钮没有可见文字，
@@ -162,7 +163,7 @@ export function defineStratButton(): typeof HTMLElement {
             background-size: var(--srf-notch-size, 0px) var(--srf-notch-size, 0px);
             background-position: left top, right top, left bottom, right bottom;
             background-repeat: no-repeat;
-            transition: background var(--srf-transition), border-color var(--srf-transition), color var(--srf-transition), box-shadow var(--srf-transition), transform var(--srf-transition);
+            transition: background var(--srf-motion-hover), border-color var(--srf-motion-hover), color var(--srf-motion-hover), box-shadow var(--srf-motion-hover), transform var(--srf-motion-hover);
           }
           button:hover:not(:disabled) {
             background: var(--srf-panel-elevated);
@@ -204,6 +205,7 @@ export function defineStratButton(): typeof HTMLElement {
             stroke-width: var(--srf-icon-stroke, 1.5);
             shape-rendering: var(--srf-icon-rendering, geometricPrecision);
           }
+        ${MOTION_REDUCED_CSS}
         </style>
         <button type="button" ${this._attrs.disabled ? 'disabled' : ''}${ariaLabelAttr}${ariaPressedAttr}>${content}</button>
       `;
