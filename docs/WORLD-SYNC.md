@@ -1,9 +1,9 @@
 # WORLD-SYNC — Stratix world-sync WebSocket 协议规范
 
-> **状态**：v1 冻结（契约层已落地，传输层 task_082 未落地）　**性质**：规范文档（含契约层实现指引）
+> **状态**：v1 冻结（契约层 task_081 + 传输层 task_082 均已落地；端点见 `api/websocket/world-sync/endpoint.ts`）　**性质**：规范文档（含契约层实现指引）
 > **适用范围**：service（gateway 常驻进程）与视图客户端（Electron 壳 / 浏览器）之间的**状态面**与**命令面**
 > **实现**：`src/stratix-gateway/api/websocket/world-sync/protocol.ts`（纯类型 + 守卫 + 常量 + 编解码纯函数，零运行时依赖）
-> **配套**：[SERVICE-SPLIT-PLAN.md](SERVICE-SPLIT-PLAN.md)（B1 节与铁律 1/4）｜[MCP-SPEC.md](MCP-SPEC.md)（工具面，另一条对外通道）
+> **配套**：[SERVICE-SPLIT-PLAN.md](SERVICE-SPLIT-PLAN.md)（B1 节与铁律 1/4）｜[MCP-SPEC.md](MCP-SPEC.md)（工具面，另一条对外通道）｜[UNIT-STATE-FLOW.md](UNIT-STATE-FLOW.md)（task_142：状态流全链路 + 实测延迟 + 词表评估）
 > **维护责任**：协议字段只加不删；破坏性变更须升协议版本（见 [§7](#7-协议演进)）
 
 ---
