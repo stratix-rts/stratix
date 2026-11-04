@@ -31,7 +31,7 @@ async function boot(page: Page): Promise<void> {
 
 /** 在命令行里敲一串并回车（走真实键盘事件）。 */
 async function runCommand(page: Page, raw: string): Promise<void> {
-  const input = page.locator('strat-command-panel').locator('input[data-role="query"]');
+  const input = page.locator('strat-command-panel').locator('textarea[data-role="query"]');
   await input.fill(raw);
   await input.press('Enter');
 }
@@ -123,7 +123,7 @@ test.describe('命令行命令注册表', () => {
   test('键盘逐字输入含空格的命令：空格保留、命令命中（回归：空格曾被全局键吞掉）', async ({ page }) => {
     await boot(page);
 
-    const input = page.locator('strat-command-panel').locator('input[data-role="query"]');
+    const input = page.locator('strat-command-panel').locator('textarea[data-role="query"]');
     await input.click();
     // 逐字敲（不是 fill / insertText）—— 只有真键盘事件才暴露"空格被吞"这个回归。
     await input.pressSequentially('mission 整理战场', { delay: 20 });

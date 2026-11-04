@@ -96,10 +96,28 @@ function setDraft(panel: StratCommandPanelElement, title: string): void {
 }
 
 function setQuery(panel: StratCommandPanelElement, query: string): void {
-  const input = panel.shadowRoot?.querySelector<HTMLInputElement>('[data-role="query"]');
+  const input = panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="query"]');
   if (!input) throw new Error('搜索输入框未渲染');
   input.value = query;
   input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** 在命令面板的编辑区里敲一个键（走 composer 自己的键位契约）。 */
+function pressInComposer(
+  panel: StratCommandPanelElement,
+  init: { key: string; shiftKey?: boolean; metaKey?: boolean; isComposing?: boolean }
+): KeyboardEvent {
+  const el = panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="query"]');
+  if (!el) throw new Error('命令编辑区未渲染');
+  const ev = new KeyboardEvent('keydown', {
+    bubbles: true,
+    cancelable: true,
+    shiftKey: init.shiftKey ?? false,
+    metaKey: init.metaKey ?? false,
+    ...init,
+  });
+  el.dispatchEvent(ev);
+  return ev;
 }
 
 const isEnabled = (panel: StratCommandPanelElement, id: string, scope: string): boolean =>
@@ -323,6 +341,100 @@ describe('渲染判重与资源清理', () => {
   });
 });
 
+describe('提示词 composer（@since v3.9，task_144）', () => {
+  test('输入面是多行编辑区（textarea），不是单行 input', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    const el = panel.shadowRoot?.querySelector('[data-role="query"]');
+    expect(el?.tagName).toBe('TEXTAREA');
+    // 字号至少 md（14px）—— 提示词是产品本体，输入面不能比回执还小。
+    const style = panel.shadowRoot?.querySelector('style')?.textContent ?? '';
+    expect(style).toContain('textarea.composer');
+    expect(style).toContain('--srf-font-size-md');
+  });
+
+  test('编辑区里回车 = 执行命令（help 列出五命令）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    setQuery(panel, 'help');
+    pressInComposer(panel, { key: 'Enter' });
+
+    const output = panel.shadowRoot?.querySelector('[data-role="output"]')?.textContent ?? '';
+    expect(output).toContain('mission <标题>');
+    expect(output).toContain('replay');
+  });
+
+  test('Shift+Enter 不执行（换行）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    setQuery(panel, 'help');
+    pressInComposer(panel, { key: 'Enter', shiftKey: true });
+
+    const output = panel.shadowRoot?.querySelector('[data-role="output"]')?.textContent ?? '';
+    expect(output).toBe('');
+  });
+
+  test('IME 合成中的回车不执行命令', async () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    setQuery(panel, '你好世界');
+    const el = panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="query"]');
+    el?.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    pressInComposer(panel, { key: 'Enter', isComposing: true });
+
+    let output = panel.shadowRoot?.querySelector('[data-role="output"]')?.textContent ?? '';
+    expect(output).toBe('');
+
+    el?.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    pressInComposer(panel, { key: 'Enter' });
+
+    // 合成完成后再回车 → 走命令行（未匹配 → 有回执，而不是静默）。
+    output = panel.shadowRoot?.querySelector('[data-role="output"]')?.textContent ?? '';
+    expect(output).toContain('没有匹配的命令');
+  });
+
+  test('多行提示词回车 → 走任务通路（新建任务对话框，标题带整段提示词）', async () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    const opened: string[] = [];
+    const onOpen = (event: Event): void => {
+      opened.push((event as CustomEvent<{ title?: string }>).detail?.title ?? '');
+    };
+    document.addEventListener(NEW_TASK_OPEN_EVENT, onOpen);
+    try {
+      const prompt = `第一行：把总线重构一遍\n第二行：记得补测试\n第三行：跑一遍 jest`;
+      setQuery(panel, prompt);
+      pressInComposer(panel, { key: 'Enter' });
+
+      expect(opened).toEqual([prompt]);
+      const output = panel.shadowRoot?.querySelector('[data-role="output"]')?.textContent ?? '';
+      expect(output).toContain('提示词已预填');
+    } finally {
+      document.removeEventListener(NEW_TASK_OPEN_EVENT, onOpen);
+    }
+  });
+
+  test('卸载后 composer 的监听被摘（反复挂卸不累积）', () => {
+    const { panel, harness } = mountPanel();
+    const el = panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="query"]');
+    if (!el) throw new Error('命令编辑区未渲染');
+
+    harness.unmount();
+    // 卸载后再按键：不应有任何反应（composer 已 destroy，事件链也断了）。
+    const before = panel.shadowRoot?.querySelector('[data-role="output"]')?.textContent ?? '';
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+    );
+    expect(panel.shadowRoot?.querySelector('[data-role="output"]')?.textContent ?? '').toBe(before);
+  });
+});
+
 describe('装配进 main-screen（dev 页走的就是这条路径）', () => {
   test('主屏把命令面板挂进 body，且共用同一条派发通道', () => {
     const commands: HudCommand[] = [];
@@ -335,6 +447,9 @@ describe('装配进 main-screen（dev 页走的就是这条路径）', () => {
       },
       mount: () => () => { /* 本用例不关心 core 订阅 */ },
       latest: null,
+      // 皮肤真相（@since task_115）：主屏要读当前皮肤，装配用的假 adapter 也要给一份。
+      themeId: 'default' as const,
+      subscribeTheme: () => () => undefined,
     };
 
     const host = document.createElement('div');

@@ -55,6 +55,17 @@
  *     不假装切成功，也不空口说"接入中"。
  *   why replay 走注入的控制器：回放控制器在组合根建（它要 app 层的读取口），
  *     面板只认一个控制器接口；网关不可用时给的是**人话 + 重试指引**，不是错误码。
+ *
+ * 提示词 composer（@since v3.9，task_144）：输入面**重造** —— 单行 <input> → 多行 <textarea>。
+ *   用户原话：「命令输入的文本框是最基础的人和应用交互点……肉眼难辨的小区域如何让用户输入大段提示词」。
+ *   why 值得重造：产品本质是 agent 指挥台，**prompt 就是产品**；一行 96px 的窄框装不下提示词。
+ *   形态：Enter 提交 / Shift+Enter 换行 / ⌘Enter 必交 / IME 合成中 Enter 不提交（中文用户命门）/
+ *     ↑↓ 翻历史（首/末行才接管，中部光标不抢键）/ Esc 清空再失焦 / 粘贴长文自动长高（≤10 行后内滚）。
+ *   键位 / IME / 历史 / 长高全在 prompt-composer.ts（纯 DOM 组件，可单测）；本面板只接「原文」。
+ *   why 紧凑条形态改成两行（composer 独占第 1 行）：命令按钮行保持 1 行 6 条的可达性不变，
+ *     composer 铺满整行宽度 —— 输入面终于是个「一眼看得见」的面。
+ *   why 多行 / 长自由文本回车走**任务通路**（不是新造命令）：面板能落地的出口只有既有契约，
+ *     大段提示词先当任务标题带进新建任务对话框，由用户选发起方式。
  */
 
 import type { HudCommand, WorldState } from '../../core/types';
@@ -86,12 +97,16 @@ import {
 } from './command-catalog';
 import type { CliCommandSpec } from './command-registry';
 import {
+  CLI_COMMANDS,
   cliHelpText,
   cliUnknownText,
   cliUsageHint,
   cliUsageList,
   parseCliInput,
 } from './command-registry';
+// 提示词 composer（@since v3.9，task_144）：输入面的键位 / IME / 历史 / 自动长高全在那边，
+//   本面板只负责「拿到原文 → 走命令注册表 / 任务通路」。
+import { PromptComposer } from './prompt-composer';
 
 export const COMMAND_PANEL_TAG = 'strat-command-panel';
 
@@ -125,6 +140,14 @@ const SECTION_LABELS: Record<'selection' | 'global', string> = {
   selection: '选中单位',
   global: '全局命令',
 };
+
+/**
+ * 自由文本（提示词）的长度门槛（@since v3.9，task_144）。
+ * why 有门槛：单行短文本按命令解析（「瞎敲的」仍然是「没有匹配的命令」，
+ *   那是既有反馈，不该被提示词通路吞掉）；**多行**或**明显长于命令**的自由文本
+ *   才当提示词处理（粘贴一大段进来的人，敲回车是想把这段话送出去，不是想看命令清单）。
+ */
+const PROMPT_TEXT_MIN_LENGTH = 80;
 
 /** HTML 文本转义。hint / 通知文本含用户输入（任务标题、单位名），必须转义后才进 innerHTML。 */
 function escapeHtml(s: string): string {
@@ -182,6 +205,8 @@ export function defineCommandPanel(): typeof HTMLElement {
     private _lastSignature: string | null = null;
     private _unsubscribe: (() => void) | null = null;
     private _listenersBound = false;
+    /** 提示词 composer（@since v3.9，task_144）：输入面的键位 / IME / 历史 / 长高都在那边。 */
+    private _composer: PromptComposer | null = null;
 
     // —— 属性面 ——
     get adapter(): CommandPanelDeps | null { return this._adapter; }
@@ -199,6 +224,8 @@ export function defineCommandPanel(): typeof HTMLElement {
     get query(): string { return this._query; }
     set query(value: string) {
       this._query = value;
+      // 外部回填（测试 / 组合根）也要同步到编辑区 —— 面板瞬时态与 DOM 只有一份真相。
+      this._composer?.setValue(value);
       this.refresh();
     }
 
@@ -234,6 +261,9 @@ export function defineCommandPanel(): typeof HTMLElement {
       // 资源必须可清理：不退订的话，反复挂卸会把订阅堆成 O(n)，且组件已不在文档里仍在收广播。
       this.releaseAdapter();
       document.removeEventListener(NEW_TASK_SUBMITTED_EVENT, this.onNewTaskSubmitted);
+      // composer 的监听同样必须摘（perf 硬约束：反复挂卸不累积监听器）。
+      this._composer?.destroy();
+      this._composer = null;
       this._lastSignature = null;
     }
 
@@ -274,6 +304,11 @@ export function defineCommandPanel(): typeof HTMLElement {
      * 输入像一条命令 → 告诉用户回车就能执行；不像 → 老实说没匹配上（清单由 empty-hint 补）。
      */
     private emptyHintText(): string {
+      const q = this._query.trim();
+      // 提示词（多行 / 长文本）：引导语要说「回车能把它送出去」，别再摆命令清单。
+      if (q.includes('\n') || q.length > PROMPT_TEXT_MIN_LENGTH) {
+        return '提示词已就绪 · 回车提交（走新建任务通路）';
+      }
       const parsed = parseCliInput(this._query);
       if (parsed.kind === 'matched' && parsed.spec) {
         const arg = parsed.arg.length > 0 ? ` ${parsed.arg}` : '';
@@ -336,7 +371,18 @@ export function defineCommandPanel(): typeof HTMLElement {
      *   用户照着提示词敲了一串，得到的只有一堵墙。给得出清单，才叫引导。
      */
     private async runCli(raw: string): Promise<void> {
+      const trimmed = raw.trim();
+      // 多行 = 提示词（@since v3.9，task_144）：命令都是一行的，多行一定是粘进来的正文。
+      if (trimmed.includes('\n')) {
+        await this.submitPromptAsTask(trimmed);
+        return;
+      }
       const parsed = parseCliInput(raw);
+      // 未命中且**明显是长文本** → 当提示词走任务通路（别拿「没有匹配的命令」糊一脸）。
+      if (parsed.kind === 'unknown' && trimmed.length > PROMPT_TEXT_MIN_LENGTH) {
+        await this.submitPromptAsTask(trimmed);
+        return;
+      }
       switch (parsed.kind) {
         case 'empty':
           this.setOutput(`请输入命令。\n可用命令：${cliUsageList()}`);
@@ -395,6 +441,26 @@ export function defineCommandPanel(): typeof HTMLElement {
           return;
         }
       }
+    }
+
+    /**
+     * 自由文本提示词 → 任务通路（@since v3.9，task_144）。
+     * why 走任务通路而不是新造一条命令：面板能落地的出口只有既有契约
+     *   （mission.create / ui.navigate / theme.set / 回放控制器），
+     *   新造一条「发提示词」的契约要动 core —— 那是另一个任务的地盘。
+     *   任务标题带整段提示词过去，由用户在新建任务对话框里选发起方式（单任务 / 流水线 / 派发）。
+     */
+    private async submitPromptAsTask(prompt: string): Promise<void> {
+      if (!this._adapter) return;
+      const spec = CLI_COMMANDS.find((c) => c.id === 'mission');
+      if (!spec) {
+        this.setOutput('提示词已收到，但任务通路没接线。');
+        return;
+      }
+      this.setDraftTitle(prompt);
+      this.requestNewTaskDialog(prompt);
+      this.setOutput(`已打开新建任务对话框，提示词已预填（${prompt.length} 字）`);
+      this.clearQuery();
     }
 
     /**
@@ -468,7 +534,9 @@ export function defineCommandPanel(): typeof HTMLElement {
     /** 命令执行成功后清空输入框：命令行跑完就该回到"待输入"状态（回执留在输出区）。 */
     private clearQuery(): void {
       this._query = '';
-      const input = this.shadowRoot?.querySelector('[data-role="query"]') as HTMLInputElement | null;
+      // 走 composer（不是直接改 DOM）：编辑区的历史游标 / 高度状态得一起复位。
+      this._composer?.clear();
+      const input = this.shadowRoot?.querySelector('[data-role="query"]') as HTMLTextAreaElement | null;
       if (input) input.value = '';
       this.refresh();
     }
@@ -561,16 +629,61 @@ export function defineCommandPanel(): typeof HTMLElement {
           }
           input:hover { border-color: var(--srf-border-strong); }
           input:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
+          /* —— 提示词 composer（@since v3.9，task_144）——
+             输入面重造：单行 <input> → 多行 <textarea>。
+             ① 字号升到 md（14px）：提示词是产品本体，输入面不能比回执还小；
+             ② 聚焦态描边 + 微光晕：用户原话「肉眼难辨」——聚焦时必须一眼看见它在哪；
+             ③ resize:none + overflow 由 JS 控：高度只跟内容走，拖不动 = 布局不会失控；
+             ④ pre-wrap + break-word：粘贴的长中文不撑出横向滚动条。 */
+          textarea.composer {
+            width: 100%;
+            box-sizing: border-box;
+            /* 纵向内边距压到 xs(4px)：控制岛的高度预算是 100px（硬验收），
+               收起态这一行必须只占一行的高度（21+8+2 = 31px）。 */
+            padding: var(--srf-spacing-xs) var(--srf-spacing-sm);
+            background: var(--srf-bg);
+            color: var(--srf-text);
+            border: var(--srf-border-width) solid var(--srf-border);
+            border-radius: var(--srf-radius);
+            font-family: var(--srf-font-ui);
+            font-size: var(--srf-font-size-md);
+            line-height: 1.5;
+            resize: none;
+            overflow-y: hidden;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow-wrap: anywhere;
+            transition: border-color var(--srf-transition), box-shadow var(--srf-transition);
+          }
+          textarea.composer:hover { border-color: var(--srf-border-strong); }
+          textarea.composer::placeholder { color: var(--srf-text-muted); }
+          textarea.composer:focus {
+            border-color: var(--srf-accent);
+            outline: none;
+            /* 微光晕：描边之外再加一层柔光，聚焦时这块区域在余光里也认得出来。 */
+            box-shadow:
+              0 0 0 2px color-mix(in srgb, var(--srf-accent) 45%, transparent),
+              0 0 16px color-mix(in srgb, var(--srf-accent) 30%, transparent);
+          }
+          /* 降级动效：系统要「少动」时，composer 不做过渡（只留静态描边）。 */
+          @media (prefers-reduced-motion: reduce) {
+            textarea.composer { transition: none; }
+          }
           .group-name { font-weight: var(--srf-font-weight-semibold); letter-spacing: 0.04em; }
           .empty { padding: var(--srf-spacing-md); text-align: center; border: var(--srf-border-width) dashed var(--srf-border); border-radius: var(--srf-radius); }
           /* 命令行回执区（@since v3.6）：贴着输入框的一行"终端输出"。
-             why 不进 toast：命令就在眼前，回执也得在眼前。 */
+             why 不进 toast：命令就在眼前，回执也得在眼前。
+             @since v3.9（task_144）：字号从 xs(11px) 升 sm(12px) —— 回执是命令的**结果**，
+               11px 在深色底上几乎读不出来；长回执内部滚动，不把面板撑开。 */
           .output {
             padding: var(--srf-spacing-xs);
             color: var(--srf-text-muted);
-            font-size: var(--srf-font-size-xs);
+            font-size: var(--srf-font-size-sm);
+            line-height: var(--srf-line-height);
             border-left: var(--srf-spacing-xxs) solid var(--srf-border-strong);
             white-space: pre-wrap;
+            max-height: 220px;
+            overflow-y: auto;
           }
           .empty-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
           button.command {
@@ -603,21 +716,31 @@ export function defineCommandPanel(): typeof HTMLElement {
           .cmd-label { font-weight: var(--srf-font-weight-semibold); }
           .cmd-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); }
           button.command:disabled .cmd-hint { color: var(--srf-text-disabled); }
-          /* —— 紧凑条形态（@since v3.4）：控制岛内的 1 行命令条 ——
+          /* —— 紧凑条形态（@since v3.4）：控制岛内的命令条 ——
              排版差异全部收在这里；命令清单、可用性判定与派发与完整形态完全一致。
              why 抬头与通知列表在紧凑形态下沉：控制岛的高度预算是 100px（硬验收），
-             抬头 / 通知 / 两个输入框一行摆不下 —— 通知的「计数」仍由顶栏徽标承担。 */
+             抬头 / 通知 / 两个输入框一行摆不下 —— 通知的「计数」仍由顶栏徽标承担。
+             @since v3.9（task_144）：命令条改成**两行**（flex-wrap 换行，DOM 顺序不动）：
+               第 1 行 = 提示词 composer（flex-basis 100% → 独占一行）；
+               第 2 行 = 任务标题草稿 + 命令按钮横排 + 回执（沿用原口径）。
+             why composer 单独占一行：它现在是「大段提示词」的入口，
+               挤在横排里就只能是个几十像素的小缝（用户原话：肉眼难辨的小区域）。
+             why 用 flex-wrap 而不是 grid-template-areas：
+               **绝对定位的子元素在 grid 里以「网格区域」为包含块** ——
+               多行回执浮层（left/right: 0 要铺满整行）会被关进那列几十像素宽的格子里，
+               清单被压成一列一个字（实测 clientWidth=8px）。
+               flex 容器没有这条规则：脱流浮层的包含块就是面板本身 → 铺满整行。 */
           :host([variant="strip"]) .panel {
             display: flex;
-            flex-direction: row;
+            flex-flow: row wrap;
             align-items: center;
-            gap: var(--srf-spacing-xs);
+            gap: var(--srf-spacing-xs) var(--srf-spacing-sm);
             padding: 0;
             background: transparent;
             border: none;
             border-radius: 0;
             overflow: visible;
-            /* 定位上下文：多行回执浮在命令条上方时要相对本面板定位（不依赖宿主）。 */
+            /* 定位上下文：多行回执 / 展开态 composer 浮在命令条上方时要相对本面板定位（不依赖宿主）。 */
             position: relative;
           }
           :host([variant="strip"]) .head,
@@ -637,10 +760,27 @@ export function defineCommandPanel(): typeof HTMLElement {
             padding: 0 var(--srf-spacing-xs);
             font-size: var(--srf-font-size-xs);
           }
+          /* composer：独占第 1 行（basis 100% → 后面的兄弟自动换行）。
+             why 选择器写 label.field-composer：上面的 label.field 规则
+             （display:flex / flex:0 0 auto）选择器更具体，不对齐就会被它压回去
+             —— 实测 composer 被压成 0 宽，整条输入面消失。 */
+          :host([variant="strip"]) label.field-composer {
+            /* order:-1 → composer 排到最前，独占第 1 行（DOM 顺序不动，只改排版顺序）。
+               why 不靠 basis 断行：草稿框在前会先占住第 1 行，composer 被挤到第 2 行、
+               按钮被挤到第 3 行 —— 控制岛直接顶到 100px 上限（实测）。 */
+            order: -1;
+            flex: 0 0 100%;
+            display: grid;
+            position: static;
+            /* 展开态（编辑区脱流浮起）时这一格不能塌 —— 否则控制岛会缩一下再弹回来。
+               32px = 1 行（21px）+ 上下内边距（4+4）+ 边框（2）+ 余量。 */
+            min-height: 32px;
+          }
+          :host([variant="strip"]) .field-draft { flex: 0 0 auto; }
           /* 命令流：两个 scope 分组的按钮摊平成一条横排（group-name 在紧凑形态下沉）。 */
           :host([variant="strip"]) .sections {
-            display: flex;
             flex: 1 1 auto;
+            display: flex;
             align-items: center;
             gap: var(--srf-spacing-xs);
             min-width: 0;
@@ -665,16 +805,31 @@ export function defineCommandPanel(): typeof HTMLElement {
             padding: var(--srf-spacing-xs);
             font-size: var(--srf-font-size-xs);
           }
+          /* 展开态 composer（@since v3.9，task_144）：脱流浮到命令条上方。
+             why 不就地长高：控制岛的高度预算是 100px（硬验收），
+               就地长高会把岛顶出屏幕（岛的 flex 是底对齐，溢出会往屏幕下跑）。
+             why 浮起时铺满整行：提示词要能铺开写，缩在一条缝里等于没升级。 */
+          :host([variant="strip"]) textarea.composer[data-expanded="true"] {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: calc(100% + 4px);
+            z-index: 3;
+            background: var(--srf-panel);
+            border-color: var(--srf-border-strong);
+            box-shadow: var(--srf-shadow);
+          }
           /* 回执区在紧凑形态下压成行内窄条（不撑高控制岛：1 行 + 横向滚动）。
              why 不换行：控制岛的高度预算是 100px（硬验收），回执再高就把时间轴挤没了。 */
           :host([variant="strip"]) .output {
             flex: 0 1 auto;
-            max-width: 55%;
+            max-width: 300px;
             padding: 0 var(--srf-spacing-xs);
             border-left: none;
             white-space: nowrap;
             overflow-x: auto;
             overflow-y: hidden;
+            max-height: none;
           }
           /* 多行回执（help 清单 / 未匹配清单）：浮到命令条上方、完整可读。
              why 浮层而不是就地换行：就地换行会把控制岛撑高（岛高 100px 是硬验收），
@@ -705,13 +860,20 @@ export function defineCommandPanel(): typeof HTMLElement {
             <span class="selection" data-role="selection">未选中单位</span>
           </div>
           <div class="notices" data-role="notices"></div>
-          <label class="field">
+          <label class="field field-draft">
             <span class="field-name">任务标题</span>
             <input type="text" data-role="draft" placeholder="输入后「发起任务」才可用" />
           </label>
-          <label class="field">
-            <span class="field-name">命令</span>
-            <input type="search" data-role="query" placeholder="mission / 主题 / 设置 / 回放 / help（回车执行）" />
+          <label class="field field-composer">
+            <span class="field-name">命令 / 提示词</span>
+            <textarea
+              class="composer"
+              data-role="query"
+              rows="1"
+              spellcheck="false"
+              title="Enter 提交 · Shift+Enter 换行 · ⌘Enter 总是提交 · ↑↓ 翻历史"
+              placeholder="输入命令，或直接粘贴大段任务提示词…"
+            ></textarea>
           </label>
           <div class="sections" data-role="sections"></div>
           <div class="output" data-role="output" hidden></div>
@@ -721,9 +883,9 @@ export function defineCommandPanel(): typeof HTMLElement {
       if (!this._listenersBound) {
         this._listenersBound = true;
 
-        // 输入事件：只改瞬时态 + 重画列表。外壳（含 input）不重建，光标不丢。
+        // 输入事件：只改瞬时态 + 重画列表。外壳（含编辑区）不重建，光标不丢。
         root.addEventListener('input', (ev: Event) => {
-          const target = ev.target as HTMLInputElement | null;
+          const target = ev.target as HTMLInputElement | HTMLTextAreaElement | null;
           if (!target) return;
           if (target.dataset.role === 'draft') this._draftTitle = target.value;
           else if (target.dataset.role === 'query') this._query = target.value;
@@ -740,26 +902,36 @@ export function defineCommandPanel(): typeof HTMLElement {
           if (!id || !scope) return;
           this.runCommand(id as PanelCommandId, scope as CommandScope);
         });
+      }
 
-        // 命令行回车（@since v3.6，task_113）：搜索框同时是命令行 —— 回车即执行。
-        // why 读 target.value 而不是 this._query：输入事件与回车之间可能夹着粘贴等路径，
-        //   以输入框当下的值为准，别拿可能滞后的镜像。
-        root.addEventListener('keydown', (ev: Event) => {
-          const key = ev as KeyboardEvent;
-          if (key.key !== 'Enter') return;
-          const target = key.target as HTMLInputElement | null;
-          if (target?.dataset.role !== 'query') return;
-          key.preventDefault();
-          const raw = target.value;
-          this._query = raw;
-          // 输入行微脉冲（@since v3.8，task_138）：提交那一下行轻轻弹一下 ——
-          //   why 需要：回执可能延迟出现，先给一个「收到了」的即时反馈（120ms，不阻塞）。
-          this.pulseInput(target);
-          void this.runCli(raw);
+      // 提示词 composer（@since v3.9，task_144）：键位（Enter / Shift+Enter / ⌘Enter / Esc）、
+      //   IME 合成保护、↑↓ 历史导航、自动长高 —— 全在 prompt-composer 里。
+      //   面板这一侧只接「原文」：拿去做命令解析 / 任务通路。
+      // why 重建前先 destroy：反复挂卸时旧实例的监听还挂在旧节点上（内存 + 事件双泄漏）。
+      this._composer?.destroy();
+      this._composer = null;
+      const composerEl = root.querySelector<HTMLTextAreaElement>('[data-role="query"]');
+      if (composerEl) {
+        this._composer = new PromptComposer(composerEl, {
+          onSubmit: (raw) => { this.onComposerSubmit(raw); },
         });
       }
 
       this.renderNotices();
+    }
+
+    /**
+     * composer 提交（@since v3.9，task_144）：原文 → 命令行。
+     * why 读编辑区当下的值而不是 this._query：输入事件与提交之间可能夹着粘贴等路径，
+     *   以编辑区当下的值为准，别拿可能滞后的镜像。
+     */
+    private onComposerSubmit(raw: string): void {
+      this._query = raw;
+      const el = this.shadowRoot?.querySelector('[data-role="query"]');
+      // 输入行微脉冲（@since v3.8，task_138）：提交那一下行轻轻弹一下 ——
+      //   why 需要：回执可能延迟出现，先给一个「收到了」的即时反馈（120ms，不阻塞）。
+      if (el) this.pulseInput(el as HTMLElement);
+      void this.runCli(raw);
     }
 
     /**
