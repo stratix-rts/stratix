@@ -12,7 +12,12 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
-const APP_URL = '/';
+/**
+ * 首启向导只在「名册为空」时出现 —— 而「连本地网关」是默认（@since v3.10，task_153），
+ * 默认模式下网关名册里就有角色，向导不会拉起。故本剧本显式走**本地直连**模式
+ * （`?stratix-remote=0` = dev-flags 的 URL 覆盖口，见 src/app/main/dev-flags.ts）。
+ */
+const APP_URL = '/?stratix-remote=0';
 const SHOTS = 'reports/shots';
 const TOUR_TAG = 'strat-onboarding-tour';
 /** 一次性标记键（组件常量 —— 这里写字面量，避免 import 应用代码进 e2e）。 */

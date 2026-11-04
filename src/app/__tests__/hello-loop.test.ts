@@ -313,8 +313,8 @@ describe('往返与清理', () => {
   });
 });
 
-describe('尚未落地的命令：走对上总线，不静默吞掉', () => {
-  test('main-screen 的切皮肤按钮：本地落皮肤 + 命令进总线等 Phase 2 接手', () => {
+describe('皮肤命令：本地落皮肤 + 命令进总线（@since v3.6，task_115：core 已接地）', () => {
+  test('main-screen 的切皮肤按钮：本地落皮肤 + 命令进总线且不再报「未处理」', () => {
     const app = bootApp();
     apps.push(app);
 
@@ -325,6 +325,7 @@ describe('尚未落地的命令：走对上总线，不静默吞掉', () => {
     expect(app.screenHost.querySelector('[data-role="theme-tag"]')).toBeNull();
     expect(app.screenHost.querySelector('[data-role="theme"]')?.getAttribute('label')).toContain('像素');
     expect(document.getElementById('srf-theme-pixel')?.hasAttribute('disabled')).toBe(false);
-    expect(app.unhandled).toContainEqual({ channel: 'command', type: 'theme.set' });
+    // theme.set 由 core **接地**（皮肤是 HUD 本地态，core 不持有 → 显式吞掉，不再报未处理）。
+    expect(app.unhandled).not.toContainEqual({ channel: 'command', type: 'theme.set' });
   });
 });

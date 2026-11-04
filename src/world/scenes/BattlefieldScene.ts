@@ -58,6 +58,8 @@ import type {
   SelectionState,
   UnitView,
 } from '../../core/types';
+import { taskPhaseView } from '../appearance/task-animation';
+import type { UnitTaskPhase } from '../appearance/unit-animation';
 import {
   CAMERA_EVENT_INTERVAL_MS,
   createWorldBridge,
@@ -85,8 +87,7 @@ import { CloudLayer } from '../objects/cloud-layer';
 import { DirectorFrameLayer } from '../objects/director-frame-layer';
 import { FocusLinkLayer } from '../objects/focus-link-layer';
 import { GroundLayer, GROUND_DEPTH } from '../objects/ground-layer';
-import { ReplayBoard, replayAnchorId, replayAvatarPosition } from '../objects/replay-board';
-import { ReplayLayer } from '../objects/replay-layer';
+import { ReplayBoard, replayAnchorId, replayAvatarPosition } from '../objects/replay-board';import { ReplayLayer } from '../objects/replay-layer';
 import { SelectionBox } from '../objects/selection-box';
 import { SpeechBubbleBoard } from '../objects/speech-bubble';
 import { SpeechBubbleLayer } from '../objects/speech-bubble-layer';
@@ -365,6 +366,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     const result = this.mapBoard.sync(missions, tasks);
     this.buildingLayer.sync(result);
     this.playTaskPointFx(result);
+    // 动画八态（@since v3.8，task_141）：快照路的任务相位 → 单位基态。
+    this.syncUnitTaskPhases(tasks);
   }
 
   /**
@@ -459,17 +462,48 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     //   完成 → 收工站直（庆祝演出是**正交瞬态**，由 triggerCompleted 单独起拍）；
     //   失败 → 卡住态（❗ + 灰度 + 抖动，驻留到下一条任务事件）；
     //   挂起（awaiting_approval）→ 撤相位 —— 挂起不算忙（core 已回收 busy，基态自然回静息）。
+    //
+    // why 事件与快照两路都走同一块相位板：一次跳变只演一次庆祝（板按 taskId 去重），
+    //   谁先到都行（本地直连模式事件先到，远程模式快照先到）。
     for (const unitId of hitUnitIds) {
-      if (phase === 'started') this.unitLayer.setTaskPhase(unitId, 'running');
-      else if (phase === 'completed') this.unitLayer.setTaskPhase(unitId, 'completed');
-      else if (phase === 'failed') this.unitLayer.setTaskPhase(unitId, 'failed');
-      else this.unitLayer.setTaskPhase(unitId, 'none');
-    }
-    // 完成演出（@since v3.3，task_075）：任务落到谁头上，谁就 squash → 跳 20px → 落地星尘。
-    if (phase === 'completed') {
-      for (const unitId of hitUnitIds) this.unitLayer.triggerCompleted(unitId);
+      const next: UnitTaskPhase =
+        phase === 'started'
+          ? 'running'
+          : phase === 'completed'
+            ? 'completed'
+            : phase === 'failed'
+              ? 'failed'
+              : 'none';
+      const transition = this.unitLayer.setTaskPhase(unitId, next, task.id);
+      // 完成演出（@since v3.3，task_075）：任务落到谁头上，谁就 squash → 跳 20px → 落地星尘。
+      //   'unchanged' = 这单已经演过（快照路先到并演掉了）→ 不重复演。
+      if (next === 'completed' && transition !== 'unchanged') {
+        this.unitLayer.triggerCompleted(unitId);
+      }
     }
     this.taskFxLayer.sync();
+  }
+
+  /**
+   * 任务清单 → 单位动画相位（@since v3.8，task_141；快照路）。
+   *
+   * why 需要这一路：真相持有者（gateway / service 进程）里的 core 才发 task.* 事件，
+   *   视图壳（远程模式）只拿到**全量快照**（WorldState.tasks —— 与任务面板同源的那份清单）。
+   *   没有这一路，远程壳上「派了活儿的单位」不会动。
+   *
+   * 口径：只有 running 才算在干活（与 core 的 busy 派生一致）；completed 只在**跳变**时演庆祝
+   *   （客户端不在场时收到的旧完成单不补演）；failed 驻留（❗ 挂着，与 task-fx 同款语义）。
+   */
+  private syncUnitTaskPhases(tasks: readonly CharacterTask[]): void {
+    for (const unit of this.units.list()) {
+      if (!unit.characterId) continue;
+      const view = taskPhaseView(tasks, unit.characterId);
+      // 没有前相位就不落 'completed'：客户端不在场 → 不补演庆祝（免得开局集体跳一下）。
+      const next: UnitTaskPhase =
+        view.phase === 'completed' && !this.unitLayer.hasTaskPhase(unit.id) ? 'none' : view.phase;
+      const transition = this.unitLayer.setTaskPhase(unit.id, next, view.taskId);
+      if (transition === 'entered-completed') this.unitLayer.triggerCompleted(unit.id);
+    }
   }
 
   /**

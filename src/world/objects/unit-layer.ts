@@ -64,12 +64,12 @@
 import Phaser from 'phaser';
 
 import type { Bounds, CharacterAppearance, UnitStatus } from '../../core/types';
+import { TaskPhaseBoard, type TaskPhaseTransition } from '../appearance/task-animation';
 import {
   type UnitAnimationContext,
   type UnitAnimationState,
   type UnitTaskPhase,
 } from '../appearance/unit-animation';
-import { TaskPhaseBoard } from '../appearance/task-animation';
 import { readReducedMotion } from '../motion';
 import {
   resolveUnitColor,
@@ -545,14 +545,24 @@ export class UnitLayer {
    *
    * why 走既有 API 不重造：动画的规则全在 unit-animation.ts（唯一事实源），
    *   本层只搬运「相位」这一个业务事实。
+   *
+   * @returns 相位迁移结果（上层据此决定要不要起庆祝演出；两路来源都走这里 → 一次跳变只演一次）
    */
-  setTaskPhase(unitId: string, phase: UnitTaskPhase): void {
-    if (this.destroyed) return;
-    const now = this.scene.time.now;
-    if (phase === 'running') this.taskPhases.setRunning(unitId, now);
-    else if (phase === 'completed') this.taskPhases.setCompleted(unitId, now);
-    else if (phase === 'failed') this.taskPhases.setFailed(unitId, now);
-    else this.taskPhases.clear(unitId);
+  setTaskPhase(
+    unitId: string,
+    phase: UnitTaskPhase,
+    taskId?: string,
+  ): TaskPhaseTransition {
+    if (this.destroyed) return 'unchanged';
+    return this.taskPhases.apply(unitId, phase, this.scene.time.now, taskId);
+  }
+
+  /**
+   * 该单位当前有没有相位记录（@since v3.8，task_141）。
+   * 快照路判「是不是跳变」用：没有前相位就不补演庆祝（客户端不在场时不补演）。
+   */
+  hasTaskPhase(unitId: string): boolean {
+    return this.taskPhases.has(unitId);
   }
 
   /**

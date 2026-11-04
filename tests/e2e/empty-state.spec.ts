@@ -14,7 +14,12 @@
 
 import { expect, test, type Page } from '@playwright/test';
 
-const APP_URL = '/src/app/main/index.html';
+/**
+ * 本剧本测的是**战场空态**（0 单位）—— 而「连本地网关」是默认（@since v3.10，task_153），
+ * 默认模式下网关名册里就有角色，战场永远不空。故本剧本显式走**本地直连**模式
+ * （`?stratix-remote=0` = dev-flags 的 URL 覆盖口，见 src/app/main/dev-flags.ts）。
+ */
+const APP_URL = '/?stratix-remote=0';
 const SHOTS = 'reports/shots';
 
 /** 空态覆盖层的标签（与组件常量一致 —— 这里写字面量，避免 import 应用代码进 e2e）。 */

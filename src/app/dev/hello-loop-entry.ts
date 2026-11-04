@@ -23,7 +23,7 @@ import { worldStore } from '../../core/store';
 import type { HudCommand, UnitView, WorldState } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
 import { createMainScreen } from '../../hud/screens/main-screen';
-import { createThemeController } from '../../hud/theme/theme-controller';
+import { createThemeController, defaultThemeStorage } from '../../hud/theme/theme-controller';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
 // 像素皮肤的真像素字体（@since v3.8，task_134）：与生产入口同一口径。
@@ -108,6 +108,8 @@ function boot(): void {
       // why 深度 3：本页在 src/app/dev/hello-loop.html（相对站点根 3 层：src/app/dev/），字体在站点根下 fonts/。
       pixel: pixelCss + pixelFontFaceCss(pixelFontUrl(document.baseURI, 3)),
     },
+    // 皮肤记忆（@since v3.6，task_115）：与主入口同口径（键名冻结在 core）。
+    storage: defaultThemeStorage(),
     initial: 'default',
   });
   const adapter = createHudBusAdapter({ onState, emitCommand, themeController });

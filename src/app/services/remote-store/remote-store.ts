@@ -12,6 +12,14 @@
  *   4. 把未回执的命令补发到新连接 —— 那条命令可能已在旧连接上落地（协议 §1.2 明令禁止）；
  *   5. 引入新依赖 —— 只用浏览器原生 WebSocket（可注入替换 → 单测用内存替身）。
  *
+ * ============ 唯一的例外：屏位（currentScreen）是**客户端自己的**视图状态 ============
+ *   快照里的 `currentScreen` 落在 service 的**共享** store 上 —— 谁跳屏，所有客户端都被拽过去
+ *   （task_153 默认连网关后暴露：另一个客户端切到设置屏，本浏览器就被拽进设置屏）。
+ *   屏位是**每个客户端自己的视图状态**（跟你把窗口切到哪个标签页一样，不该被别人拽走），
+ *   故本实现：① 快照到达时保留**本地**屏位；② 本端发起 `ui.navigate` 时立即本地生效
+ *   （不等回执往返），同时照旧把命令转发给 service（协议口径不变、五型词表零改动）。
+ *   这是「本地视图」而非「本地真相」—— 业务数据仍一律来自快照（铁律 1 不破）。
+ *
  * ============ 为什么不是完整的 CoreStore ============
  * `CoreStore` 的写方法（`setState` / `patch` / `pushNotice` / …）语义是
  *   「就地改本地真相」；远程模式下本地**没有**真相，照搬这些方法会造出第二份真相（铁律 1）。
@@ -28,7 +36,7 @@
  */
 
 import { createInitialState, type CoreStore, type StateListener } from '../../../core/store';
-import type { HudCommand, WorldState } from '../../../core/types';
+import type { HudCommand, ScreenId, WorldState } from '../../../core/types';
 import {
   WORLD_SYNC_ACK_TIMEOUT_MS,
   WORLD_SYNC_PATH,
@@ -147,6 +155,11 @@ export function createRemoteStore(url: string, options: RemoteStoreOptions = {})
 
   /** 本地投影（最后一份快照；从未收到过 = 空世界初始态）。 */
   let state: WorldState = createInitialState();
+  /**
+   * 本客户端自己的屏位（null = 主屏；与 core 的 currentScreen 缺省回落一致）。
+   * why 不直接用快照里的那份：那份落在 service 的**共享** store 上 —— 别人跳屏会把这个客户端也拽走。
+   */
+  let localScreen: ScreenId | null = null;
   /** 最近一份快照的版本号。 */
   let seq: number | null = null;
   /** 本地视图是否不可信（true = 不可信）。 */
@@ -198,7 +211,9 @@ export function createRemoteStore(url: string, options: RemoteStoreOptions = {})
 
   /** 全量覆盖：收到 snapshot 就整体替换本地视图（协议 §1.2 —— 不做增量合并）。 */
   const applySnapshot = (message: SnapshotMessage): void => {
-    state = fromWireState(message.state);
+    const next = fromWireState(message.state);
+    // 屏位取**本地**值（客户端自己的视图状态）；快照里那份是 service 的共享值（会串台）。
+    state = { ...next, currentScreen: localScreen ?? undefined };
     seq = message.seq;
     const wasStale = stale;
     stale = false;
@@ -328,8 +343,20 @@ export function createRemoteStore(url: string, options: RemoteStoreOptions = {})
     };
   };
 
+  /**
+   * 本端屏位生效（客户端自己的视图状态）。
+   * why 与 core 同口径：'main' / 'chat' 不写屏位字段（读侧回落主屏；聊天抽屉由 DOM 事件自治）。
+   */
+  const applyLocalScreen = (screen: ScreenId): void => {
+    localScreen = screen === 'main' || screen === 'chat' ? null : screen;
+    state = { ...state, currentScreen: localScreen ?? undefined };
+    notify();
+  };
+
   /** 命令面：转 `command.forward` 发给 service。 */
   const emitCommand = (command: HudCommand): string => {
+    // 屏位是本端视图状态：先本地生效（不等回执往返，UI 不被网络往返卡住），再照旧转发。
+    if (command.type === 'ui.navigate') applyLocalScreen(command.screen);
     commandCounter += 1;
     const commandId = `cmd-${commandCounter}`;
     if (!opened || !socket) {

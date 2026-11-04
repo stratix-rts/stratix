@@ -147,7 +147,7 @@ import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
 //   组合根只订阅总线接线（hud 组件零总线依赖 —— 与 toast-host / sfx-service 同一口径）。
 //   音频根 URL 由组合根算（入口深度的事实源在 app 层：entry-paths 的 ENTRY_PATH_DEPTH）。
 import { createSoundEngine, sfxBaseUrl } from '../../hud/sound-engine';
-import { createThemeController } from '../../hud/theme/theme-controller';
+import { createThemeController, defaultThemeStorage } from '../../hud/theme/theme-controller';
 import { demoMode } from '../../hud/theme/demo-mode';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
@@ -360,7 +360,8 @@ async function boot(): Promise<void> {
   const onboardingHost = must<HTMLElement>('onboarding-host');
 
   // ============================================================================
-  // 装配开关（@since v3.43，task_083，前后端分离 B3）：数据源 = 本地直连（默认）/ 远程 world-sync
+  // 装配开关（@since v3.43，task_083，前后端分离 B3；@since v3.10，task_153 默认反转）：
+  //   数据源 = 远程 world-sync（**缺省即开**）/ 本地直连（`STRATIX_REMOTE=0` 关）
   // ============================================================================
   // ★ @deprecated（前后端分离 C2 / task_085）—— **本地直连装配/开关段整体退役中**。
   //   正式拓扑：service 常驻持有大脑（core runtime / 执行环 / 存储），Electron 退化为**可选视图壳**
@@ -369,12 +370,15 @@ async function boot(): Promise<void> {
   //   本段（以及下方「本地直连」相关的各 guard：本地 runtime 启动 / 本地落库 / 本地 agent 探测）
   //     **只注不删**（铁律 7 渐进迁移）：它仍是迁移期双模式里的「本地 dev 回退模式」。
   //   迁移指引：
-  //     ① 远程模式怎么开：`STRATIX_REMOTE=1`（可选 `STRATIX_WORLD_SYNC_URL=ws://127.0.0.1:<port>/ws/world-sync`）
-  //        —— 开关名与读法见 src/app/main/dev-flags.ts（构建期常量 + 运行时环境变量两处都读）。
-  //     ② 本地回退怎么开：**不设** `STRATIX_REMOTE`（缺省即本地直连）。
+  //     ① 远程模式（= 连 world-sync）怎么开：**缺省即开**（@since v3.10，task_153 —— 产品语义反转：
+  //        「连本地网关是默认，连不上才降级」）。端点缺省指本机 gateway
+  //        （ws://127.0.0.1:7524/ws/world-sync），可用 `STRATIX_WORLD_SYNC_URL` 覆盖。
+  //        开关名与读法见 src/app/main/dev-flags.ts（构建期常量 + 运行时环境变量两处都读）。
+  //     ② 本地回退怎么开：显式 `STRATIX_REMOTE=0`（关 = 本地直连；测试口 / 旧路径全程可用，铁律 7）。
   //     ③ 何时禁：生产 / 多客户端 / agent 长期值守场景一律禁用本地直连（会造出第二份真相，违铁律 1）。
   //     ④ 双模式适用场景与「何时禁」全表见 docs/SERVICE-SPLIT-PLAN.md §8。
-  // why 默认关（远程）：本地直连是 dev 回退模式（铁律 7 —— 旧路径全程可用，远程模式由 C1 剧本显式开）。
+  // why 默认开（远程 / world-sync）：task_153 的实测反馈「功能上似乎未能联通，看不到 agent」——
+  //   根因是默认值本身错了（压根没发起连接），不是连不上。改默认值即可，不重写下面的装配。
   // 远程模式语义：Electron 壳退化为**纯视图客户端** ——
   //   状态 = service 推的全量快照（本地整体覆盖，不做增量合并：协议 §1.2）；
   //   写   = hud 命令转 `command.forward` 回 service 的 core 裁决（铁律 2）；
@@ -417,6 +421,10 @@ async function boot(): Promise<void> {
         pixelLayerCss +
         pixelFontFaceCss(pixelFontUrl(document.baseURI, ENTRY_PATH_DEPTH)),
     },
+    // 皮肤记忆（@since v3.6，task_115）：上次选的那套皮肤刷新后仍在。
+    // 键名冻结在 core（core/theme/skin-registry.ts 的 SKIN_STORAGE_KEY），这里只给记忆口。
+    // 取不到 localStorage（隐私模式 / file:// 正式包）→ 降级为不记忆，切皮肤照常可用。
+    storage: defaultThemeStorage(),
     initial: 'default',
   });
   const adapter = createHudBusAdapter({
@@ -896,6 +904,8 @@ async function boot(): Promise<void> {
       notify: (text, tone) => toastHost.show(text, tone),
       // task_099（R1/R4）：对话框是全屏弹窗 → 开着时四角常驻件降对比 + 禁点，ESC 统一关闭。
       occlusion: occlusionController,
+      // task_148：死按钮的出口 —— 点「去新建角色」真的能走到建档向导。
+      onCreateCharacter: () => openCharacterWizard(),
     },
     hudRoot
   );

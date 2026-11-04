@@ -666,6 +666,45 @@ describe('world 事件：camera.moved 接地（task_066）', () => {
 // 编组槽位命令（@since v3.34，task_058）—— unit.group.assign / unit.group.recall
 // ============================================================================
 
+describe('HudCommand selection.reset：重置编组（@since v3.6，task_116）', () => {
+  test('清空选择集 + 清空编组槽位，一次广播', () => {
+    const { store, states, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'unit.select', unitIds: ['u1', 'u2'], mode: 'set' });
+    emitCommand({ type: 'unit.group.assign', group: 1 });
+    const before = states.length;
+
+    emitCommand({ type: 'selection.reset' });
+
+    expect(store.getState().selection.unitIds).toEqual([]);
+    expect(store.getState().selectionGroups?.size).toBe(0);
+    // 一次用户操作一次广播（选择集与槽位在同一次 setState 里落地）
+    expect(states).toHaveLength(before + 1);
+    expect(states.at(-1)?.selection.unitIds).toEqual([]);
+    expect(states.at(-1)?.selectionGroups?.size).toBe(0);
+  });
+
+  test('幂等：已经空的再来一次 → 零广播', () => {
+    const { states, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'selection.reset' });
+    emitCommand({ type: 'selection.reset' });
+
+    expect(states).toHaveLength(0);
+  });
+
+  test('不再报「未处理 command」（此前这条命令在 core 侧没人接）', () => {
+    const { unhandled, stop } = harness();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'selection.reset' });
+
+    expect(unhandled.filter((item) => item.type === 'selection.reset')).toHaveLength(0);
+  });
+});
+
 describe('HudCommand → 编组槽位（task_058）', () => {
   test('unit.group.assign：把当前选择集存入槽位，广播一次（含 info Notice）', () => {
     const { store, states, stop } = harness();

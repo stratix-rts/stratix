@@ -3,7 +3,8 @@
  *   ① 快照覆盖（全量替换，不做增量合并；编组 Map 无损还原）；
  *   ② 断线重连（指数退避 → 重连 → 重新 hello → 新快照覆盖，stale 解除）；
  *   ③ 命令发送（emitCommand → command.forward 信封；回执按 commandId 结算；未连接时不发出）；
- *   ④ stale 标志（未连上 / 收到快照 / 再断开三态）。
+ *   ④ stale 标志（未连上 / 收到快照 / 再断开三态）；
+ *   ⑤ 屏位归属（@since v3.10，task_153：屏位是客户端自己的视图状态，不被 service 的共享值串台）。
  * 输入：内存 WebSocket 替身（**不起真端口**、不连真 service）+ 协议层构造助手（B1 产物）。
  * 输出：逐条断言（任一失败即红）。
  * 禁止事项：
@@ -199,6 +200,35 @@ describe('createRemoteStore（前后端分离 B3：Electron 远程 store）', ()
     expect(results[1].commandId).toBe(offlineId);
     expect(results[1].error?.code).toBe('internal_error');
     expect(results[1].error?.stale).toBe(true);
+
+    store.dispose();
+  });
+
+  it('⑤ 屏位是**客户端自己的**：快照里的共享屏位不串台；本端跳屏立即本地生效', () => {
+    const { store, sockets } = setup({});
+    const socket = sockets[0];
+    socket.open();
+
+    // 快照里带着 service **共享** store 的屏位（别的客户端切到了设置屏）
+    socket.deliver(
+      createSnapshotMessage(1, { ...stateWithUnits(['u1']), currentScreen: 'settings' }),
+    );
+    // 本端没跳过屏 → 留在主屏（不被串台拽走）
+    expect(store.getState().currentScreen).toBeUndefined();
+
+    // 本端跳到设置屏 → 立即本地生效（不等回执往返）
+    store.emitCommand({ type: 'ui.navigate', screen: 'settings' });
+    expect(store.getState().currentScreen).toBe('settings');
+
+    // 之后来的快照（共享值是别的屏）也不改本端屏位
+    socket.deliver(
+      createSnapshotMessage(2, { ...stateWithUnits(['u1']), currentScreen: 'character' }),
+    );
+    expect(store.getState().currentScreen).toBe('settings');
+
+    // 回主屏（'main' 与 core 同口径 = 不写屏位字段）
+    store.emitCommand({ type: 'ui.navigate', screen: 'main' });
+    expect(store.getState().currentScreen).toBeUndefined();
 
     store.dispose();
   });
