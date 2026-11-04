@@ -71,17 +71,17 @@ export function unitFrameName(direction: number, column: number): string {
 /**
  * 单位要不要形象精灵 —— **纯判定**（渲染层据此决定"贴精灵"还是"留占位圆"）。
  *
- * why 两个条件都要：光有外观没有角色 id，纹理 key 就没处放（key 按角色 id 走）；
- * 光有角色 id 没有外观 → 没东西可画（宁缺毋滥）。
+ * @since v3.8（task_140）**只认角色 id**：角色的长相由形象源按 agent 种类裁决
+ *   （品牌预设 / 随机合成，见 world/appearance/character-look.ts）——
+ *   world 层不判断"这个角色有没有脸"，只判断"这个单位是不是角色单位（能贴形象）"。
+ *   非角色单位（无 characterId）没有形象可言 → 占位形体。
  *
- * @param appearance 单位带的外观（没有 → null）。
  * @param characterId 单位关联的角色 id（没有 → null）。
  * @returns 纹理 key；null = 该单位走占位形体。
  */
 export function resolveUnitSheetKey(
-  appearance: { readonly bodyType: string } | null | undefined,
   characterId: string | null | undefined
 ): string | null {
-  if (!appearance || !characterId) return null;
+  if (!characterId) return null;
   return unitSheetTextureKey(characterId);
 }

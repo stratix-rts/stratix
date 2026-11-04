@@ -30,11 +30,14 @@ export interface UnitSpriteSource {
    *
    * @param characterId 角色 id（world 侧用它做纹理 key 与缓存键）。
    * @param appearance 角色外观（体型 + 部位变体）。
-   * @returns 精灵带画布；null = 取不到（素材缺失 / 合成失败 / 没有外观）
+   *   **可为 null**（@since v3.8，task_140）：角色没自带外观（老档案 / 没绑种类）时，
+   *   由**实现方**按 agent 种类取品牌预设或随机合成（见 world/appearance/character-look.ts）——
+   *   world 层不认"品牌预设"这份知识，端口只负责"给我一张能看的脸"。
+   * @returns 精灵带画布；null = 取不到（素材缺失 / 合成失败 / 素材全是空的）
    *   —— 渲染侧据此回落到占位形体，不画空白。
    */
   loadWalkBand(
     characterId: string,
-    appearance: CharacterAppearance
+    appearance: CharacterAppearance | null
   ): Promise<HTMLCanvasElement | null>;
 }

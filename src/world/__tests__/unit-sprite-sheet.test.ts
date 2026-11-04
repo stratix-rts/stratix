@@ -49,13 +49,12 @@ describe('单位形象精灵表（几何与命名）', () => {
     expect(Number.isFinite(MAX_UNIT_SHEET_TEXTURES)).toBe(true);
   });
 
-  test('要不要形象精灵：外观与角色 id 都在才有（否则走占位形体）', () => {
-    const appearance = { bodyType: 'male', parts: { hair: 'black' } };
-    expect(resolveUnitSheetKey(appearance, 'character_1')).toBe('strat-unit-sheet:character_1');
-    // 没有外观 → 没有形象可画。
-    expect(resolveUnitSheetKey(null, 'character_1')).toBeNull();
-    // 没有角色 id → 纹理 key 没处放。
-    expect(resolveUnitSheetKey(appearance, null)).toBeNull();
-    expect(resolveUnitSheetKey(undefined, undefined)).toBeNull();
+  test('要不要形象精灵：认角色 id 即可（长相由形象源按 agent 种类兜底裁决）', () => {
+    // @since v3.8（task_140）：角色没自带外观也能贴形象 —— 长相在形象源那一侧裁决。
+    expect(resolveUnitSheetKey('character_1')).toBe('strat-unit-sheet:character_1');
+    // 没有角色 id → 不是角色单位 → 走占位形体。
+    expect(resolveUnitSheetKey(null)).toBeNull();
+    expect(resolveUnitSheetKey(undefined)).toBeNull();
+    expect(resolveUnitSheetKey('')).toBeNull();
   });
 });

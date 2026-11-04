@@ -82,6 +82,14 @@ export class UnitRegistry {
     return this.objects.size;
   }
 
+  /**
+   * 战场边界（只读）。
+   * why 暴露出去：渲染层要算"从战场边缘走进来"的入场起点（task_140 的走位）。
+   */
+  get bounds(): Bounds {
+    return this.worldBounds;
+  }
+
   get(id: string): UnitObject | undefined {
     return this.objects.get(id);
   }

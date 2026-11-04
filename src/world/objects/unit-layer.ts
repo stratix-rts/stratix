@@ -63,11 +63,12 @@
 
 import Phaser from 'phaser';
 
-import type { Bounds, UnitStatus } from '../../core/types';
+import type { Bounds, CharacterAppearance, UnitStatus } from '../../core/types';
 import {
   type UnitAnimationContext,
   type UnitAnimationState,
 } from '../appearance/unit-animation';
+import { readReducedMotion } from '../motion';
 import {
   resolveUnitColor,
   FOCUS_LINK_METRICS,
@@ -78,6 +79,12 @@ import {
 
 import { focusOutlineAlpha } from './focus-link';
 import { selectionWaveSchedule } from './task-fx';
+import {
+  UNIT_ENTRANCE_DURATION_MS,
+  UNIT_EXIT_DURATION_MS,
+  entranceDirection,
+  entranceStartPosition,
+} from './unit-entrance';
 import { UNIT_HIT_RADIUS, type UnitObject } from './unit-object';
 import {
   BREATH_STYLE,
@@ -200,6 +207,8 @@ const ONLINE_SPRITE_TINT = 0xffffff;
 const SPRITE_DOT_RADIUS = 5;
 
 interface UnitNode {
+  /** 单位 id（= 本表的主键；退场动画要靠它把自己从表里摘掉）。 */
+  readonly id: string;
   readonly container: Phaser.GameObjects.Container;
   /**
    * 动画骨架（task_075）：前倾旋转 / bob 位移 / squash·hover 缩放都写在这里。
@@ -255,6 +264,20 @@ interface UnitNode {
   /** 进行中的移动 tween（null = 静止）；新目标会顶掉旧的（重下令就改道）。 */
   moveTween: Phaser.Tweens.Tween | null;
   /**
+   * 入场相位（@since v3.8，task_140）：
+   *   'waiting' = 刚创建，等形象就位（形象是异步合成的 —— 形象没到位就走位 = 走的是占位圆）；
+   *   'walking' = 正在从战场边缘走进格位；
+   *   'done'    = 已就位。
+   * why 要等形象：走位是"角色上场"的高光时刻，用占位圆走进去等于把高光浪费在替身上。
+   */
+  entrance: 'waiting' | 'walking' | 'done';
+  /** 入场起点（创建节点时算好 —— 走位起点不能随对账漂移）。 */
+  entranceStart: { readonly x: number; readonly y: number };
+  /** 入场序号（决定从哪一侧走进来 —— 左右交替）。 */
+  readonly entranceIndex: number;
+  /** 正在退场（淡出中）—— 退场期间节点留在表里，动画结束才真删（task_140 的下场对称）。 */
+  exiting: boolean;
+  /**
    * 头顶名字标签（task_062）：容器内嵌 Text，随 tween / 离线 alpha 一起走。
    * 名字主行（origin 0.5,1 向上长）与 Lv 小字（origin 0.5,0 向下长）同锚拼两行。
    */
@@ -303,6 +326,17 @@ export class UnitLayer {
   private readonly sheets = new Map<string, SheetEntry>();
   /** 在途的合成请求（key = 角色 id）：同一角色只合成一次。 */
   private readonly pending = new Map<string, Promise<void>>();
+  /**
+   * 形象合成**失败**过的角色 id（task_140）。
+   * why 要记：失败后每次对账都会再发一次合成请求 —— 素材整体缺失时那是**死循环**
+   *   （合成 → 失败 → 对账 → 再合成…），既烧 CPU 又让控制台刷屏。
+   *   记下来就不再重试（该角色回落到占位形象；素材恢复后由角色 id 变化或重新建档带动重试）。
+   */
+  private readonly lookFailed = new Set<string>();
+  /** 入场序号（决定从哪一侧走进来 —— 左右交替，见 unit-entrance.ts）。 */
+  private entranceCounter = 0;
+  /** 用户是否要求减少动效（true = 入场直接落位 / 下场直接移除）。 */
+  private readonly reducedMotion: boolean;
   /** 走路动画的帧步进定时器（全场一个，不给每个单位各开一个）。 */
   private animTimer: Phaser.Time.TimerEvent | null = null;
   /**
@@ -334,6 +368,8 @@ export class UnitLayer {
     this.scene = scene;
     this.registry = registry;
     this.spriteSource = spriteSource;
+    // 动效降级（task_140）：flag 由 app 层塞进 game registry（world 零 DOM，见 world/motion.ts）。
+    this.reducedMotion = readReducedMotion(scene.registry);
     // presence tick（task_062）：构造即起（名字标签可见性不依赖精灵，得有人在推进）；
     // 场景 shutdown 由 destroy() 收定时器（同 animTimer / task-fx-layer 口径）。
     this.ensurePresenceTimer();
@@ -352,7 +388,13 @@ export class UnitLayer {
       if (object.id === this.focusedUnitId) node.focusOutline.setVisible(true);
       // 移动 tween 活跃时位置真相已在 UnitObject（立即生效），渲染层让 tween 走完 ——
       // 状态广播不该把半路上的单位臈移到终点（tween 只是渲染过渡，task_045）。
-      if (!this.isMoving(node)) node.container.setPosition(object.position.x, object.position.y);
+      // ★ 入场等待期（task_140）：形象还没就位时，单位**留在战场边缘的起点**等着 ——
+      //   对账不能把它贴到格位（那等于"凭空出现"，走位就白做了）。
+      if (node.entrance === 'waiting') {
+        node.container.setPosition(node.entranceStart.x, node.entranceStart.y);
+      } else if (!this.isMoving(node)) {
+        node.container.setPosition(object.position.x, object.position.y);
+      }
       // 填充色带灰度（task_075）：卡住态的 50% 灰度要在这条路径上也保住，
       // 否则一次对账就把姿态里的灰度冲掉（灰度变化时由 applyAnimationPose 另行重算）。
       node.body.setFillStyle(desaturate(this.fillColorOf(object), node.grayscale));
@@ -377,8 +419,11 @@ export class UnitLayer {
       if (live.has(id)) continue;
       const node = this.nodes.get(id);
       if (node) {
-        this.stopMoveTween(node); // 销毁前先停 tween，不给 tween 管理器留死目标
-        node.container.destroy();
+        // 下场对称（task_140）：单位撤下时先播一段退场（淡出下沉），再真删。
+        // why 不直接删：入场有走位、下场没退场 = "只进不出"，看着像漏删。
+        if (node.exiting) continue;
+        this.beginExit(node);
+        continue;
       }
       this.nodes.delete(id);
       this.speakingFlags.delete(id); // 说话镜像随节点清理（task_062）：单位离场气泡不留残迹
@@ -652,6 +697,10 @@ export class UnitLayer {
 
   private createNode(object: UnitObject): UnitNode {
     const id = object.id;
+    // 入场起点（task_140）：从可视区域的外沿起步，等形象就位后再走进来。
+    const entranceIndex = this.entranceCounter;
+    this.entranceCounter += 1;
+    const entranceStart = this.computeEntranceStart(object.position, entranceIndex);
     const body = this.scene.add.circle(0, 0, UNIT_RADIUS, COLOR_BY_STATUS.idle);
     // —— 动画骨架（task_075）：rig 装身体与一切跟着身体动的东西 ——
     // 底盘喷口微光：加在 body **之前**（容器内渲染序 = 添加序）→ 垫在身下。
@@ -792,6 +841,7 @@ export class UnitLayer {
     container.setName(`unit:${id}`);
 
     const node: UnitNode = {
+      id,
       container,
       rig,
       body,
@@ -817,6 +867,10 @@ export class UnitLayer {
       frameIndex: 0,
       direction: UNIT_WALK_DIRECTION,
       moveTween: null,
+      entrance: 'waiting',
+      entranceStart,
+      entranceIndex,
+      exiting: false,
       breathPhase: breathPhaseFor(id),
       tagKey: '',
       hasLevel: false,
@@ -863,7 +917,8 @@ export class UnitLayer {
    * 上下左右 4 行，斜向就近取轴分量大的那侧；0=上 1=左 2=下 3=右，见 unit-sprite-sheet）。
    */
   private faceDirection(node: UnitNode, dx: number, dy: number): void {
-    const direction = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 3 : 1) : dy >= 0 ? 2 : 0;
+    // 方向的编码口径只有一份（unit-entrance.ts）：0=上 1=左 2=下 3=右。
+    const direction = entranceDirection({ x: 0, y: 0 }, { x: dx, y: dy });
     if (direction === node.direction) return;
     node.direction = direction;
     if (node.sprite) {
@@ -873,54 +928,183 @@ export class UnitLayer {
   }
 
   // ==========================================================================
+  // 上场 / 下场走位（@since v3.8，task_140）
+  // ==========================================================================
+
+  /**
+   * 算入场起点（从可视区域的外沿起步 —— 见 unit-entrance.ts 的口径）。
+   *
+   * why 用相机可视区域而不是战场边界：战场 3200×2400，默认镜头只看得到中间一块；
+   *   从战场边界起步的话单位在屏幕外走完全程，用户只看到"凭空出现"。
+   * 取不到相机（场景刚建 / 单测）→ 退回注册表的战场边界（至少有起点，不会原地瞬移）。
+   */
+  private computeEntranceStart(
+    target: { readonly x: number; readonly y: number },
+    index: number
+  ): { readonly x: number; readonly y: number } {
+    const view = this.scene.cameras?.main?.worldView;
+    const bounds = view
+      ? { x: view.x, y: view.y, width: view.width, height: view.height }
+      : this.registry.bounds;
+    return entranceStartPosition(target, bounds, index);
+  }
+
+  /**
+   * 开始入场走位（单位形象就位后调用 —— 幂等，重复调用只生效一次）。
+   *
+   * 走位：从可视区域外沿的起点走到格位，800ms；走到位后转为普通单位。
+   * reduced-motion：直接落位（不播位移 —— 见 world/motion.ts 的降级口径）。
+   *
+   * why 要等形象就位才走：走位是"角色上场"的高光时刻 —— 用占位圆走进去，
+   *   等于把高光浪费在替身上（真正的形象到位后单位已经在格位，用户看不到它走进来）。
+   */
+  private beginEntrance(node: UnitNode): void {
+    if (node.entrance !== 'waiting') return;
+    node.entrance = 'done';
+
+    const object = this.registry.get(node.id);
+    const target = object ? object.position : node.entranceStart;
+
+    // 降级：直接落位（连位移都不播）。
+    if (this.reducedMotion) {
+      node.container.setPosition(target.x, target.y);
+      return;
+    }
+
+    // 起点现算一次：形象是异步合成的，等它就位时相机可能已经动了（起点要贴着当前视野）。
+    const start = this.computeEntranceStart(target, node.entranceIndex);
+    node.container.setPosition(start.x, start.y);
+    // 朝行进方向转面（否则会出现"倒着走进场"）。
+    this.faceDirection(node, target.x - start.x, target.y - start.y);
+    this.stopMoveTween(node);
+    node.moveTween = this.scene.tweens.add({
+      targets: node.container,
+      x: target.x,
+      y: target.y,
+      duration: UNIT_ENTRANCE_DURATION_MS,
+      // why 不用 easeOut：easeOut 前 100ms 就走掉大半（看着像"瞬移"），
+      //   匀入匀出才像人在走。
+      ease: 'Sine.easeInOut',
+      onComplete: () => {
+        node.moveTween = null;
+      },
+    });
+  }
+
+  /**
+   * 开始下场（单位从状态里消失时调用）。
+   *
+   * 表现：原地淡出 + 轻微下沉，260ms 后真删节点。
+   * reduced-motion：直接移除（不留残影）。
+   *
+   * why 不直接删：入场有走位、下场没退场 = "只进不出"，看着像漏删（task_140 的下场对称）。
+   */
+  private beginExit(node: UnitNode): void {
+    if (node.exiting) return;
+    node.exiting = true;
+    this.stopMoveTween(node);
+    this.speakingFlags.delete(node.id);
+
+    const remove = (): void => {
+      if (this.destroyed) return;
+      node.container.destroy();
+      if (this.nodes.get(node.id) === node) this.nodes.delete(node.id);
+    };
+
+    if (this.reducedMotion) {
+      remove();
+      return;
+    }
+
+    this.scene.tweens.add({
+      targets: node.container,
+      alpha: 0,
+      y: node.container.y + 12,
+      duration: UNIT_EXIT_DURATION_MS,
+      ease: 'Sine.easeIn',
+      onComplete: remove,
+    });
+  }
+
+  // ==========================================================================
   // 形象（@since v3.10，task_029）
   // ==========================================================================
 
   /**
    * 对账一个单位的形象。
    *
-   * 流程：单位有 appearance + characterId → 要么纹理已就绪（贴上去），
-   *   要么发起一次合成请求（异步，回来后再对账一次）。没有形象 → 撤掉精灵、回到占位圆。
+   * 流程（@since v3.8，task_140）：单位是角色单位（带 characterId）→ 要么纹理已就绪（贴上去），
+   *   要么发起一次合成请求（异步，回来后再对账一次）；合成失败 → 回落到占位形象并放行入场。
+   *   非角色单位 → 撤掉精灵、回到占位圆。
+   *
+   * why 不再要求单位自带 appearance：角色的长相由形象源按 agent 种类裁决
+   *   （品牌预设 / 随机合成，见 world/appearance/character-look.ts）——
+   *   没自带外观的角色照样能以一张脸出场（这正是"家底全在、缺的是接电"的那根线）。
    */
   private syncSprite(node: UnitNode, object: UnitObject): void {
-    const appearance = object.appearance;
     const characterId = object.characterId;
-    const key = resolveUnitSheetKey(appearance, characterId);
+    const key = resolveUnitSheetKey(characterId);
 
-    if (!appearance || !characterId || !key) {
+    if (!characterId || !key) {
+      // 非角色单位：没有形象可言 —— 撤掉精灵、回到占位圆，直接入场。
       this.clearSprite(node);
+      this.beginEntrance(node);
       return;
     }
 
     if (node.sprite && node.spriteCharacterId === characterId) {
       // 已经是这个角色的精灵了：只需刷新"最近使用"（缓存淘汰用）。
       this.touchSheet(characterId);
+      this.beginEntrance(node);
       return;
     }
 
     if (this.scene.textures.exists(key)) {
       this.attachSprite(node, characterId, object.online);
+      this.beginEntrance(node);
+      return;
+    }
+
+    // 合成失败过（素材缺失）：不再重试，回落占位形象并放行入场（战场不空着）。
+    if (this.lookFailed.has(characterId)) {
+      this.clearSprite(node);
+      this.beginEntrance(node);
       return;
     }
 
     // 纹理还没合成出来：先发请求（同一角色只发一次），此刻继续显示占位圆。
-    this.requestSheet(characterId, appearance);
+    this.requestSheet(characterId, object.appearance);
   }
 
-  /** 发起一次形象合成（去重：同一角色的并发请求共用一个 promise）。 */
-  private requestSheet(characterId: string, appearance: NonNullable<UnitObject['appearance']>): void {
+  /**
+   * 发起一次形象合成（去重：同一角色的并发请求共用一个 promise）。
+   *
+   * @param characterId 角色 id。
+   * @param appearance 角色自带外观（可为 null —— 由形象源按 agent 种类兜底裁决）。
+   */
+  private requestSheet(characterId: string, appearance: CharacterAppearance | null): void {
     if (this.destroyed) return;
-    if (!this.spriteSource) return;
+    if (!this.spriteSource) {
+      // 没有形象源（dev 入口 / 未接线）：直接记失败 → 回落占位形象（别卡在等待入场）。
+      this.lookFailed.add(characterId);
+      return;
+    }
     if (this.pending.has(characterId)) return;
+    if (this.lookFailed.has(characterId)) return;
 
     const promise = this.spriteSource
       .loadWalkBand(characterId, appearance)
       .then((band) => {
-        if (!band) return;
+        if (!band) {
+          // 素材缺失 / 合成失败：记下来（不再死循环重试），回落占位形象。
+          this.lookFailed.add(characterId);
+          return;
+        }
         this.createSheetTexture(characterId, band);
       })
       .catch((error) => {
-        // 合成失败不该炸掉整个战场：单位继续用占位圆（下次广播还会再试）。
+        // 合成失败不该炸掉整个战场：单位继续用占位圆。
+        this.lookFailed.add(characterId);
         console.warn(`[UnitLayer] 角色 ${characterId} 的形象合成失败：`, error);
       })
       .then(() => {

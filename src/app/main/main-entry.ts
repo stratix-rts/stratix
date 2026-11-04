@@ -160,7 +160,11 @@ import { mountCharacterChatDrawer, CHARACTER_CHAT_DRAWER_TAG, type StratCharacte
 // 事件→key 映射在它的纯函数 —— 这里只订阅总线接线（见下方「音效反馈」段）。
 import { createSfxService, sfxKeyForEvent } from '../../hud/components/sfx/sfx-service';
 import { CharacterComposer } from '../../world/appearance/character-composer';
+// 角色上场的长相裁决（@since v3.8，task_140）：角色没自带外观时按 agent 种类取品牌预设 / 随机合成。
+import { resolveCharacterLook } from '../../world/appearance/character-look';
 import { PartRegistry } from '../../world/appearance/part-registry';
+// 动效降级标志（@since v3.8，task_140）：reduced-motion 时入场直接落位（world 零 DOM，判在 app 层）。
+import { REDUCED_MOTION_KEY } from '../../world/motion';
 import { UNIT_SPRITE_SOURCE_KEY } from '../../world/objects/unit-sprite-source';
 import { UNIT_POSITION_SEED_KEY } from '../../world/objects/unit-registry';
 import { BattlefieldScene } from '../../world/scenes/BattlefieldScene';
@@ -263,6 +267,7 @@ import {
   isOnboardingForced,
   isRemoteModeEnabled,
   peerTurnTimeoutRaw,
+  prefersReducedMotion,
   remoteWorldSyncUrl,
   sessionCompressThresholdRaw,
   titleLlmEnv,
@@ -1035,10 +1040,25 @@ async function boot(): Promise<void> {
   // ===== 战场单位的形象（@since v3.10，task_029）=====
   // 单位带 appearance 时，战场用合成好的 LPC 精灵表当身体（走路动画）。
   // 合成要 DOM（canvas / Image），world 层零 DOM —— 故实现在 app 层，world 只认端口。
+  // @since v3.8（task_140）追加**兜底长相**：角色没自带外观（老档案 / 没绑 agent 种类）时，
+  //   按 agent 种类取品牌预设、取不到就随机合成（见 world/appearance/character-look.ts）——
+  //   裁决要查角色名册（app 层才知道），故注入回调而不是让 world 自己猜。
   const unitSpriteSource = createUnitSpriteSource({
     registry: appearanceRegistry,
     composer: appearanceComposer,
     createCanvas: appearanceEnv.createCanvas,
+    resolveAppearance: (characterId: string) => {
+      const character = worldStore.getState().characters.find((item) => item.id === characterId);
+      if (!character) return null;
+      return resolveCharacterLook(
+        {
+          id: character.id,
+          appearance: character.appearance ?? null,
+          agentKind: character.agentKind ?? null,
+        },
+        { registry: appearanceRegistry }
+      );
+    },
   });
 
   // ===== 首启向导覆盖层（@since v3.9，task_026）=====
@@ -1237,6 +1257,9 @@ async function boot(): Promise<void> {
         booting.registry.set(UNIT_SPRITE_SOURCE_KEY, unitSpriteSource);
         // 恢复站位种子（task_033）：场景 create 时取走；没记录的单位按网格落位。
         booting.registry.set(UNIT_POSITION_SEED_KEY, injection.positionsByUnitId);
+        // 动效降级（task_140）：reduced-motion 时入场直接落位 / 下场直接移除。
+        // why 在 app 层判：world 零 DOM —— matchMedia 只有组合根能碰（见 world/motion.ts）。
+        booting.registry.set(REDUCED_MOTION_KEY, prefersReducedMotion());
       },
     },
   });

@@ -105,6 +105,24 @@ export function isOnboardingForced(): boolean {
 }
 
 /**
+ * 用户是否要求减少动效（@since v3.8，task_140）。
+ *
+ * why 在 app 层判：world 层零 DOM —— `matchMedia` 只有组合根能碰；
+ *   world 侧只读一个布尔标志（见 world/motion.ts）。
+ *
+ * 取值口径：系统设置里的「减少动态效果」开着 → true。
+ * 读不出来（老浏览器 / 非浏览器环境）→ false（照常放动画，别误伤）。
+ */
+export function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+  try {
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * **远程模式**是否开启（前后端分离 B3 / task_083）。
  *
  * 开启后：Electron 壳退化为**纯视图客户端** —— 状态来自 service 的 world-sync 全量快照，

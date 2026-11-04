@@ -36,6 +36,13 @@ export interface UnitSpriteSourceOptions {
   readonly composer: CharacterComposer;
   /** 画布工厂（world 层零 DOM：由 app 层注入）。 */
   readonly createCanvas: () => HTMLCanvasElement;
+  /**
+   * 角色长相裁决（@since v3.8，task_140）：角色没自带外观时，按 agent 种类取品牌预设
+   *   / 随机合成（见 world/appearance/character-look.ts）。
+   *   由 app 层注入 —— world 层不认"品牌预设"这份知识（那是形象域的事）。
+   *   缺省 = 不给兜底（角色没外观就没有形象，渲染层回落到占位形体）。
+   */
+  readonly resolveAppearance?: (characterId: string) => CharacterAppearance | null;
 }
 
 /**
@@ -44,7 +51,7 @@ export interface UnitSpriteSourceOptions {
  * 生命周期：每次 loadWalkBand → 等元数据就绪 → 合成 → 裁出走路 4 行 → 交出画布。
  */
 export function createUnitSpriteSource(options: UnitSpriteSourceOptions): UnitSpriteSource {
-  const { registry, composer, createCanvas } = options;
+  const { registry, composer, createCanvas, resolveAppearance } = options;
 
   /** 复用的合成画布（832×3456 —— 重建很贵，务必复用）。 */
   let sheet: HTMLCanvasElement | null = null;
@@ -54,6 +61,30 @@ export function createUnitSpriteSource(options: UnitSpriteSourceOptions): UnitSp
    * 故排队执行（串行也顺带压住了内存峰值：同一时刻只有一张合成大图）。
    */
   let composeChain: Promise<unknown> = Promise.resolve();
+  /**
+   * 兜底长相的缓存（角色 id → 外观）。
+   * why 要缓存：兜底裁决里含随机合成（按角色 id 播种）—— 不缓存的话每次重试都会
+   *   重新抽一份，同一角色可能前后两张脸。缓存住也顺带压掉重复裁决的开销。
+   */
+  const fallbackLooks = new Map<string, CharacterAppearance | null>();
+
+  /**
+   * 兜底长相（角色没自带外观时）。
+   * why 缓存：裁决含随机合成，不缓存则每次重试都可能换一张脸。
+   */
+  const resolveFallback = (characterId: string): CharacterAppearance | null => {
+    if (!resolveAppearance) return null;
+    if (fallbackLooks.has(characterId)) return fallbackLooks.get(characterId) ?? null;
+    let resolved: CharacterAppearance | null = null;
+    try {
+      resolved = resolveAppearance(characterId);
+    } catch (error) {
+      console.warn(`[UnitSpriteSource] 角色 ${characterId} 的兜底长相裁决失败：`, error);
+      resolved = null;
+    }
+    fallbackLooks.set(characterId, resolved);
+    return resolved;
+  };
 
   /** 把一段合成排进链子里跑。 */
   const enqueue = <T,>(task: () => Promise<T>): Promise<T> => {
@@ -90,23 +121,38 @@ export function createUnitSpriteSource(options: UnitSpriteSourceOptions): UnitSp
   return {
     async loadWalkBand(
       characterId: string,
-      appearance: CharacterAppearance
+      appearance: CharacterAppearance | null
     ): Promise<HTMLCanvasElement | null> {
       try {
         // 元数据没加载出来就没有部位可选（注册表会退化成空表）。
         await registry.loadMetadata();
+
+        // 角色没自带外观 → 走兜底裁决（品牌预设 / 随机合成，见 character-look.ts）。
+        // 裁决不出（没注入裁决器 / 角色查不到）→ null，渲染层回落占位形象。
+        const effective = appearance ?? resolveFallback(characterId);
+        if (!effective) return null;
+
         return await enqueue(async () => {
           const selections = {
-            ...registry.getDefaultSelections(appearance.bodyType),
-            ...registry.resolveSelections(appearance),
+            ...registry.getDefaultSelections(effective.bodyType),
+            ...registry.resolveSelections(effective),
           };
           const target = sheet ?? (sheet = createCanvas());
           const composed = await composer.composeCharacter(selections, {
-            bodyType: appearance.bodyType,
+            bodyType: effective.bodyType,
             animations: [DEFAULT_ANIMATION],
             targetCanvas: target,
           });
-          return cropWalkBand(composed.canvas);
+          const band = cropWalkBand(composed.canvas);
+          // 素材缺失的**真降级**：整条精灵带全透明 = 一张看不见的图 ——
+          // 与其贴一张空图（战场看着像"没这个单位"），不如回落到占位形象。
+          if (isBlankBand(band)) {
+            console.warn(
+              `[UnitSpriteSource] 角色 ${characterId} 的素材全缺失，回落占位形象`
+            );
+            return null;
+          }
+          return band;
         });
       } catch (error) {
         console.warn(`[UnitSpriteSource] 角色 ${characterId} 的形象合成失败：`, error);
@@ -114,4 +160,29 @@ export function createUnitSpriteSource(options: UnitSpriteSourceOptions): UnitSp
       }
     },
   };
+}
+
+/**
+ * 精灵带是不是"全空"（一个非透明像素都没有）。
+ *
+ * why 要判：素材整体缺失（路径改名 / 元数据加载失败）时，合成器会**跳过每一层**，
+ *   交出一条全透明的画布 —— 贴上去等于战场少了一个单位（看着像"角色没上场"）。
+ *   判出来回落到占位形象，战场不空、也不崩。
+ *
+ * @param band 精灵带画布。
+ */
+export function isBlankBand(band: HTMLCanvasElement): boolean {
+  const ctx = band.getContext('2d');
+  if (!ctx) return true;
+  try {
+    const data = ctx.getImageData(0, 0, band.width, band.height).data;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] !== 0) return false;
+    }
+    return true;
+  } catch (error) {
+    // 画布被污染（tainted）读不出像素 → 保守当作"有内容"（别误伤正常精灵带）。
+    console.warn('[UnitSpriteSource] 精灵带像素读取失败，按有内容处理：', error);
+    return false;
+  }
 }

@@ -21,5 +21,6 @@ export * from './part-registry';
 export * from './appearance-randomizer';
 export * from './image-cache';
 export * from './character-composer';
+export * from './character-look';
 export * from './part-config';
 export * from './spritesheet-path';
