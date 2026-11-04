@@ -37,6 +37,9 @@ import type {
   WorldState,
 } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
+// 动效层（@since v3.8，task_138）：面板入场 + **签名瞬间（任务完成确认）** ——
+//   行从「非 done」跃迁到 done 的那一次，行上播一次 scale/brightness 脉冲 + 对勾描边（360ms）。
+import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../theme/motion-tokens';
 
 export const MISSION_CONFIRM_TAG = 'strat-mission-confirm';
 
@@ -366,6 +369,10 @@ export function defineMissionConfirm(): typeof HTMLElement {
       stats: { pending: 0, active: 0, done: 0 },
     };
     private _lastSignature: string | null = null;
+    /** 每个任务上一轮的相位（判定「刚刚完成」的依据，@since v3.8，task_138）。 */
+    private _phases = new Map<string, string>();
+    /** 本轮需要播确认动效的任务 id（一次性，渲染后清空）。 */
+    private _celebrating = new Set<string>();
     private _unsubscribe: (() => void) | null = null;
     private _listenersBound = false;
 
@@ -382,6 +389,8 @@ export function defineMissionConfirm(): typeof HTMLElement {
 
     connectedCallback(): void {
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+      // 动效 token 注入文档根（幂等）——本面板用的 --srf-motion-* 与其他组件同源。
+      installMotionTokens();
       this.renderChrome();
       // 清签名强制首绘：挂载前 adapter setter 那次 refresh 已记下签名，而那时还没有列表可画
       this._lastSignature = null;
@@ -399,7 +408,31 @@ export function defineMissionConfirm(): typeof HTMLElement {
       if (signature === this._lastSignature) return;
       this._lastSignature = signature;
       this._model = resolveMissionConfirm(this._state);
+      this.detectCompletions();
       this.renderRows();
+    }
+
+    /**
+     * 找出「本次刷新里刚刚变成 done」的任务（@since v3.8，task_138）—— 签名瞬间的触发判定。
+     *
+     * why 要单独判「刚刚」而不是「当前是 done」：
+     *   面板每次状态变化都整块重画 HTML —— 若按「当前是 done」挂确认类，
+     *   确认动效会被无限重放（每次重画都从 0% 弹一次），用户看到的是一行在发抖。
+     *   只有**相位发生跃迁的那一次**（非 done → done）才是「完成瞬间」。
+     */
+    private detectCompletions(): void {
+      const previous = this._phases;
+      const next = new Map<string, string>();
+      const justDone: string[] = [];
+      for (const mission of this._state?.missions ?? []) {
+        next.set(mission.id, mission.phase);
+        const before = previous.get(mission.id);
+        if (mission.phase === 'done' && before !== undefined && before !== 'done') {
+          justDone.push(mission.id);
+        }
+      }
+      this._phases = next;
+      this._celebrating = new Set(justDone);
     }
 
     // —— 订阅生命周期 ——
@@ -434,6 +467,7 @@ export function defineMissionConfirm(): typeof HTMLElement {
 
       root.innerHTML = `
         <style>
+          ${MOTION_COMPONENT_CSS}
           :host { all: initial; }
           .panel {
             display: grid;
@@ -477,6 +511,23 @@ export function defineMissionConfirm(): typeof HTMLElement {
             border-radius: var(--srf-radius);
           }
           .row[data-phase="pending"] { border-left: var(--srf-spacing-xxs) solid var(--srf-warn); }
+          /* 签名瞬间的对勾（@since v3.8，task_138）：完成那一行亮一个勾 —— */
+          .row-check {
+            flex: none;
+            display: inline-flex;
+            width: 13px;
+            height: 13px;
+            color: var(--srf-success);
+            align-self: center;
+          }
+          .row-check svg { width: 100%; height: 100%; display: block; }
+          .row-check path {
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+          }
           .row-title { font-weight: var(--srf-font-weight-semibold); }
           .phase {
             padding: var(--srf-spacing-xxs) var(--srf-spacing-xs);
@@ -532,7 +583,7 @@ export function defineMissionConfirm(): typeof HTMLElement {
           button.decision[data-decision="reject"] { color: var(--srf-danger); border-color: var(--srf-danger); }
           .empty { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); padding: var(--srf-spacing-lg); text-align: center; border: var(--srf-border-width) dashed var(--srf-border); border-radius: var(--srf-radius); }
         </style>
-        <div class="panel" part="panel">
+        <div class="panel ${MOTION_CLASS.enter}" part="panel">
           <div class="head">
             <span class="title">任务确认</span>
             <span class="stats" data-role="stats"></span>
@@ -570,6 +621,7 @@ export function defineMissionConfirm(): typeof HTMLElement {
 
       if (this._model.pending.length === 0 && others.length === 0) {
         box.innerHTML = `<div class="empty" data-role="empty">暂无任务。在命令面板发起任务后会出现在这里。</div>`;
+        this._celebrating.clear();
         return;
       }
 
@@ -591,6 +643,8 @@ export function defineMissionConfirm(): typeof HTMLElement {
         );
       }
       box.innerHTML = sections.join('');
+      // 确认动效只在本轮渲染里生效（一次性）：下一轮重画不再重放。
+      this._celebrating.clear();
     }
 
     private renderRow(row: MissionRow, withActions: boolean): string {
@@ -604,10 +658,19 @@ export function defineMissionConfirm(): typeof HTMLElement {
             <button type="button" class="decision" data-mission="${escapeHtml(row.id)}" data-decision="reject">拒绝</button>
           </div>`
         : '';
+      // 签名瞬间（@since v3.8，task_138）：这一行刚刚完成 → 一次性脉冲 + 对勾描边（360ms）。
+      // why 只在「刚刚」挂：面板整块重画，每次重画都弹 = 一行在发抖（见 detectCompletions）。
+      const celebrating = this._celebrating.has(row.id);
+      const confirmMark = celebrating
+        ? `<span class="row-check" aria-hidden="true">
+             <svg viewBox="0 0 16 16" focusable="false"><path class="${MOTION_CLASS.check}" d="M3 8.5 L6.5 12 L13 4.5"></path></svg>
+           </span>`
+        : '';
       return `
-        <div class="row" data-mission-row="${escapeHtml(row.id)}" data-phase="${escapeHtml(row.phase)}" data-locked="${row.unlocked ? 'false' : 'true'}">
+        <div class="row${celebrating ? ` ${MOTION_CLASS.confirm}` : ''}" data-mission-row="${escapeHtml(row.id)}" data-phase="${escapeHtml(row.phase)}" data-locked="${row.unlocked ? 'false' : 'true'}"${celebrating ? ' data-confirmed="true"' : ''}>
           <div class="row-head">
             <span class="row-title">${escapeHtml(row.title)}</span>
+            ${confirmMark}
             <span class="phase" data-phase="${escapeHtml(row.phase)}">${escapeHtml(PHASE_LABELS[row.phase])}</span>
           </div>
           <div class="units">${escapeHtml(units)}</div>

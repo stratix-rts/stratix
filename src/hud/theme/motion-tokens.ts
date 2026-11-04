@@ -1,0 +1,139 @@
+/**
+ * 文件职责：**HUD 动效层**（@since v3.8，task_138）—— 把 core 的动效规格翻译成 CSS：
+ *   ① `:root` 上的动效 token（--srf-motion-*）；② 全套关键帧与工具类；③ 入场 / 确认 / 脉冲三类动效。
+ *
+ * 与 core 的关系（双 token 体系）：core/theme/motion-spec.ts 是**唯一事实源**（时长 / 缓动数值），
+ *   本文件只做「常量 → CSS」翻译 + 提供组件可直接引用的 class。
+ *   谁想改时长只能改 core 那份常量 —— 本文件不允许出现手写的时间数字。
+ *
+ * 输入：无（纯 CSS 字符串常量；core 的常量 + 本文件的 class 名）。
+ * 输出：MOTION_TOKENS_CSS（:root 变量表）/ MOTION_COMPONENT_CSS（关键帧 + 工具类 + 降级动效兜底）
+ *      / installMotionTokens（把 token 表注入 document.head，幂等）。
+ * 禁止事项：
+ *   1. 手写时长 / 缓动字面量 —— 一律 var(--srf-motion-*)；
+ *   2. import world / phaser / app —— 铁律：hud 只认识 core；
+ *   3. 写业务选择器（.hud-topbar / .row / .panel 之类）—— 本文件只发**动效工具类**，
+ *      组件自己决定挂哪个类（动效层与业务层解耦：加动效不改布局骨架）；
+ *   4. 在本文件内静态 import *.css —— 与 theme-controller 同纪律，CSS 源由调用方注入。
+ *
+ * ★ 为什么工具类而不是每个组件各写各的 @keyframes：
+ *   关键帧一旦各写各的，同一个「入场」在不同面板会是两种曲线两种位移 —— 那不叫统一节奏。
+ *   工具类把「位移 8px + 淡入」「scale + 亮度脉冲」「对勾描边」定成三套可复用的动作，
+ *   组件只需要挂类名（并按需覆盖 --srf-motion-* 变量调快慢）。
+ *
+ * ★ prefers-reduced-motion 的口径（全量禁用，不是「减弱」）：
+ *   本块用 `animation: none` / `transition: none`（而不是 0.001ms）——
+ *   前者让 computed animationName 直接是 "none"、transitionDuration 是 "0s"，
+ *   可被自动化断言（验收口径 4）；后者只是「快到看不见」，仍占一次合成。
+ *   注意：文档级规则**不穿透 shadow root** —— 所以每个 shadow 组件的样式表里
+ *   都要带上本文件里的降级块（组件通过引入 MOTION_COMPONENT_CSS 自动带上）。
+ */
+
+/** 动效 token 样式表的稳定 id（幂等覆盖，便于重复调用与测试定位）。 */
+// 动效规格的唯一事实源（core 侧）—— 时长 / 缓动 / 关键帧名都从那里来。
+// 本文件只做「常量 → CSS」翻译：任何时长字面量都不许出现在这里（除了 var() 的兜底值）。
+import {
+  MOTION_KEYFRAMES,
+  MOTION_TOKENS_CSS as CORE_MOTION_TOKENS_CSS,
+} from '../../core/theme/motion-spec';
+
+export const MOTION_TOKEN_STYLE_ID = 'srf-motion-tokens';
+
+/** `:root` 上的动效 token 表（由 core 规格生成 —— 值只有一份）。 */
+export const MOTION_TOKENS_CSS = CORE_MOTION_TOKENS_CSS;
+
+/**
+ * 工具类名（组件挂这些类，不自己写 keyframes）。
+ * why 导出成常量：类名散落字符串拼错一个就是「静默不生效」，这里收口。
+ */
+export const MOTION_CLASS = Object.freeze({
+  /** 入场（位移 + 淡入）。 */
+  enter: 'srf-motion-enter',
+  /** 签名瞬间：scale + 亮度脉冲（一次性）。 */
+  confirm: 'srf-motion-confirm',
+  /** 对勾描边（配合 .srf-motion-check 使用）。 */
+  check: 'srf-motion-check',
+  /** 输入行微脉冲（提交回执）。 */
+  pulse: 'srf-motion-pulse',
+});
+
+/** 入场位移量（px）—— 上下同值：入场统一「从上方 8px 落位」。 */
+export const MOTION_ENTER_OFFSET_PX = 8;
+
+/**
+ * 动效关键帧 + 工具类 + 降级动效兜底 —— **组件样式表里带这一份**即可用全套动效。
+ *
+ * 结构：
+ *   1. 关键帧定义（srf-motion-*）；
+ *   2. 工具类（.srf-motion-enter / -confirm / -check / -pulse）；
+ *   3. 降级动效兜底（prefers-reduced-motion: reduce → 全部 animation/transition 归零）。
+ */
+export const MOTION_COMPONENT_CSS = `
+/* —— 动效关键帧（名字来自 core/theme/motion-spec.ts 的 MOTION_KEYFRAMES）—— */
+@keyframes ${MOTION_KEYFRAMES.enterIn} {
+  from { opacity: 0; transform: translateY(-${MOTION_ENTER_OFFSET_PX}px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes ${MOTION_KEYFRAMES.confirmPop} {
+  0%   { transform: scale(1); filter: brightness(1); }
+  35%  { transform: scale(1.08); filter: brightness(1.45); }
+  70%  { transform: scale(0.985); filter: brightness(1.12); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+@keyframes ${MOTION_KEYFRAMES.checkDraw} {
+  from { stroke-dashoffset: 22; opacity: 0; }
+  60%  { opacity: 1; }
+  to   { stroke-dashoffset: 0; opacity: 1; }
+}
+@keyframes ${MOTION_KEYFRAMES.inputPulse} {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.02); }
+  100% { transform: scale(1); }
+}
+
+/* —— 工具类 —— */
+.${MOTION_CLASS.enter} {
+  animation: ${MOTION_KEYFRAMES.enterIn} var(--srf-motion-base, 200ms) var(--srf-motion-ease-enter, ease-out) both;
+}
+.${MOTION_CLASS.confirm} {
+  animation: ${MOTION_KEYFRAMES.confirmPop} var(--srf-motion-slow, 360ms) var(--srf-motion-ease-spring, cubic-bezier(0.34, 1.56, 0.64, 1)) both;
+}
+.${MOTION_CLASS.check} {
+  stroke-dasharray: 22;
+  stroke-dashoffset: 22;
+  animation: ${MOTION_KEYFRAMES.checkDraw} var(--srf-motion-slow, 360ms) var(--srf-motion-ease-enter, ease-out) both;
+}
+.${MOTION_CLASS.pulse} {
+  animation: ${MOTION_KEYFRAMES.inputPulse} var(--srf-motion-fast, 120ms) var(--srf-motion-ease-enter, ease-out) both;
+}
+
+/* —— 降级动效兜底：prefers-reduced-motion: reduce 时全部禁用 ——
+   用 none（而非 0.001ms）：computed animationName 直接是 "none"、transitionDuration 是 "0s"，
+   可被自动化断言；也真的不产生任何合成开销。 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+`;
+
+/**
+ * 把动效 token 注入 document.head（幂等：同 id 重复注入覆盖旧标签）。
+ *
+ * why 需要全局注入：动效 token 是 `:root` 变量，**跨 shadow root 可见** ——
+ *   各组件在自己的 shadow 里用 var(--srf-motion-base) 时，取的是文档根上的值，
+ *   于是「一次注入，全 HUD 同速」，而不是每个组件各带一份数值。
+ *
+ * @returns 卸载闭包（拔掉这张样式表）。
+ */
+export function installMotionTokens(doc: Document = document): () => void {
+  doc.getElementById(MOTION_TOKEN_STYLE_ID)?.remove();
+  const style = doc.createElement('style');
+  style.id = MOTION_TOKEN_STYLE_ID;
+  style.setAttribute('data-srf-motion-tokens', 'true');
+  style.textContent = MOTION_TOKENS_CSS;
+  doc.head.appendChild(style);
+  return () => style.remove();
+}

@@ -82,6 +82,9 @@ import {
   resolveCommands,
 } from './command-catalog';
 import type { CliCommandSpec } from './command-registry';
+// 动效层（@since v3.8，task_138）：面板入场（位移 + 淡入）/ 列表项 hover 光标过渡 /
+//   命令行提交时输入行微脉冲 —— 全部走共享动效工具类，时长缓动取 --srf-motion-* token。
+import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../theme/motion-tokens';
 import {
   cliHelpText,
   cliUnknownText,
@@ -214,6 +217,8 @@ export function defineCommandPanel(): typeof HTMLElement {
     connectedCallback(): void {
       // 幂等：hot-reload / 反复挂卸会重复进入，必须能安全重建。
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
+      // 动效 token 注入文档根（幂等）——面板用的 --srf-motion-* 与其他组件同源同速。
+      installMotionTokens();
       this.renderChrome();
       // 清签名强制首绘：挂载前 adapter setter 里那次 refresh 已经把签名记下了，
       // 而那时还没有 shadowRoot、列表根本没画 —— 不清掉的话这次 refresh 会被判重跳过，列表就空了。
@@ -497,6 +502,7 @@ export function defineCommandPanel(): typeof HTMLElement {
 
       root.innerHTML = `
         <style>
+          ${MOTION_COMPONENT_CSS}
           :host { all: initial; }
           .panel {
             display: grid;
@@ -580,9 +586,16 @@ export function defineCommandPanel(): typeof HTMLElement {
             font-family: var(--srf-font-ui);
             font-size: var(--srf-font-size-sm);
             cursor: pointer;
-            transition: background var(--srf-transition), border-color var(--srf-transition), color var(--srf-transition);
+            transition: background var(--srf-transition), border-color var(--srf-transition), color var(--srf-transition),
+              /* 列表项 hover 光标过渡（@since v3.8，task_138）：整行朝光标方向挪 2px ——
+                 why 挪而不是只变色：变色只改颜色，挪动才「指向」那一行（长列表里眼睛更容易跟上）。 */
+              transform var(--srf-motion-fast, 120ms) var(--srf-motion-ease-enter, ease-out);
           }
-          button.command:hover:not(:disabled) { border-color: var(--srf-border-strong); background: var(--srf-panel); }
+          button.command:hover:not(:disabled) {
+            border-color: var(--srf-border-strong);
+            background: var(--srf-panel);
+            transform: translateX(2px);
+          }
           button.command:active:not(:disabled) { border-color: var(--srf-accent); }
           button.command:focus-visible { outline: var(--srf-border-width) solid var(--srf-accent); outline-offset: var(--srf-spacing-xxs); }
           button.command[data-primary="true"]:not(:disabled) { border-color: var(--srf-accent); color: var(--srf-accent); }
@@ -686,7 +699,7 @@ export function defineCommandPanel(): typeof HTMLElement {
           }
           :host([variant="strip"]) .empty-hint { white-space: nowrap; }
         </style>
-        <div class="panel" part="panel">
+        <div class="panel ${MOTION_CLASS.enter}" part="panel">
           <div class="head">
             <span class="title">命令</span>
             <span class="selection" data-role="selection">未选中单位</span>
@@ -739,11 +752,33 @@ export function defineCommandPanel(): typeof HTMLElement {
           key.preventDefault();
           const raw = target.value;
           this._query = raw;
+          // 输入行微脉冲（@since v3.8，task_138）：提交那一下行轻轻弹一下 ——
+          //   why 需要：回执可能延迟出现，先给一个「收到了」的即时反馈（120ms，不阻塞）。
+          this.pulseInput(target);
           void this.runCli(raw);
         });
       }
 
       this.renderNotices();
+    }
+
+    /**
+     * 输入行微脉冲（@since v3.8，task_138）：提交命令时给输入行一次 120ms 的轻弹。
+     * why 要「摘类 → 强制回流 → 挂类」：同一元素重复挂同一个类不会重放动画，
+     *   强制回流（读 offsetWidth）让浏览器重算样式，动画才会重新起跑。
+     */
+    private pulseInput(el: HTMLElement): void {
+      el.classList.remove(MOTION_CLASS.pulse);
+      void el.offsetWidth;
+      el.classList.add(MOTION_CLASS.pulse);
+      // 播完摘掉类：否则脉冲类会一直挂在元素上（fill: both 的终态是原样，不影响视觉，但要保持干净）。
+      el.addEventListener(
+        'animationend',
+        () => {
+          el.classList.remove(MOTION_CLASS.pulse);
+        },
+        { once: true },
+      );
     }
 
     private renderNotices(): void {

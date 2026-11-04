@@ -31,6 +31,9 @@ import {
   type GatewayConnectionState,
   type GatewayLinkPort,
 } from '../../bridge/gateway-link-port';
+// 动效层（@since v3.8，task_138）：横幅从「瞬现」改为「落位」——
+//   入场动效走共享工具类（位移 8px + 淡入，200ms），时长 / 缓动取 --srf-motion-* token。
+import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../../theme/motion-tokens';
 
 export const GATEWAY_BANNER_TAG = 'strat-gateway-banner';
 
@@ -95,8 +98,11 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
       if (!this.shadowRoot) this.attachShadow({ mode: 'open' });
       const root = this.shadowRoot;
       if (!root) return;
+      // 动效 token 注入文档根（幂等）：横幅用的 --srf-motion-* 与其他组件同源同速。
+      installMotionTokens();
       root.innerHTML = `
         <style>
+          ${MOTION_COMPONENT_CSS}
           :host {
             all: initial;
             position: absolute;
@@ -207,9 +213,13 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
      *   但文案必须说清「数据可用」—— 不能一边喊「未连接」一边让回放照放。
      */
     private render(state: GatewayConnectionState): void {
-      this._state = state;
       const root = this._root;
+      // 根还没建好（link 端口在挂载前就注入了）→ 这一帧不落状态：
+      //   why：落了就等于「横幅已经亮过一次」，connectedCallback 里的那次 render
+      //   会被判成「没变化」，于是首次亮出反而不播入场动效（横幅的第一眼必须是落位的）。
       if (!root) return;
+      const wasVisible = this._state !== 'online';
+      this._state = state;
       const text = GATEWAY_STATE_TEXT[state];
       root.hidden = state === 'online';
       root.setAttribute('data-state', state);
@@ -217,6 +227,21 @@ export function defineStratGatewayBanner(): typeof HTMLElement {
       const detail = root.querySelector('[data-role="detail"]');
       if (title) title.textContent = text.bannerTitle;
       if (detail) detail.textContent = text.detail;
+      // 入场动效（@since v3.8，task_138）：只在「不可见 → 可见」这一次触发 ——
+      //   why 一次性：横幅收起再亮出要重新落位（否则第二次出现是瞬现，用户会以为界面卡了）。
+      //   首帧亮出也算「不可见 → 可见」—— 横幅的第一眼必须是落位的。
+      if (state !== 'online' && !wasVisible) this.playEnter(root);
+    }
+
+    /**
+     * 播放入场动效（位移 8px + 淡入，200ms）。
+     * why 要「先摘类 → 强制回流 → 再挂类」：同一元素重复挂同一个类不会重放动画，
+     *   强制回流（读 offsetWidth）让浏览器认为样式已重算，动画才会重新起跑。
+     */
+    private playEnter(el: HTMLElement): void {
+      el.classList.remove(MOTION_CLASS.enter);
+      void el.offsetWidth;
+      el.classList.add(MOTION_CLASS.enter);
     }
 
     /** 点「重试」：立刻探一次（判定在 app 层，这里只转交）。 */

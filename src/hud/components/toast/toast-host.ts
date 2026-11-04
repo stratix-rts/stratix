@@ -21,6 +21,10 @@
  */
 
 import { STRATIX_NOTIFICATIONS_TOGGLE_KEY } from '../../../core/types';
+// 动效层（@since v3.8，task_138）：toast 从「啪一下出现」改为「落位 + 淡入」；
+//   成功类 toast 额外走**签名瞬间**（对勾描边 + scale/brightness 脉冲）——
+//   「成功」不该只是绿边框，应该是一个能被眼睛抓住的瞬间。
+import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../../theme/motion-tokens';
 
 export const TOAST_HOST_TAG = 'strat-toast-host';
 
@@ -96,8 +100,11 @@ export function defineToastHost(): typeof HTMLElement {
       // 局部变量接管：attachShadow 的返回不收窄 this.shadowRoot（TS 判 possibly-null），后续都走 root。
       const root = this.shadowRoot;
       if (!root) return;
+      // 动效 token 注入文档根（幂等）。
+      installMotionTokens();
       root.innerHTML = `
         <style>
+          ${MOTION_COMPONENT_CSS}
           /* 顶层反馈面：压在抽屉（z-index 40）之上；宿主不拦事件，交互留给气泡外的世界 */
           :host {
             all: initial;
@@ -116,6 +123,9 @@ export function defineToastHost(): typeof HTMLElement {
             font-family: var(--srf-font-ui);
           }
           .toast {
+            display: flex;
+            align-items: center;
+            gap: var(--srf-spacing-sm);
             max-width: min(320px, 80vw);
             box-sizing: border-box;
             padding: var(--srf-spacing-sm) var(--srf-spacing-md);
@@ -127,11 +137,33 @@ export function defineToastHost(): typeof HTMLElement {
             font-size: var(--srf-font-size-sm);
             line-height: var(--srf-line-height);
             box-shadow: var(--srf-shadow-lg);
+            /* 入场（@since v3.8，task_138）：挂 .srf-motion-enter → 从上方 8px 落位 + 淡入（200ms）——
+               why：toast 是「刚发生的事」的现场反馈，瞬现会被当成静态贴片。 */
           }
           .toast[data-tone="success"] { border-color: var(--srf-success); }
           .toast[data-tone="danger"] { border-color: var(--srf-danger); }
           .toast[data-tone="info"] { border-color: var(--srf-accent); }
           .toast[data-tone="warn"] { border-color: var(--srf-warn); }
+          /* 签名瞬间的对勾（@since v3.8，task_138）：成功类 toast 才画 ——
+             失败 / 中性 / 警示不该有「打勾」的暗示（那是在撒谎）。 */
+          .check {
+            flex: none;
+            display: inline-flex;
+            width: 14px;
+            height: 14px;
+            color: var(--srf-success);
+            /* 一次性 scale + brightness 脉冲（360ms，spring 缓动）—— 挂 .srf-motion-confirm。 */
+          }
+          .check svg { width: 100%; height: 100%; display: block; }
+          .check path {
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            /* 对勾描边（stroke-dashoffset 走完，360ms）—— 挂 .srf-motion-check。 */
+          }
+          .toast-text { min-width: 0; }
         </style>
         <div class="stack" data-role="stack" aria-live="polite"></div>
       `;
@@ -151,11 +183,29 @@ export function defineToastHost(): typeof HTMLElement {
       // 通知总开关关着 → 不出提示（@since v3.6，task_116：让设置页那个开关有真实消费者）。
       if (!notificationsEnabled()) return;
       const toast = document.createElement('div');
-      toast.className = 'toast';
+      // 入场动效类（@since v3.8，task_138）：toast 一挂上就落位（200ms）。
+      toast.className = `toast ${MOTION_CLASS.enter}`;
       toast.setAttribute('data-tone', escapeAttr(tone));
       toast.setAttribute('role', 'status');
+      // 成功类 → 签名瞬间（@since v3.8，task_138）：对勾描边 + scale/brightness 脉冲（360ms）。
+      // why 只有成功才画勾：失败 / 警示带对勾是在骗人（task_124 起 toast 语气分四种）。
+      // why 这就是「任务完成」的那一瞬间：任务完成的反馈就是一条 success toast
+      //   （app/services/task-report.ts 的 taskToastText → deps.toast(text, 'success')）。
+      if (tone === 'success') {
+        const check = document.createElement('span');
+        check.className = `check ${MOTION_CLASS.confirm}`;
+        check.setAttribute('aria-hidden', 'true');
+        check.innerHTML =
+          '<svg viewBox="0 0 16 16" focusable="false"><path class="' +
+          MOTION_CLASS.check +
+          '" d="M3 8.5 L6.5 12 L13 4.5"></path></svg>';
+        toast.appendChild(check);
+      }
+      const body = document.createElement('span');
+      body.className = 'toast-text';
       // 正文 textContent 直写（不 innerHTML）：角色名 / 任务信息是外部输入，零 XSS 面。
-      toast.textContent = text;
+      body.textContent = text;
+      toast.appendChild(body);
       stack.appendChild(toast);
       this._active.set(toast, setTimeout(() => this.dismiss(toast), TOAST_TTL_MS));
     }
