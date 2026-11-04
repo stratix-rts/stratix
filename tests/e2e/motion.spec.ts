@@ -215,6 +215,41 @@ test('动效 token + 签名瞬间 + 位移入场（task_138）', async ({ page }
   await page.screenshot({ path: 'reports/shots/motion-r5-full.png' });
 });
 
+test('像素皮走 steps() 重帧感（皮肤语言差异，task_138 加分项）', async ({ page }) => {
+  await boot(page);
+
+  // 装一块「像素皮式」的运动语言信号（--srf-transition 带 steps()，与像素皮 token 表同口径）——
+  //   why 不直接切皮：切皮按钮会换掉整套皮肤（含在途的像素 token 文件），这里只需要验证
+  //   「动效层认得皮肤的运动语言」这一条链路。
+  await page.evaluate(() => {
+    const style = document.createElement('style');
+    style.textContent = ':root { --srf-transition: 120ms steps(2, end); }';
+    document.head.appendChild(style);
+  });
+  // 主题样式表被换 → 动效层同步重判皮肤运动语言（head childList 监听）
+  await page.waitForTimeout(200);
+
+  const pixel = await page.evaluate(() => {
+    const cs = getComputedStyle(document.documentElement);
+    return {
+      enter: cs.getPropertyValue('--srf-motion-ease-enter').trim(),
+      exit: cs.getPropertyValue('--srf-motion-ease-exit').trim(),
+      spring: cs.getPropertyValue('--srf-motion-ease-spring').trim(),
+      panelTiming: getComputedStyle(
+        document.querySelector('strat-command-panel')!.shadowRoot!.querySelector('.panel')!,
+      ).animationTimingFunction,
+    };
+  });
+  console.log(`T138_PIXEL_SKIN ${JSON.stringify(pixel)}`);
+
+  expect(pixel.enter).toBe('steps(3, end)');
+  expect(pixel.exit).toBe('steps(2, end)');
+  expect(pixel.spring).toBe('steps(4, end)');
+  // 面板入场真的用上了这套缓动（不只是变量摆在那儿）
+  //   注：Chromium 把 `steps(3, end)` 归一化成 `steps(3)`（end 是默认跳点），故按前缀断言。
+  expect(pixel.panelTiming).toMatch(/^steps\(3\)/);
+});
+
 test('prefers-reduced-motion: reduce 下全部动效禁用（task_138）', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await boot(page);

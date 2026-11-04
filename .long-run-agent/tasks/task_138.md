@@ -10,7 +10,7 @@
 | 文件 | 职责 |
 |------|------|
 | `src/core/theme/motion-spec.ts`（新） | **动效唯一事实源**：三档时长（120/200/360ms）+ 三档缓动（ease-out / ease-in / spring）+ 关键帧名 + CSS 变量映射。纯常量、零 IO、零 DOM。 |
-| `src/hud/theme/motion-tokens.ts`（新） | **动效工具类层**：把 core 规格翻译成 CSS —— `:root` 变量表 + 四套关键帧 + 四个工具类（`.srf-motion-enter` / `-confirm` / `-check` / `-pulse`）+ `prefers-reduced-motion` 全量禁用兜底。 |
+| `src/hud/theme/motion-tokens.ts`（新） | **动效工具类层**：把 core 规格翻译成 CSS —— `:root` 变量表 + 四套关键帧 + 四个工具类（`.srf-motion-enter` / `-confirm` / `-check` / `-pulse`）+ `prefers-reduced-motion` 全量禁用兜底 + **皮肤运动语言**（像素皮走 `steps()` 重帧感，探测皮肤自己的 `--srf-transition` 信号，不碰皮肤 token 文件）。 |
 | `src/hud/components/toast/toast-host.ts` | 签名瞬间一：成功 toast 带**对勾描边 + scale/brightness 脉冲**；toast 入场从瞬现改为落位。 |
 | `src/hud/panels/mission-confirm.ts` | 签名瞬间一：任务行 `running → done` **跃迁的那一次**播确认脉冲 + 对勾；面板入场位移。 |
 | `src/hud/components/gateway-banner/gateway-banner.ts` | 签名瞬间二：横幅「不可见 → 可见」时落位入场（不再是瞬现）。 |
@@ -27,6 +27,11 @@
   若按「当前是 done」挂类 → 动效无限重放（一行在发抖）。故用 `_phases` 表比对前后相位。
 - **降级全量禁用**：用 `animation: none` / `transition: none`（不是 0.001ms）——
   前者 computed 直接是 `none` / `0s`，可被自动化断言，也真的不产生合成开销。
+- **皮肤运动语言（加分项，已做）**：像素皮的 `--srf-transition` 本来就是 `steps(2, end)`（硬边），
+  动效层直接**探测这个信号**（缓动里有没有 `steps()`）跟着走 —— 像素皮入场变成 `steps(3, end)` 的逐格落位。
+  why 探测而不是另写一张「像素动效表」：皮肤 token 表是事实源；且**不碰任何在途皮肤文件**。
+  覆盖块写成 `html:root`（特异度 0,1,1）压过基础表 `:root`（0,1,0）—— 组件每次挂载都重注基础表，
+  同特异度会变成「谁后注入谁赢」。切皮时由 head childList 监听原地改文本重判（引用计数，最后一个卸载者离开时断开）。
 
 ## 验证证据
 
@@ -52,12 +57,20 @@ T138_TOKENS {"tokens":{"--srf-motion-fast":"120ms","--srf-motion-base":"200ms","
 T138_PANEL_ENTER {"panelEnter":{"animation-name":"srf-motion-enter-in","animation-duration":"0.2s","animation-timing-function":"ease-out"},"panelClass":"panel srf-motion-enter"}
 T138_BANNER_ENTER {"className":"banner srf-motion-enter","animationName":"srf-motion-enter-in","animationDuration":"0.2s","hidden":false}
 T138_CONFIRM {"toastClass":"toast srf-motion-enter","checkClass":"check srf-motion-confirm","pathClass":"srf-motion-check","animationName":"srf-motion-confirm-pop","animationDuration":"0.36s","pathAnimationName":"srf-motion-check-draw","pathDashOffset":"22px","text":"阿尔法 完成任务"}
+T138_TOAST_BOX {"x":1128.1875,"y":16,"width":135.8125,"height":34.796875}
 T138_MISSION_PANEL {"className":"panel srf-motion-enter","animationName":"srf-motion-enter-in"}
-  ✓  1 tests/e2e/motion.spec.ts:56:5 › 动效 token + 签名瞬间 + 位移入场（task_138） (1.9s)
+  ✓  1 tests/e2e/motion.spec.ts:56:5 › 动效 token + 签名瞬间 + 位移入场（task_138） (2.0s)
+T138_PIXEL_SKIN {"enter":"steps(3, end)","exit":"steps(2, end)","spring":"steps(4, end)","panelTiming":"steps(3)"}
+  ✓  2 tests/e2e/motion.spec.ts:218:5 › 像素皮走 steps() 重帧感（皮肤语言差异，task_138 加分项） (896ms)
 T138_REDUCED {"panelAnimationName":"none","panelTransitionDuration":"0s","checkAnimationName":"none","checkTransitionDuration":"0s"}
-  ✓  2 tests/e2e/motion.spec.ts:218:5 › prefers-reduced-motion: reduce 下全部动效禁用（task_138） (656ms)
+  ✓  3 tests/e2e/motion.spec.ts:253:5 › prefers-reduced-motion: reduce 下全部动效禁用（task_138） (632ms)
 
-  2 passed (4.4s)
+  3 passed (5.4s)
+```
+
+```
+npx tsc --noEmit                      → 无输出（TSC_EXIT=0）
+npx jest <5 个相关套件> --maxWorkers=1 → Test Suites: 5 passed, 5 total / Tests: 60 passed, 60 total
 ```
 
 **验收口径对照**
@@ -68,11 +81,11 @@ T138_REDUCED {"panelAnimationName":"none","panelTransitionDuration":"0s","checkA
 | ② 任务完成瞬间有确认动效 + 截图 | `T138_CONFIRM`：`.check` = `srf-motion-confirm` / animation `srf-motion-confirm-pop`；`path` = `srf-motion-check` / animation `srf-motion-check-draw`；单测另覆盖任务行 `running→done` 只在跃迁那一次挂确认类。截图 `toast-confirm-r5-motion.png` |
 | ③ 横幅与 ≥2 个面板有位移入场而非瞬现 | 横幅 `srf-motion-enter-in`；命令面板 `srf-motion-enter-in`；任务确认面板 `srf-motion-enter-in`（三处均有 class + animation 断言） |
 | ④ reduced-motion 下全部禁用 | `T138_REDUCED`：`animationName: none`、`transitionDuration: 0s`（面板与对勾各两项） |
-| ⑤ typecheck + jest 绿 | `tsc --noEmit` 无输出；jest 4 套件 + gateway-banner 套件全绿 |
+| ⑤ typecheck + jest 绿 | `tsc --noEmit` 无输出（TSC_EXIT=0）；jest 5 套件 / 60 tests 全绿 |
 | ⑥ 截图 `-r5` 前缀 + `-motion` 后缀 | `reports/shots/{gateway-banner,toast-confirm}-r5-motion.png`、`motion-r5-full.png` |
+| ⑦ 加分项：像素皮 `steps()` 重帧感 | `T138_PIXEL_SKIN`：三个缓动 token 切到 `steps(3/2/4, end)`，面板入场 timing 实际为 `steps(3)` |
 
 ## 未尽事项
 
-- 像素皮肤的 `steps()` 重帧感皮肤语言差异（加分项）—— 本轮未做（超时跳过，见最终输出）。
 - 战场（Phaser 世界层）单位位置的完成确认动效 —— 本轮做在 HUD 列表项 + toast 上；
   世界层是 canvas，CSS 动效覆盖不到，需要 core 侧事件 + Phaser tween，另开一轮。

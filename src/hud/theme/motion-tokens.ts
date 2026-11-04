@@ -61,6 +61,76 @@ export const MOTION_CLASS = Object.freeze({
 export const MOTION_ENTER_OFFSET_PX = 8;
 
 /**
+ * 皮肤的运动语言（@since v3.8，task_138 加分项）——
+ *   同一套动效在**像素皮肤**下应该「一格一格地跳」，在现代皮肤下应该「滑着落位」。
+ *   这不是装饰，是皮肤语言的一致性：像素皮的一切都是硬边的（连过渡都是 steps(2)），
+ *   若动效在像素皮里还带缓动回弹，皮与动效会互相拆台。
+ *
+ * why 靠「探测」而不是「每套皮肤各写一份动效 token」：
+ *   皮肤 token 表里已经有**它自己的运动语言**（像素皮 --srf-transition: 120ms steps(2, end)），
+ *   动效层读同一个信号（缓动里有没有 steps()）就能跟着走 —— 皮肤表是事实源，动效层不重复发明。
+ *   代价：不碰任何皮肤 token 文件（那些是在途文件），也不新增一份「像素动效表」去和皮肤表打架。
+ */
+export const MOTION_SKIN_ID = Object.freeze({
+  /** 像素皮：重帧感（逐格跳）。 */
+  pixel: 'pixel',
+} as const);
+
+export type MotionSkinId = (typeof MOTION_SKIN_ID)[keyof typeof MOTION_SKIN_ID];
+
+/** 各皮肤的运动语言 → 动效缓动覆盖值。 */
+const MOTION_SKIN_EASINGS: Record<MotionSkinId, { enter: string; exit: string; spring: string }> = {
+  [MOTION_SKIN_ID.pixel]: {
+    // steps() 帧数：入场 3 格（落位看得清）/ 退出 2 格（干脆）/ 强调 4 格（脉冲一格一格顶上去）。
+    enter: 'steps(3, end)',
+    exit: 'steps(2, end)',
+    spring: 'steps(4, end)',
+  },
+};
+
+/**
+ * 皮肤动效覆盖块（CSS 文本）。
+ * why 用 `html:root` 而不是 `:root`：基础 token 表是 `:root`（特异度 0,1,0），
+ *   覆盖块写成 `html:root`（0,1,1）才能**无论注入顺序都赢**——
+ *   组件每次挂载都会重注基础表（幂等覆盖），若两者同特异度就变成「谁后到谁赢」。
+ */
+export function motionSkinCss(skin: MotionSkinId | null): string {
+  if (!skin) return '';
+  const easing = MOTION_SKIN_EASINGS[skin];
+  if (!easing) return '';
+  return `html:root {
+  /* 皮肤运动语言（@since v3.8，task_138）：像素皮走 steps() 重帧感 */
+  --srf-motion-ease-enter: ${easing.enter};
+  --srf-motion-ease-exit: ${easing.exit};
+  --srf-motion-ease-spring: ${easing.spring};
+}
+`;
+}
+
+/**
+ * 探测当前皮肤的运动语言（返回 null = 现代皮肤，用默认缓动）。
+ *
+ * why 读 `--srf-transition`：那是每套皮肤 token 表里**已经存在**的运动语言信号
+ *   （像素皮 = 120ms steps(2, end)，现代皮 = 160ms ease-out）—— 不新增皮肤约定，不改皮肤文件。
+ */
+export function detectMotionSkin(doc: Document = document): MotionSkinId | null {
+  const root = doc.documentElement;
+  if (!root) return null;
+  // 先读行内（测试可注入），再读计算值（真实皮肤表走这条）。
+  const inline = root.style?.getPropertyValue('--srf-transition') ?? '';
+  if (inline.includes('steps(')) return MOTION_SKIN_ID.pixel;
+  const view = doc.defaultView;
+  if (!view?.getComputedStyle) return null;
+  const computed = view.getComputedStyle(root).getPropertyValue('--srf-transition') ?? '';
+  return computed.includes('steps(') ? MOTION_SKIN_ID.pixel : null;
+}
+
+/** 完整动效 token 表文本（基础表 + 皮肤覆盖块）。 */
+export function motionTokensCss(doc: Document = document): string {
+  return MOTION_TOKENS_CSS + motionSkinCss(detectMotionSkin(doc));
+}
+
+/**
  * 动效关键帧 + 工具类 + 降级动效兜底 —— **组件样式表里带这一份**即可用全套动效。
  *
  * 结构：
@@ -133,7 +203,51 @@ export function installMotionTokens(doc: Document = document): () => void {
   const style = doc.createElement('style');
   style.id = MOTION_TOKEN_STYLE_ID;
   style.setAttribute('data-srf-motion-tokens', 'true');
-  style.textContent = MOTION_TOKENS_CSS;
+  style.textContent = motionTokensCss(doc);
   doc.head.appendChild(style);
-  return () => style.remove();
+  ensureSkinSync(doc);
+  subscribers += 1;
+  let removed = false;
+  return () => {
+    if (removed) return;
+    removed = true;
+    style.remove();
+    subscribers -= 1;
+    if (subscribers <= 0) {
+      subscribers = 0;
+      skinObserver?.disconnect();
+      skinObserver = null;
+      observedDoc = null;
+    }
+  };
+}
+
+/* —— 皮肤切换同步（像素皮走 steps() 重帧感）——
+   why 需要监听：切皮是**换掉**皮肤样式表（theme-controller 整张换），
+   动效 token 表不会跟着换 —— 不监听的话，用户从像素皮切回现代皮后，
+   动效还留在 steps()（重帧感留在了不该留的皮肤上）。
+   why 只监听 head 的 childList：切皮 = 换样式表节点；不监听 attribute，避免过度触发。
+   why 有引用计数：组件在时保持监听（应用期只有一个），最后一个卸载者离开时断开（不留悬挂观察者）。 */
+let subscribers = 0;
+let skinObserver: MutationObserver | null = null;
+let observedDoc: Document | null = null;
+
+function ensureSkinSync(doc: Document): void {
+  if (skinObserver && observedDoc === doc) return;
+  skinObserver?.disconnect();
+  skinObserver = null;
+  observedDoc = null;
+  const view = doc.defaultView;
+  if (!view || typeof view.MutationObserver !== 'function') return;
+  const observer = new view.MutationObserver(() => {
+    const style = doc.getElementById(MOTION_TOKEN_STYLE_ID);
+    if (!style) return;
+    const next = motionTokensCss(doc);
+    if (style.textContent === next) return;
+    // 原地改文本而不是重插节点：重插会让正在跑的动画从头再来（切皮不该打断已有动效）。
+    style.textContent = next;
+  });
+  observer.observe(doc.head, { childList: true });
+  skinObserver = observer;
+  observedDoc = doc;
 }

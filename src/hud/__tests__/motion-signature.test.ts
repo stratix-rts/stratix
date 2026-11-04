@@ -20,9 +20,12 @@ import {
 import {
   MOTION_CLASS,
   MOTION_COMPONENT_CSS,
+  MOTION_SKIN_ID,
   MOTION_TOKEN_STYLE_ID,
   MOTION_TOKENS_CSS,
+  detectMotionSkin,
   installMotionTokens,
+  motionSkinCss,
 } from '../theme/motion-tokens';
 import { mountToastHost, type StratToastHostElement } from '../components/toast/toast-host';
 import {
@@ -92,6 +95,43 @@ describe('动效工具类：关键帧 + 降级动效兜底', () => {
     expect(MOTION_COMPONENT_CSS).toContain('@media (prefers-reduced-motion: reduce)');
     expect(MOTION_COMPONENT_CSS).toContain('animation: none !important;');
     expect(MOTION_COMPONENT_CSS).toContain('transition: none !important;');
+  });
+});
+
+describe('皮肤运动语言（像素皮走 steps() 重帧感）', () => {
+  afterEach(() => {
+    document.documentElement.style.removeProperty('--srf-transition');
+  });
+
+  test('现代皮 → 不产出覆盖块（默认缓动原样）', () => {
+    expect(motionSkinCss(null)).toBe('');
+    expect(detectMotionSkin(document)).toBeNull();
+  });
+
+  test('像素皮 → 覆盖块是 steps()，且特异度高于基础表（谁后注入都赢）', () => {
+    const css = motionSkinCss(MOTION_SKIN_ID.pixel);
+    expect(css).toContain('steps(3, end)');
+    expect(css).toContain('steps(2, end)');
+    expect(css).toContain('steps(4, end)');
+    // `html:root`（0,1,1）必须压过基础表的 `:root`（0,1,0）——
+    //   组件每次挂载都重注基础表，同特异度会让基础表按注入顺序覆盖皮肤覆盖块。
+    expect(css).toContain('html:root');
+  });
+
+  test('探测：--srf-transition 带 steps() → 认出像素皮', () => {
+    document.documentElement.style.setProperty('--srf-transition', '120ms steps(2, end)');
+    expect(detectMotionSkin(document)).toBe(MOTION_SKIN_ID.pixel);
+  });
+
+  test('注入的 token 表在像素皮下带上覆盖块（现代皮下不带）', () => {
+    const modern = installMotionTokens();
+    expect(document.getElementById(MOTION_TOKEN_STYLE_ID)?.textContent).not.toContain('steps(3, end)');
+    modern();
+
+    document.documentElement.style.setProperty('--srf-transition', '120ms steps(2, end)');
+    const pixel = installMotionTokens();
+    expect(document.getElementById(MOTION_TOKEN_STYLE_ID)?.textContent).toContain('steps(3, end)');
+    pixel();
   });
 });
 
