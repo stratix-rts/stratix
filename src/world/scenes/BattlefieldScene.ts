@@ -454,6 +454,17 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    */
   syncTaskEvent(task: CharacterTask, phase: TaskFxPhase): void {
     const hitUnitIds = applyTaskFxEvent(this.taskFx, this.units.list(), task, phase);
+    // 动画八态（@since v3.8，task_141）：任务生命周期 → 单位的动画基态。
+    //   开工 → 工作态（前倾 + 微颤 + 头顶进度弧）；
+    //   完成 → 收工站直（庆祝演出是**正交瞬态**，由 triggerCompleted 单独起拍）；
+    //   失败 → 卡住态（❗ + 灰度 + 抖动，驻留到下一条任务事件）；
+    //   挂起（awaiting_approval）→ 撤相位 —— 挂起不算忙（core 已回收 busy，基态自然回静息）。
+    for (const unitId of hitUnitIds) {
+      if (phase === 'started') this.unitLayer.setTaskPhase(unitId, 'running');
+      else if (phase === 'completed') this.unitLayer.setTaskPhase(unitId, 'completed');
+      else if (phase === 'failed') this.unitLayer.setTaskPhase(unitId, 'failed');
+      else this.unitLayer.setTaskPhase(unitId, 'none');
+    }
     // 完成演出（@since v3.3，task_075）：任务落到谁头上，谁就 squash → 跳 20px → 落地星尘。
     if (phase === 'completed') {
       for (const unitId of hitUnitIds) this.unitLayer.triggerCompleted(unitId);

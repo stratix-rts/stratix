@@ -67,7 +67,9 @@ import type { Bounds, CharacterAppearance, UnitStatus } from '../../core/types';
 import {
   type UnitAnimationContext,
   type UnitAnimationState,
+  type UnitTaskPhase,
 } from '../appearance/unit-animation';
+import { TaskPhaseBoard } from '../appearance/task-animation';
 import { readReducedMotion } from '../motion';
 import {
   resolveUnitColor,
@@ -349,6 +351,13 @@ export class UnitLayer {
   /** 正在说话的单位集合（task_062：unit.speaking 事件的本地镜像，对账时随节点清理）。 */
   private readonly speakingFlags = new Set<string>();
   /**
+   * 任务相位镜像（@since v3.8，task_141）：task.* 生命周期事件 → 每单位的动画相位。
+   * why 是**镜像**不是真相：相位真相在 core（WorldState.tasks）；本板只存「演过什么」
+   * （完成 = 瞬态庆祝、失败 = 驻留 ❗），规则与板见 appearance/task-animation.ts。
+   * 与 speakingFlags 同一套路：事件驱动的每单位标志，对账时随节点清理。
+   */
+  private readonly taskPhases = new TaskPhaseBoard();
+  /**
    * 波浪式弹环的驱动（task_077）：待弹的单位队列 + 下一个位次 + **唯一一个**循环定时器。
    * why 单独三个字段而不是一个对象：位次与队列是纯数据，定时器是资源 —— 分开看得清
    *   「什么时候该撤」（撤定时器 + 清队列）。
@@ -427,6 +436,7 @@ export class UnitLayer {
       }
       this.nodes.delete(id);
       this.speakingFlags.delete(id); // 说话镜像随节点清理（task_062）：单位离场气泡不留残迹
+      this.taskPhases.clear(id); // 任务相位镜像随节点清理（task_141）：单位离场不留残态
     }
   }
 
@@ -522,6 +532,27 @@ export class UnitLayer {
     const object = this.registry.get(unitId);
     if (!object) return;
     object.animation.triggerCompleted(this.scene.time.now);
+  }
+
+  /**
+   * 任务相位落板（@since v3.8，task_141）：把「这条任务现在什么相位」记到单位身上，
+   * 由 presence tick 喂给动画控制器的基态派生（appearance/unit-animation.ts 的 resolveBase）。
+   *
+   * - 'running'   → 工作态（前倾 + 微颤 + 头顶进度弧）
+   * - 'completed' → 收工站直（庆祝演出由 triggerCompleted 单独起拍，两者正交）
+   * - 'failed'    → 卡住态（❗ + 灰度 + 抖动，驻留到下一条任务事件）
+   * - 'none'      → 撤掉相位（任务撤单 / 挂起不算忙），基态回静息派生
+   *
+   * why 走既有 API 不重造：动画的规则全在 unit-animation.ts（唯一事实源），
+   *   本层只搬运「相位」这一个业务事实。
+   */
+  setTaskPhase(unitId: string, phase: UnitTaskPhase): void {
+    if (this.destroyed) return;
+    const now = this.scene.time.now;
+    if (phase === 'running') this.taskPhases.setRunning(unitId, now);
+    else if (phase === 'completed') this.taskPhases.setCompleted(unitId, now);
+    else if (phase === 'failed') this.taskPhases.setFailed(unitId, now);
+    else this.taskPhases.clear(unitId);
   }
 
   /**
@@ -684,6 +715,7 @@ export class UnitLayer {
     this.nodes.clear();
     this.selected.clear();
     this.preview.clear();
+    this.taskPhases.clearAll();
     // hover 态与光标（task_075）：场景重建时不能把 pointer 光标留在画布上。
     this.hovered.clear();
     this.scene.input.setDefaultCursor('default');
@@ -1004,6 +1036,8 @@ export class UnitLayer {
     node.exiting = true;
     this.stopMoveTween(node);
     this.speakingFlags.delete(node.id);
+    // 任务相位一并收掉（task_141）：单位退场中不该还挂着 ❗ / 进度弧的相位。
+    this.taskPhases.clear(node.id);
 
     const remove = (): void => {
       if (this.destroyed) return;
@@ -1352,6 +1386,8 @@ export class UnitLayer {
       hasMission: object.missionId !== null,
       selected: this.selected.has(object.id),
       hovered: this.hovered.has(object.id),
+      // 任务相位（task_141）：完成相位的 TTL 在这里惰性到期 → 演完回静息。
+      taskPhase: this.taskPhases.phaseFor(object.id, now),
     };
     const pose = object.animation.pose(ctx, now);
 

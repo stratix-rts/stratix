@@ -69,6 +69,22 @@ const BASE_OF: Readonly<Record<UnitAnimationState, UnitAnimationBase>> = Object.
 });
 
 /**
+ * 任务生命周期相位（@since v3.8，task_141）—— **角色任务**（core/task 的 CharacterTask）的相位，
+ * 驱动单位的动画基态。
+ *
+ * why 与 UnitStatus 分开：status 是契约冻结的忙闲（idle/busy/offline/error），
+ *   词表里**没有**「刚干完」「卡住了」这两种业务语义；而八态动画需要它们
+ *   （完成 = 庆祝、失败 = 卡住）。故任务相位另起一个四态词表，由事件流驱动。
+ * - 'none'      = 没有在办任务（静息；基态按 075 的老派生走）
+ * - 'running'   = 任务在跑 → 工作态
+ * - 'completed' = 任务刚完成 → 收工站直（庆祝演出是正交瞬态，基态回待机）
+ * - 'failed'    = 任务失败 → 卡住态（❗ + 灰度 + 抖动）
+ *
+ * 相位板的实现见 appearance/task-animation.ts（纯逻辑，单测在那）。
+ */
+export type UnitTaskPhase = 'none' | 'running' | 'completed' | 'failed';
+
+/**
  * 姿态计算需要的业务态镜像（只读）。
  * why 不直接吃 UnitView：渲染层每个 tick 都拿得到 UnitObject，但**表现层不该重新解析业务语义** ——
  * 这里收窄成四个布尔/枚举，便于单测穷举。
@@ -84,6 +100,13 @@ export interface UnitAnimationContext {
   readonly selected: boolean;
   /** 是否被 hover。 */
   readonly hovered: boolean;
+  /**
+   * 任务生命周期相位（@since v3.8，task_141）：缺省 = 'none'（无任务相位信息）。
+   *
+   * why 可选而非必填：契约增补不许破既有构造点（单测夹具 / 老调用方）——
+   * 缺省即 075 的老行为（busy→working / error→stuck / 无任务→摸鱼）。
+   */
+  readonly taskPhase?: UnitTaskPhase;
 }
 
 /** 摸鱼态冒出的一个 z（序号 / 透明度 / 抬升量 / 放大倍率）。 */
@@ -377,17 +400,28 @@ export class UnitAnimationController {
 // ============================================================================
 
 /**
- * 基态派生（生产路径）：业务态 → 动画基态。
- * - offline → 待机基态 + 生命感全停（离线由渲染层灰显）；
- * - error → 卡住态；
- * - busy → 工作态；
- * - idle 且**无任务** → 摸鱼态（规格「摸鱼态（无任务空闲）」）；
- * - idle 且有任务 → 待机态。
+ * 基态派生（生产路径）：业务态 + 任务相位 → 动画基态。
+ *
+ * 优先级（@since v3.8，task_141 补任务相位）：
+ * 1. offline → 待机基态 + 生命感全停（离线是全局强信号，盖过任务相位 —— 灰显由渲染层叠加）；
+ * 2. 任务相位 'failed' → 卡住态（❗ + 灰度 + 抖动）；
+ * 3. status 'error' → 卡住态（agent-link 的远端真相，同 075 口径）；
+ * 4. 任务相位 'running' **或** status 'busy' → 工作态（前倾 + 微颤 + 头顶进度弧）；
+ * 5. 任务相位 'completed' → 待机基态（收工站直；庆祝演出是正交瞬态，见 pose 的完成段）；
+ * 6. idle 且**无任务** → 摸鱼态（规格「摸鱼态（无任务空闲）」，DEMO-PLAN §2）；
+ * 7. idle 且有任务 → 待机态。
+ *
+ * why 第 4 条要「相位 或 busy」两个信号：相位是**事件流**（task.started 来了才有），
+ * busy 是**状态快照**（读档恢复时事件早没了，但状态里还写着它在跑）——
+ * 两个都成立才敢判「它在干活」。
  */
 function resolveBase(ctx: UnitAnimationContext): UnitAnimationBase {
   if (ctx.status === 'offline') return 'idle';
+  const phase = ctx.taskPhase ?? 'none';
+  if (phase === 'failed') return 'stuck';
   if (ctx.status === 'error') return 'stuck';
-  if (ctx.status === 'busy') return 'working';
+  if (phase === 'running' || ctx.status === 'busy') return 'working';
+  if (phase === 'completed') return 'idle';
   if (!ctx.hasMission) return 'slacking';
   return 'idle';
 }
