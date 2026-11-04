@@ -110,6 +110,21 @@ function clickFormAction(panel: StratAgentPanelElement, action: string): void {
   btn.click();
 }
 
+/**
+ * 模拟用户打字（@since v3.9，task_151）：赋值**并派发 input 事件**。
+ *
+ * why 必须派事件：「派发」按钮的可用态由 input/change 事件驱动重算
+ *   （agent-panel.ts 的 syncSubmitState —— 空指令/缺站位时禁用 + 写明缺什么）。
+ *   裸 `input.value = '…'` 不触发事件 → 按钮停在禁用态 → `.click()` 被吞 →
+ *   命令端口收不到命令。口径与 chat-drawer 测试的 typeDraft 一致。
+ */
+function typeIssue(panel: StratAgentPanelElement, value: string): void {
+  const input = panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="task-input"]');
+  if (!input) throw new Error('议题输入框未渲染');
+  input.value = value;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 const text = (panel: StratAgentPanelElement, role: string): string | null | undefined =>
   panel.shadowRoot?.querySelector(`[data-role="${role}"]`)?.textContent;
 
@@ -412,6 +427,7 @@ describe('派任务表单：提交 → 命令端口，取消 → 清理', () => 
     expect(document.activeElement === input || panel.shadowRoot?.activeElement === input).toBe(true);
 
     input!.value = '  写一份周报并同步到知识库  ';
+    input!.dispatchEvent(new Event('input', { bubbles: true }));
     clickFormAction(panel, 'task-submit');
 
     expect(harness.commands).toEqual([
@@ -442,6 +458,7 @@ describe('派任务表单：提交 → 命令端口，取消 → 清理', () => 
     harness.emit(selected('u-neo'));
     clickAction(panel, 'task-open', 'u-neo');
     inputOf(panel)!.value = '   ';
+    inputOf(panel)!.dispatchEvent(new Event('input', { bubbles: true }));
     clickFormAction(panel, 'task-submit');
 
     expect(harness.commands).toEqual([]);
@@ -456,6 +473,7 @@ describe('派任务表单：提交 → 命令端口，取消 → 清理', () => 
     clickAction(panel, 'task-open', 'u-neo');
     const input = inputOf(panel)!;
     input.value = '快捷键派发';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, bubbles: true, cancelable: true })
     );
@@ -841,6 +859,7 @@ describe('派发智能推荐：「交给谁」选择器（task_050）', () => {
     harness.emit(boundState([runningOn('c-neo')]));
     clickAction(panel, 'task-open', 'u-neo');
     inputOfPanel(panel)!.value = '侦察北门';
+    inputOfPanel(panel)!.dispatchEvent(new Event('input', { bubbles: true }));
 
     clickFormAction(panel, 'task-submit');
     expect(harness.commands).toEqual([
@@ -862,6 +881,7 @@ describe('派发智能推荐：「交给谁」选择器（task_050）', () => {
     expect(cards[2]?.classList.contains('selected')).toBe(true);
 
     inputOfPanel(panel)!.value = '手动派给 Neo';
+    inputOfPanel(panel)!.dispatchEvent(new Event('input', { bubbles: true }));
     clickFormAction(panel, 'task-submit');
     // 指定 = 表单角色 → 载荷最小化（不带 targetCharacterId，缺省即本人）
     expect(harness.commands).toEqual([{ type: 'task.assign', characterId: 'c-neo', prompt: '手动派给 Neo' }]);
@@ -965,6 +985,7 @@ describe('派发智能推荐：「交给谁」选择器（task_050）', () => {
     expect(panel.shadowRoot?.querySelector('[data-role="assignee-list"]')?.textContent).toContain('暂无已绑定');
 
     inputOfPanel(panel)!.value = '老路径';
+    inputOfPanel(panel)!.dispatchEvent(new Event('input', { bubbles: true }));
     clickFormAction(panel, 'task-submit');
     expect(harness.commands).toEqual([{ type: 'task.assign', characterId: 'c-neo', prompt: '老路径' }]);
   });

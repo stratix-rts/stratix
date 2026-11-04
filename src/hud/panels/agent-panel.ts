@@ -572,6 +572,7 @@ export function defineAgentPanel(): typeof HTMLElement {
               if (presetId) {
                 this._formPresetId = presetId;
                 this.renderPipelineFormSections();
+                this.syncSubmitState();
               }
               return;
             }
@@ -635,6 +636,12 @@ export function defineAgentPanel(): typeof HTMLElement {
             this.submitTaskForm();
           }
         });
+
+        // 表单内容一变，「派发」能不能点就得跟着变（@since v3.9，task_148）。
+        // why：派发按钮原先永远 enabled —— 空指令 / 流水线缺站时点下去**什么也不发生**
+        //   （构造器返回 null，表单保持开着），用户以为按错了。禁用 + 写明缺什么才是治理。
+        root.addEventListener('input', () => { this.syncSubmitState(); });
+        root.addEventListener('change', () => { this.syncSubmitState(); });
       }
     }
 
@@ -659,11 +666,70 @@ export function defineAgentPanel(): typeof HTMLElement {
       form.hidden = false;
       // 模式回缺省（task_051）：上次表单的模式/预设选择不跨表单存活（每次派发都是新决策）。
       this.setFormMode('single');
+      // 派发按钮的可用态按**本次表单的当前内容**重算（@since v3.9，task_151 回归修复）。
+      // why 必须显式调一次：setFormMode('single') 在「上一轮也是单任务」时走早退分支
+      //   （不开新单、不重画列表），早退路径上 syncSubmitState 不会被调到 ——
+      //   按钮会停在**上一轮**的禁用态：上一轮流水线会话禁用过，再开单任务表单时按钮
+      //   仍是灰的，title 还挂着流水线的理由（跨会话脏状态，用户看不懂为什么点不动）。
+      // 顺带补上单任务侧的治理缺口：空指令时按钮现在会正确地禁用（原先永远 enabled，
+      //   点下去静默无反应 —— 正是「死按钮」本体）。
+      this.syncSubmitState();
       // 先画列表（同步：拿着上一份统计快照立即有读数），再异步刷新统计（task_050 ⑤：
       // 打开时刷新即可，不做实时订阅 —— 回来后清签名重画一次，成功率/预计随之更新）。
       this.renderAssignees();
       this.refreshTaskStats();
       input.focus();
+    }
+
+    /**
+     * 「派发」按钮的可用态（@since v3.9，task_148）：禁用 + 原因说明。
+     *
+     * why 必须要：派发按钮原先**永远 enabled**，而两条提交路径在构造不出命令时都
+     *   静默 `return`（空指令 / 流水线缺站 / 预设没选）—— 用户点下去什么也不发生，
+     *   表单还开着，像按错了键。这正是 r5 点名的「静默死按钮」的一种形态。
+     * 治理口径：**禁用态 + title 写明缺什么**（不弹 toast —— 本面板没有 notify 口，
+     *   加一个要动依赖注入口径；禁用 + 悬停说明是最小且可验证的治理）。
+     */
+    private syncSubmitState(): void {
+      const button = this.shadowRoot?.querySelector<HTMLButtonElement>('button[data-action="task-submit"]');
+      if (!button) return;
+      const state = this.resolveSubmitState();
+      button.disabled = !state.enabled;
+      if (state.enabled) {
+        button.removeAttribute('title');
+      } else {
+        button.setAttribute('title', state.reason);
+      }
+    }
+
+    /**
+     * 当前表单态能不能派发（口径与两条提交路径的构造器**同源**：
+     * 单任务看指令是否为空，流水线看议题 + 预设/自定义站位是否齐）。
+     * 返回 enabled=false 时 reason 写明**缺什么**（逐条列出，流水线缺项要具体到第几站）。
+     */
+    private resolveSubmitState(): { readonly enabled: boolean; readonly reason: string } {
+      const root = this.shadowRoot;
+      const input = root?.querySelector('[data-role="task-input"]') as HTMLTextAreaElement | null;
+      const issue = (input?.value ?? '').trim();
+      if (this._formMode !== 'pipeline') {
+        return issue.length === 0
+          ? { enabled: false, reason: '先写一句要它做什么（空指令派不出去）' }
+          : { enabled: true, reason: '' };
+      }
+      if (issue.length === 0) return { enabled: false, reason: '先写清楚这次要解决的议题（流水线议题不能为空）' };
+      if (this._formPresetId !== 'custom') return { enabled: true, reason: '' };
+      const stations = Array.from(root?.querySelectorAll('[data-role="pipeline-station-character"]') ?? []);
+      const templates = Array.from(root?.querySelectorAll('[data-role="pipeline-station-template"]') ?? []);
+      const missing: string[] = [];
+      for (let index = 0; index < CUSTOM_PIPELINE_STATIONS; index += 1) {
+        const characterId = ((stations[index] as HTMLSelectElement | undefined)?.value ?? '').trim();
+        const template = ((templates[index] as HTMLTextAreaElement | undefined)?.value ?? '').trim();
+        if (characterId.length === 0) missing.push(`第 ${index + 1} 站未选角色`);
+        if (template.length === 0) missing.push(`第 ${index + 1} 站指令模板为空`);
+      }
+      return missing.length === 0
+        ? { enabled: true, reason: '' }
+        : { enabled: false, reason: `自定义流水线还缺：${missing.join('；')}` };
     }
 
     private submitTaskForm(): void {
@@ -710,6 +776,7 @@ export function defineAgentPanel(): typeof HTMLElement {
       const input = this.shadowRoot?.querySelector('[data-role="task-input"]') as HTMLTextAreaElement | null;
       if (input) input.placeholder = mode === 'pipeline' ? '流水线议题：一段话描述要解决的问题（{{task}} 的源文本）' : '要它做什么？一段话描述（Ctrl+Enter 派发）';
       this.renderPipelineFormSections();
+      this.syncSubmitState();
     }
 
     /** 流水线控件显隐与内容（预设列表 / 自定义两站 / 单任务侧的承接人列表互斥）。 */

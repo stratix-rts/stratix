@@ -129,6 +129,37 @@ function clickFormAction(panel: StratAgentPanelElement, action: string): void {
   btn.click();
 }
 
+const submitButton = (panel: StratAgentPanelElement): HTMLButtonElement | null =>
+  panel.shadowRoot?.querySelector<HTMLButtonElement>('button[data-action="task-submit"]') ?? null;
+
+/**
+ * 模拟用户打字（@since v3.9，task_151）：赋值**并派发 input 事件**。
+ *
+ * why 必须派事件：面板的「派发」按钮可用态由 input/change 事件驱动重算
+ *   （agent-panel.ts 的 syncSubmitState —— 派发按钮禁用态 + 缺什么说明）。
+ *   裸 `input.value = '…'` 只改值不触发事件，事件不派发 → 按钮停在禁用态 →
+ *   `.click()` 被浏览器吞掉 → 命令端口收不到命令。这是 148「死按钮治理」的
+ *   契约，与 chat-drawer 测试的 typeDraft 同口径（那边也是赋值 + dispatchEvent）。
+ */
+function typeIssue(panel: StratAgentPanelElement, text: string): void {
+  const input = panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="task-input"]');
+  if (!input) throw new Error('议题输入框未渲染');
+  input.value = text;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/** 模拟用户选角色（下拉 → change 事件）。 */
+function selectStation(select: HTMLSelectElement, characterId: string): void {
+  select.value = characterId;
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/** 模拟用户填站位指令模板（多行框 → input 事件）。 */
+function typeTemplate(area: HTMLTextAreaElement, text: string): void {
+  area.value = text;
+  area.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 const pipelinesHost = (panel: StratAgentPanelElement): HTMLElement | null =>
   (panel.shadowRoot?.querySelector('[data-role="pipelines"]') as HTMLElement | null) ?? null;
 
@@ -161,6 +192,26 @@ describe('流水线模式（task_051）：表单', () => {
     clickFormAction(panel, 'form-mode-single');
     expect(presets?.hidden).toBe(true);
     expect(assignees?.hidden).toBe(false);
+  });
+
+  test('派发可用态跟内容走（@since v3.9，task_151）：空议题禁用 + 写明缺什么；关表单再开不留上一轮的脏态', () => {
+    const { panel, harness } = mountPanel();
+    dispose.push(harness.unmount);
+    harness.emit(makeState());
+    openForm(panel);
+    clickFormAction(panel, 'form-mode-pipeline');
+
+    // 空议题 → 禁用 + title 写明缺什么（148「死按钮治理」的读数面）。
+    expect(submitButton(panel)?.disabled).toBe(true);
+    expect(submitButton(panel)?.getAttribute('title')).toContain('流水线议题不能为空');
+
+    // 跨会话：流水线会话禁用过 → 关掉表单再开（回单任务）→ 状态按**新表单**重算，
+    // 不能留着上一轮的禁用态 + 上一轮的理由（那会让人以为单任务也缺流水线议题）。
+    clickFormAction(panel, 'task-cancel');
+    openForm(panel);
+    expect(submitButton(panel)?.disabled).toBe(true);
+    expect(submitButton(panel)?.getAttribute('title')).toContain('先写一句要它做什么');
+    expect(submitButton(panel)?.getAttribute('title')).not.toContain('流水线议题');
   });
 
   test('预设列表：3 个预设 + 自定义两站，选自定义 → 两站控件出（角色下拉带 kind 标签）', () => {
@@ -198,8 +249,7 @@ describe('流水线模式（task_051）：表单', () => {
     openForm(panel);
     clickFormAction(panel, 'form-mode-pipeline');
 
-    const input = panel.shadowRoot?.querySelector('[data-role="task-input"]') as HTMLTextAreaElement;
-    input.value = '修复登录页';
+    typeIssue(panel, '修复登录页');
     clickFormAction(panel, 'task-submit');
 
     expect(harness.commands).toHaveLength(1);
@@ -225,12 +275,11 @@ describe('流水线模式（task_051）：表单', () => {
     const custom = panel.shadowRoot?.querySelector('[data-role="pipeline-custom"]') as HTMLElement;
     const selects = Array.from(custom.querySelectorAll<HTMLSelectElement>('[data-role="pipeline-station-character"]'));
     const templates = Array.from(custom.querySelectorAll<HTMLTextAreaElement>('[data-role="pipeline-station-template"]'));
-    selects[0].value = 'c-1';
-    selects[1].value = 'c-2';
-    templates[0].value = '做 {{task}}';
-    templates[1].value = '审 {{prev_output}}';
-    const input = panel.shadowRoot?.querySelector('[data-role="task-input"]') as HTMLTextAreaElement;
-    input.value = '议题X';
+    selectStation(selects[0], 'c-1');
+    selectStation(selects[1], 'c-2');
+    typeTemplate(templates[0], '做 {{task}}');
+    typeTemplate(templates[1], '审 {{prev_output}}');
+    typeIssue(panel, '议题X');
 
     clickFormAction(panel, 'task-submit');
     const command = harness.commands[0] as {
