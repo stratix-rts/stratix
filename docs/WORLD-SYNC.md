@@ -1,6 +1,7 @@
 # WORLD-SYNC — Stratix world-sync WebSocket 协议规范
 
-> **状态**：v1 冻结（契约层 task_081 + 传输层 task_082 均已落地；端点见 `api/websocket/world-sync/endpoint.ts`）　**性质**：规范文档（含契约层实现指引）
+> **状态**：v2 冻结（契约层 task_081 + 传输层 task_082 均已落地；端点见 `api/websocket/world-sync/endpoint.ts`；
+> v2 = 新增 `event.forward` 事件面，@since v3.3 task_156）　**性质**：规范文档（含契约层实现指引）
 > **适用范围**：service（gateway 常驻进程）与视图客户端（Electron 壳 / 浏览器）之间的**状态面**与**命令面**
 > **实现**：`src/stratix-gateway/api/websocket/world-sync/protocol.ts`（纯类型 + 守卫 + 常量 + 编解码纯函数，零运行时依赖）
 > **配套**：[SERVICE-SPLIT-PLAN.md](SERVICE-SPLIT-PLAN.md)（B1 节与铁律 1/4）｜[MCP-SPEC.md](MCP-SPEC.md)（工具面，另一条对外通道）｜[UNIT-STATE-FLOW.md](UNIT-STATE-FLOW.md)（task_142：状态流全链路 + 实测延迟 + 词表评估）
@@ -28,7 +29,7 @@
 world-sync 的消费方**不是人**，而是**视图客户端**（Electron 壳、将来的浏览器壳）—— 一个「随时可能被关掉、被重启、可能没有网络」的进程。三条取向随之而来：
 
 1. **service 是唯一真相源，客户端是投影**：客户端不持有真相，只持有一份**投影**。投影随时可能被 service 用一份全量快照整体覆盖。
-2. **写只有一条路**：客户端**只能**通过 `command.forward` 写。它不直接改本地状态，不直接调 service 的内部 API（铁律 2：裁决在 core）。
+2. **写只有一条路**：客户端**只能**通过 `command.forward`（命令）/ `event.forward`（世界事件）写。它不直接改本地状态，不直接调 service 的内部 API（铁律 2：裁决在 core）。
 3. **断连是常态，不是异常**：壳可以随时被关掉、被重启。因此「重连之后怎么办」必须在协议里写死，而不是让每个客户端自己发明一套合并逻辑（铁律 1）。
 
 ### 0.2 权威依据
@@ -43,13 +44,13 @@ world-sync 的消费方**不是人**，而是**视图客户端**（Electron 壳�
 
 ### 0.3 范围与非目标
 
-**范围内**：五种消息的字段与语义、方向、版本号与状态版本号（seq）的规则、错误码、重连与未附着语义、兼容演进规则。
+**范围内**：六种消息的字段与语义、方向、版本号与状态版本号（seq）的规则、错误码、重连与未附着语义、兼容演进规则。
 
 **范围外（本期明确不做）**：❌ 传输层实现（WS 端点、连接管理、心跳 —— 归 task_082）；❌ 增量 patch 协议（**预留 `delta` 字段位，本期恒为 null**，见 [§7](#7-协议演进)）；❌ 鉴权与多租户；❌ 客户端侧 store 实现（CoreStore 的远程实现归 task_083）；❌ 与 v2 的 `StatusSync` 编排事件面复用（那是另一套协议，见 [§5](#5-何时用--何时不用)）。
 
 ### 0.4 术语
 
-**状态面** = service → 客户端的单向投影流（`snapshot`）。**命令面** = 客户端 → service 的写通道（`command.forward`）+ 落点回执（`command.ack`）。**附着（attached）** = service 已接上 core store、能读到真状态、能裁决命令；**未附着（not attached）** = 接不上（如 service 尚未装配完成、core store 未就绪）。**状态版本（seq）** = service 侧统一发号的状态版本号。**全量覆盖** = 收到一份 `snapshot` 后，客户端用其内容整体替换本地视图，而不是与之合并。
+**状态面** = service → 客户端的单向投影流（`snapshot`）。**命令面** = 客户端 → service 的写通道（`command.forward`）+ 落点回执（`command.ack`）。**事件面** = 客户端 → service 的世界事件通道（`event.forward`，@since v3.3 task_156）—— 画布交互的世界事件（点选 / 框选 / 右击移动 / 导演开关）上行给 service 的 core 裁决；**纯视图事件不上行**（相机位姿、回放节拍 —— service 不需要，别拿视图态污染真相）。**附着（attached）** = service 已接上 core store、能读到真状态、能裁决命令；**未附着（not attached）** = 接不上（如 service 尚未装配完成、core store 未就绪）。**状态版本（seq）** = service 侧统一发号的状态版本号。**全量覆盖** = 收到一份 `snapshot` 后，客户端用其内容整体替换本地视图，而不是与之合并。
 
 ---
 
@@ -62,6 +63,7 @@ world-sync 的消费方**不是人**，而是**视图客户端**（Electron 壳�
    ┌────────────────────────┐                ┌──────────────────────────────┐
    │  读：snapshot（订阅）    │ ◄──────────── │  推：全量 WorldState + seq     │
    │  写：command.forward     │ ────────────► │  收：转交 core 裁决（铁律 2）    │
+   │  写：event.forward      │ ────────────► │  收：投 core 总线 → runtime 裁决 │
    │  回执：command.ack       │ ◄──────────── │  回：落点结果 + 核对后 seq      │
    │  协议错误：error         │ ◄──────────── │  报：信封级错误                │
    │  注册：hello             │ ────────────► │  收：协议版本 + clientId       │
@@ -69,8 +71,9 @@ world-sync 的消费方**不是人**，而是**视图客户端**（Electron 壳�
 ```
 
 - **service 推 snapshot，客户端订**：状态面是单向的。客户端不能「拉状态」，也不能「请求一份状态」—— 想要状态就等 `snapshot`。
-- **客户端只经 `command.forward` 写**：不存在第二条写路径（没有 REST 写入视图、没有本地直改）。
+- **客户端只经 `command.forward` / `event.forward` 写**：不存在第二条写路径（没有 REST 写入视图、没有本地直改）。
 - **`snapshot` 是广播，`command.ack` 是点对点**：ack 只回给发命令的那个连接。
+- **`event.forward` 是 fire-and-forget**（无 ack）：世界事件没有「落点 id」可回读 —— 客户端想看结果读下一份 `snapshot`（选中环 / 面板据此更新）。
 
 ### 1.2 重连语义（写死）
 
@@ -142,6 +145,7 @@ if (snapshot.seq > lastSeq) localStore.merge(snapshot.state);
 | `snapshot` | service → 客户端（广播） | 收到 `hello` 后立即；此后每次状态变更 | 全量世界状态 + 状态版本号 | 用：客户端唯一的读路径。不用于「只想要一小块」—— 那是 REST/MCP |
 | `command.forward` | 客户端 → service | 用户/交互触发写操作 | HudCommand 的信封（含 `commandId` 用于关联回执） | 用：一切写。**不用**：本地纯表现（音效、面板开合）—— 那些不进状态面 |
 | `command.ack` | service → 客户端（点对点） | 每条 `command.forward` 必回一条 | 落点回执：ok / 失败原因 + 核对后的 seq | 用：客户端据此判定「这次写入成没成」。不用：代替 snapshot —— ack 不带全量状态 |
+| `event.forward` | 客户端 → service | 画布交互（点选 / 框选 / 右击移动 / 导演开关） | 世界事件的信封（载荷 = 白名单内的 `WorldEvent`） | 用：**状态语义**世界事件的上行通道（@since v3.3 task_156）。**不用**：纯视图事件（`camera.moved` / `replay.beat` / `fx.sound`）—— service 不需要，别拿视图态污染真相 |
 | `error` | service → 客户端（点对点） | 信封级协议错误 | 解不开 / 类型不认识 / 版本不兼容 | 用：协议层故障。不用：业务级失败（业务失败走 `command.ack{ok:false}`） |
 
 ### 2.2 字段明细
@@ -170,6 +174,22 @@ if (snapshot.seq > lastSeq) localStore.merge(snapshot.state);
 | `type` | `"command.forward"` | 是 | 消息型 |
 | `commandId` | `string`（非空） | 是 | 命令 id（客户端生成，连接内唯一）。service 回 `command.ack` 用它关联 |
 | `command` | `HudCommand` | 是 | 待裁决的 HUD 命令，与 `src/core/types.ts` 同源。**协议层只校验信封（类型名在册），载荷合法性由 core 裁决**（铁律 2） |
+
+#### `event.forward`（客户端 → service）
+
+| 字段 | 类型 | 必填 | 语义 |
+|------|------|------|------|
+| `type` | `"event.forward"` | 是 | 消息型 |
+| `event` | `ForwardableWorldEvent` | 是 | 待裁决的世界事件。**白名单只有四条**（`unit.click` / `selection.box` / `unit.move` / `camera.director`）—— 状态语义事件；纯视图事件不在册（协议层解不开即拒） |
+
+> **白名单的由来（@since v3.3，task_156）**：远程模式下渲染进程**不起本地 core runtime**（真相在 service），
+> 画布交互走的是 world → core 的 `WorldEvent` 通道 —— 少了这条通道，那些事件进了本地总线却零消费者 →
+> **静默丢弃**（画布全哑）。故补上这条上行通道，由 **service 侧的 core** 裁决（落 store → snapshot 回推）。
+> 纯视图事件（相机位姿、回放节拍）**不上行**：service 不需要相机姿态，上行只会拿视图态污染真相。
+>
+> **无回执**：fire-and-forget —— 快照是最终一致口径。客户端要看结果就读下一份 `snapshot`。
+> **形状校验在协议层**：事件是要**原样喂进 core 总线**的，形状不对（缺 `mods` / 坐标非数）会炸在 core 手里
+> —— 故协议层挡形状，业务合法性仍归 core 裁决（铁律 2）。
 
 #### `command.ack`（service → 客户端）
 
@@ -386,7 +406,7 @@ ws.send(encodeMessage({ type: 'command.forward', commandId, command })!);
 
 ### 5.3 协议层 vs core 的裁决边界
 
-**何时用**协议层校验：信封结构（`type` 是不是五型之一、`commandId` 非空、`seq` 是正整数、命令类型名在册）。
+**何时用**协议层校验：信封结构（`type` 是不是词表之内、`commandId` 非空、`seq` 是正整数、命令类型名在册）。
 
 **何时不用**协议层校验：命令载荷的业务合法性（角色是否存在、任务是否在可取消相位、槽位号是否越界）—— **那是 core 状态机的事**（铁律 2）。协议层再抄一份校验规则 = 第二份真相，且必然随 core 演进而漂移。
 
@@ -418,7 +438,7 @@ send(outcome.ok ? createOkAck(msg.commandId, seq) : createFailedAck(msg.commandI
 | 码 | 出现位置 | 含义 | 客户端该怎么做 | 可重试 |
 |----|---------|------|---------------|-------|
 | `malformed_message` | `error` / `decode` | JSON 解不开，或信封字段缺失/类型不对 | 记日志、断连重连；不要重发同一条坏消息 | 否（消息本身有问题） |
-| `unknown_message_type` | `error` / `decode` | `type` 不在五型之内（协议版本错配的典型症状） | 核对协议版本；断连重连 | 否 |
+| `unknown_message_type` | `error` / `decode` | `type` 不在消息型词表之内（协议版本错配的典型症状） | 核对协议版本；断连重连 | 否 |
 | `unsupported_version` | `error` | `hello.protocolVersion` 不在支持区间 | 升级/降级客户端版本后重连；不要试图绕过 | 否 |
 | `not_attached` | `command.ack.error` | 状态面未附着（service 没接上 core store） | 把本地视图标记 stale；UI 如实显示「未连接」；等 service 就绪后重连 | 是（稍后重试） |
 | `rejected` | `command.ack.error` | core 状态机裁决拒绝该命令（业务拒绝） | 按 `message`/`hint` 修正后重新发起 | 视情况 |
@@ -450,11 +470,17 @@ send(outcome.ok ? createOkAck(msg.commandId, seq) : createFailedAck(msg.commandI
 2. 越界 → 回 `error{code:'unsupported_version', message}` 并断开该连接；
 3. **不静默降级** —— 用一个客户端不认识的语义去服务它，比断开更糟。
 
+> **当前版本：2**（v1 = task_081/082 冻结；v2 = @since v3.3 task_156 新增 `event.forward` 消息型）。
+> `WORLD_SYNC_MIN_PROTOCOL_VERSION` 仍是 **1**：v1 客户端只用到 hello / snapshot / command.forward /
+> command.ack —— 那套语义一字未改，仍可连上（它只是用不上 `event.forward` 这条新能力）。
+> 反过来，**v2 客户端撞上 v1 service** → 版本越界 → 回 `unsupported_version` 并断开 ——
+> 响亮地失败，好过老 service 悄悄拒收 `event.forward` 造成「画布全哑」。
+
 ### 7.4 破坏性变更清单（升版本时逐条核对）
 
 | 变更 | 破坏性 | 说明 |
 |------|-------|------|
-| 新增消息型（如 `snapshot.delta` 独立成消息） | 是 | 老客户端会判 `unknown_message_type` → 必须先升版本 |
+| 新增消息型（如 `snapshot.delta` 独立成消息） | 是 | 老客户端会判 `unknown_message_type` → 必须先升版本（v2 = 新增 `event.forward`） |
 | 新增可选字段 | 否 | 老客户端忽略 |
 | 改 `seq` 语义（如改成按连接计数） | 是 | 客户端的「落后几版」诊断会失真 |
 | 改 `command.ack.ok=false` 时不再带 `error` | 是 | 违反「失败必带原因」不变式 → 客户端会失去失败原因 |

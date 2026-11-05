@@ -1,8 +1,9 @@
 /**
- * 文件职责：world-sync WebSocket 协议契约层（前后端分离 B1 / task_081）—— 五种消息的类型、
+ * 文件职责：world-sync WebSocket 协议契约层（前后端分离 B1 / task_081）—— 消息型的类型、
  *   类型守卫（isXxx）、协议常量与 encode/decode 纯函数。
- * 输入：src/core/types.ts 的总线契约（WorldState / HudCommand，仅 type-only 导入 → 零运行时依赖）。
- * 输出：WorldSyncMessage 五型联合 + 守卫 + 纯函数（encodeMessage / decodeMessage / toWireState 等）。
+ *   @since v3.3（task_156）：新增 `event.forward`（客户端 → service 的世界事件转发通道）。
+ * 输入：src/core/types.ts 的总线契约（WorldState / HudCommand / WorldEvent，仅 type-only 导入 → 零运行时依赖）。
+ * 输出：WorldSyncMessage 联合 + 守卫 + 纯函数（encodeMessage / decodeMessage / toWireState 等）。
  * 禁止事项：
  *   1. 引入任何运行时依赖 —— 尤其禁止依赖 ws（WebSocket 传输库）：本层是纯契约，传输层归 task_082；
  *   2. 在协议层裁决命令载荷的合法性 —— 载荷合法性由 core 状态机裁决（铁律 2「裁决在 core」）；
@@ -10,7 +11,7 @@
  *   4. 抛异常 —— 序列化/解析失败一律以返回值判别（null / ok=false），不抛不炸传输层。
  *
  * 方向语义（写死，见 docs/WORLD-SYNC.md）：
- *   客户端 → service：hello（注册）、command.forward（唯一的写入口）
+ *   客户端 → service：hello（注册）、command.forward（命令写入口）、event.forward（世界事件写入口）
  *   service → 客户端：snapshot（唯一的状态面）、command.ack（落点回执）、error（协议错误）
  *
  * 重连语义（写死）：
@@ -20,7 +21,7 @@
  * 配套文档：docs/WORLD-SYNC.md（消息表 + 五场景时序图 + seq 规则 + 未附着语义）
  */
 
-import type { HudCommand, WorldState } from '@/core/types';
+import type { HudCommand, WorldEvent, WorldState } from '@/core/types';
 
 // ============================================================================
 // 协议常量
@@ -29,8 +30,15 @@ import type { HudCommand, WorldState } from '@/core/types';
 /**
  * 当前协议版本（service 与客户端协商用）。
  * 不兼容 → service 回 `error{code:'unsupported_version'}` 并断开该连接（不降级、不假装能通）。
+ *
+ * @since v3.3（task_156）升到 2：新增消息型 `event.forward`（客户端 → service 的世界事件转发）。
+ *   why 升版本（docs/WORLD-SYNC.md §7.4「新增消息型 = 破坏性变更」）：老 service 收到 event.forward
+ *   只会判 unknown_message_type —— 那正是「画布交互全哑」的静默失败面。升版本后老 service 直接回
+ *   unsupported_version 并断开：**响亮地失败**好过悄悄不生效。
+ *   MIN 仍是 1：v1 客户端只用到 hello / snapshot / command.forward / command.ack —— 那套语义一字未改，
+ *   仍可连上（它只是用不上 event.forward 这条新能力）。
  */
-export const WORLD_SYNC_PROTOCOL_VERSION = 1;
+export const WORLD_SYNC_PROTOCOL_VERSION = 2;
 
 /** 可接受的最低协议版本（含）。低于此值同样按 unsupported_version 拒绝。 */
 export const WORLD_SYNC_MIN_PROTOCOL_VERSION = 1;
@@ -50,27 +58,29 @@ export const WORLD_SYNC_SEQ_START = 1;
  */
 export const WORLD_SYNC_ACK_TIMEOUT_MS = 5_000;
 
-/** 消息类型词表（五型，封闭）。 */
+/** 消息类型词表（封闭）。 */
 export type WorldSyncMessageType =
   | 'hello'
   | 'snapshot'
   | 'command.forward'
   | 'command.ack'
+  | 'event.forward'
   | 'error';
 
-/** 五型消息的类型名清单（常量，供服务端分派与文档对齐）。 */
+/** 消息的类型名清单（常量，供服务端分派与文档对齐）。 */
 export const WORLD_SYNC_MESSAGE_TYPES: readonly WorldSyncMessageType[] = [
   'hello',
   'snapshot',
   'command.forward',
   'command.ack',
+  'event.forward',
   'error',
 ] as const;
 
 /**
  * 协议错误码词表。
  * - malformed_message：JSON 解析失败，或信封字段缺失/类型不对。
- * - unknown_message_type：type 不在五型之内。
+ * - unknown_message_type：type 不在消息型词表之内。
  * - unsupported_version：hello 自报的协议版本不受支持。
  * - not_attached：状态面未附着（service 未启动 / 未接上 core store）—— 如实报不可用，不返回空态。
  * - rejected：core 状态机裁决拒绝该命令（业务拒绝，非协议错误）。
@@ -108,7 +118,7 @@ export interface WorldSyncErrorDetail {
 }
 
 // ============================================================================
-// 消息类型（五型）
+// 消息类型（六型 —— @since v3.3 task_156 加了 event.forward）
 // ============================================================================
 
 /**
@@ -169,6 +179,60 @@ export interface CommandAckMessage {
 }
 
 /**
+ * 可上行的世界事件（@since v3.3，task_156）—— **状态语义**事件白名单。
+ *
+ * why 只有这四条：它们改变世界真相（选择集 / 单位落位 / 导演开关），远程模式下必须由
+ *   **service 侧的 core** 裁决（铁律 2「裁决在 core」—— 本地没有真相，本地裁决就是第二份真相）。
+ *   纯视图事件（camera.moved / replay.beat / fx.sound / unit.bubble …）是本机表现，
+ *   service 不需要 —— 上行只会拿视图态污染真相（且 camera.moved 每 120ms 一条，纯烧带宽）。
+ */
+export type ForwardableWorldEvent = Extract<
+  WorldEvent,
+  { type: 'unit.click' | 'selection.box' | 'unit.move' | 'camera.director' }
+>;
+
+/**
+ * 世界事件的**上行白名单**（类型名 → 在册）。
+ *
+ * why 不是 `Record<WorldEvent['type'], true>`（那等于放行 core 的**全部**事件，含纯视图事件）：
+ *   白名单必须显式列出「状态语义」那几条。四个键的类型由上面的 `Extract` 从 core 的 WorldEvent
+ *   推导 —— core 改名或改形状会**编译报错**（同 HUD_COMMAND_TYPE_FLAGS 的纪律：契约不静默漂移）。
+ */
+const FORWARDABLE_WORLD_EVENT_FLAGS: Readonly<Record<ForwardableWorldEvent['type'], true>> = {
+  'unit.click': true,
+  'selection.box': true,
+  'unit.move': true,
+  'camera.director': true,
+};
+
+/** 上行白名单的类型名清单（常量，供客户端 / 文档 / 单测对齐）。 */
+export const FORWARDABLE_WORLD_EVENT_TYPES: readonly ForwardableWorldEvent['type'][] = [
+  'unit.click',
+  'selection.box',
+  'unit.move',
+  'camera.director',
+] as const;
+
+/**
+ * event.forward —— 客户端 → service：世界事件的转发信封（@since v3.3，task_156）。
+ *
+ * why 存在这条通道：远程模式下渲染进程**不起本地 core runtime**（真相在 service），
+ *   画布交互（点选 / 框选 / 右键移动）走的是 world → core 的 WorldEvent 通道 ——
+ *   少了这条通道，那些事件进了本地总线却零消费者 → **静默丢弃**（画布全哑）。
+ *
+ * 语义：service 侧把事件发到**它自己的 core 总线**，由 service 侧的 runtime 裁决
+ *   （落 store → snapshot 全量回推全体客户端）。service **不改 store**（铁律 2）。
+ *
+ * 回执：fire-and-forget（无 ack）—— 快照是最终一致口径，事件本身没有「落点 id」可回读；
+ *   客户端要看结果就读下一份 snapshot（选中环 / 面板据此更新）。
+ */
+export interface EventForwardMessage {
+  readonly type: 'event.forward';
+  /** 待裁决的世界事件（白名单内的那几条状态语义事件）。 */
+  readonly event: ForwardableWorldEvent;
+}
+
+/**
  * error —— service → 客户端：协议错误信封（信封级问题：解不开、类型不认识、版本不兼容）。
  * 命令层面的失败不走这里，走 command.ack{ok:false}。
  */
@@ -180,12 +244,13 @@ export interface ErrorMessage {
   readonly commandId?: string;
 }
 
-/** 五型消息联合。 */
+/** 消息联合。 */
 export type WorldSyncMessage =
   | HelloMessage
   | SnapshotMessage
   | CommandForwardMessage
   | CommandAckMessage
+  | EventForwardMessage
   | ErrorMessage;
 
 // ============================================================================
@@ -253,6 +318,10 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isPositiveInt(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 /**
@@ -414,6 +483,62 @@ export function isCommandAckMessage(value: unknown): value is CommandAckMessage 
   return true;
 }
 
+/**
+ * 上行世界事件的**信封级**判定（@since v3.3，task_156）：
+ * 类型名在白名单内 + 载荷的**形状**对得上（够 core 裁决用，不至于炸在它手里）。
+ *
+ * why 在这里挡形状（而不像 HudCommand 那样只认类型名）：事件是要**原样喂进 core 总线**的 ——
+ *   `unit.click` 缺 mods 会在 core 的 `mods.shift` 上炸，`unit.move` 缺坐标会让落位成 NaN。
+ *   形状不对 → 拒（客户端发的是坏消息，不必连累 service）。
+ *   业务合法性（单位是否存在、点的是不是已阵亡的单位）仍归 core 裁决（铁律 2）。
+ */
+export function isForwardableWorldEvent(value: unknown): value is ForwardableWorldEvent {
+  if (!isRecord(value)) return false;
+  const type = value.type;
+  if (typeof type !== 'string') return false;
+  if (FORWARDABLE_WORLD_EVENT_FLAGS[type as ForwardableWorldEvent['type']] !== true) return false;
+  switch (type) {
+    case 'unit.click':
+      return (
+        isNonEmptyString(value.unitId) &&
+        isRecord(value.mods) &&
+        typeof value.mods.shift === 'boolean' &&
+        typeof value.mods.ctrl === 'boolean' &&
+        typeof value.mods.meta === 'boolean' &&
+        typeof value.mods.alt === 'boolean'
+      );
+    case 'selection.box':
+      return (
+        isRecord(value.bounds) &&
+        isFiniteNumber(value.bounds.x) &&
+        isFiniteNumber(value.bounds.y) &&
+        isFiniteNumber(value.bounds.width) &&
+        isFiniteNumber(value.bounds.height) &&
+        (value.unitIds === undefined ||
+          (Array.isArray(value.unitIds) && value.unitIds.every(isNonEmptyString))) &&
+        (value.additive === undefined || typeof value.additive === 'boolean')
+      );
+    case 'unit.move':
+      return (
+        Array.isArray(value.unitIds) &&
+        value.unitIds.every(isNonEmptyString) &&
+        isFiniteNumber(value.x) &&
+        isFiniteNumber(value.y)
+      );
+    case 'camera.director':
+      return typeof value.enabled === 'boolean';
+    default:
+      return false;
+  }
+}
+
+/** event.forward 判定（@since v3.3，task_156）。 */
+export function isEventForwardMessage(value: unknown): value is EventForwardMessage {
+  if (!isRecord(value)) return false;
+  if (value.type !== 'event.forward') return false;
+  return isForwardableWorldEvent(value.event);
+}
+
 /** error 判定。 */
 export function isErrorMessage(value: unknown): value is ErrorMessage {
   if (!isRecord(value)) return false;
@@ -424,13 +549,14 @@ export function isErrorMessage(value: unknown): value is ErrorMessage {
   return true;
 }
 
-/** 五型分派守卫：是真消息就返回 true。 */
+/** 分派守卫：是真消息就返回 true。 */
 export function isWorldSyncMessage(value: unknown): value is WorldSyncMessage {
   return (
     isHelloMessage(value) ||
     isSnapshotMessage(value) ||
     isCommandForwardMessage(value) ||
     isCommandAckMessage(value) ||
+    isEventForwardMessage(value) ||
     isErrorMessage(value)
   );
 }
@@ -497,6 +623,17 @@ export function createOkAck(commandId: string, seq: number): CommandAckMessage {
   return { type: 'command.ack', commandId, ok: true, seq };
 }
 
+/**
+ * 构造 event.forward 信封（@since v3.3，task_156）。
+ * 不在白名单的事件返回 null（客户端侧据此不上行；service 侧据此拒收）。
+ */
+export function createEventForwardMessage(
+  event: WorldEvent,
+): EventForwardMessage | null {
+  if (!isForwardableWorldEvent(event)) return null;
+  return { type: 'event.forward', event };
+}
+
 /** 构造协议错误信封。 */
 export function createErrorMessage(
   code: WorldSyncErrorCode,
@@ -538,9 +675,9 @@ export function encodeMessage(message: WorldSyncMessage): string | null {
 }
 
 /**
- * 解析 JSON 文本为五型消息之一。
+ * 解析 JSON 文本为消息型之一（六型）。
  * 失败 → 返回 { ok:false, code, message }，**不抛**。
- * 错误码口径：JSON 解析失败 / 字段不合法 → malformed_message；type 不在五型 → unknown_message_type。
+ * 错误码口径：JSON 解析失败 / 字段不合法 → malformed_message；type 不在词表 → unknown_message_type。
  */
 export function decodeMessage(raw: string): WorldSyncDecodeResult {
   let parsed: unknown;

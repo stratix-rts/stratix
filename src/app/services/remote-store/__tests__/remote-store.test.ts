@@ -5,6 +5,7 @@
  *   ③ 命令发送（emitCommand → command.forward 信封；回执按 commandId 结算；未连接时不发出）；
  *   ④ stale 标志（未连上 / 收到快照 / 再断开三态）；
  *   ⑤ 屏位归属（@since v3.10，task_153：屏位是客户端自己的视图状态，不被 service 的共享值串台）。
+ *   ⑥ 事件面（@since v3.3，task_156：emitWorldEvent → event.forward；白名单外的事件不上行）。
  * 输入：内存 WebSocket 替身（**不起真端口**、不连真 service）+ 协议层构造助手（B1 产物）。
  * 输出：逐条断言（任一失败即红）。
  * 禁止事项：
@@ -118,7 +119,8 @@ describe('createRemoteStore（前后端分离 B3：Electron 远程 store）', ()
     // 连接建立后第一件事就是 hello（协议 §4.1：注册）
     const hello = socket.sentMessages()[0];
     expect(hello.type).toBe('hello');
-    expect(hello.protocolVersion).toBe(1);
+    // @since v3.3（task_156）：协议升到 2（新增 event.forward 消息型）。
+    expect(hello.protocolVersion).toBe(2);
     expect(typeof hello.clientId).toBe('string');
 
     // 第一份快照
@@ -229,6 +231,58 @@ describe('createRemoteStore（前后端分离 B3：Electron 远程 store）', ()
     // 回主屏（'main' 与 core 同口径 = 不写屏位字段）
     store.emitCommand({ type: 'ui.navigate', screen: 'main' });
     expect(store.getState().currentScreen).toBeUndefined();
+
+    store.dispose();
+  });
+
+  it('⑥ 事件面（@since v3.3，task_156）：白名单内的世界事件转 event.forward 上行', () => {
+    const { store, sockets } = setup({});
+    const socket = sockets[0];
+    socket.open();
+
+    // 状态语义事件 → 上行
+    const sent = store.emitWorldEvent({
+      type: 'unit.click',
+      unitId: 'u1',
+      mods: { shift: false, ctrl: false, meta: false, alt: false },
+    });
+    expect(sent).toBe(true);
+    const forwarded = socket.sentMessages().find((m) => m.type === 'event.forward');
+    expect(forwarded).toBeDefined();
+    expect(forwarded?.event).toEqual({
+      type: 'unit.click',
+      unitId: 'u1',
+      mods: { shift: false, ctrl: false, meta: false, alt: false },
+    });
+
+    // 纯视图事件 → 不上行（service 不需要相机姿态，别拿视图态污染真相）
+    const before = socket.sentMessages().length;
+    const viewSent = store.emitWorldEvent({
+      type: 'camera.moved',
+      center: { x: 1, y: 2 },
+      zoom: 1,
+    });
+    expect(viewSent).toBe(false);
+    expect(socket.sentMessages()).toHaveLength(before);
+
+    store.dispose();
+  });
+
+  it('⑥′ 未连接时事件不上行（不排队、不补发 —— 如实失败）', () => {
+    const { store, sockets } = setup({});
+    const socket = sockets[0];
+    socket.open();
+    socket.drop(); // 断连
+
+    const sent = store.emitWorldEvent({
+      type: 'unit.click',
+      unitId: 'u1',
+      mods: { shift: false, ctrl: false, meta: false, alt: false },
+    });
+    expect(sent).toBe(false);
+    // 断连前发出的那一条还在（不补发第二条）
+    const forwards = socket.sentMessages().filter((m) => m.type === 'event.forward');
+    expect(forwards).toHaveLength(0);
 
     store.dispose();
   });

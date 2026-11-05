@@ -1,10 +1,12 @@
 /**
  * 文件职责：**Electron 壳的远程世界态存储**（前后端分离 B3 / task_083）——
  *   core/store.ts 的 `CoreStore` 的**远程实现**：状态面只读（service 推全量快照 → 本地整体覆盖），
- *   写面只经 `command.forward`（hud 命令 → service 的 core 裁决，铁律 2）。
- * 输入：world-sync 协议（B1 契约层 protocol.ts）的五型消息 + 一条 WS 连接（可注入 → 单测不起真端口）。
+ *   写面只经 `command.forward`（hud 命令 → service 的 core 裁决，铁律 2）、
+ *   **事件面只经 `event.forward`**（画布交互的世界事件 → service 的 core 裁决，@since v3.3 task_156）。
+ * 输入：world-sync 协议（B1 契约层 protocol.ts）的消息 + 一条 WS 连接（可注入 → 单测不起真端口）。
  * 输出：一个与 `CoreStore` **读侧同形**的 store（`getState` / `subscribe`）+
- *   命令转发面（`emitCommand`）+ 存活性查询（`isStale`）+ 版本诊断（`getSeq`）+ 收尾（`dispose`）。
+ *   命令转发面（`emitCommand`）+ 事件转发面（`emitWorldEvent`）+ 存活性查询（`isStale`）
+ *   + 版本诊断（`getSeq`）+ 收尾（`dispose`）。
  * 禁止事项：
  *   1. 在本地改状态 —— 本地没有真相，真相在 service 的 core store（铁律 1「真相唯一」）；
  *   2. 增量合并快照 —— 重连 = **全量覆盖**，不做逐字段合并（协议 §1.2）；
@@ -12,12 +14,21 @@
  *   4. 把未回执的命令补发到新连接 —— 那条命令可能已在旧连接上落地（协议 §1.2 明令禁止）；
  *   5. 引入新依赖 —— 只用浏览器原生 WebSocket（可注入替换 → 单测用内存替身）。
  *
+ * ============ 事件面（@since v3.3，task_156）============
+ *   远程模式下渲染进程**不起本地 core runtime** —— 画布交互（点选 / 框选 / 右键移动）走的是
+ *   world → core 的 WorldEvent 通道；少了转发通道，那些事件进了本地总线却零消费者 →
+ *   **静默丢弃**（画布全哑）。故本实现提供 `emitWorldEvent`：把**状态语义**事件转成
+ *   `event.forward` 发给 service，由 service 侧的 runtime 裁决（落 store → snapshot 回推）。
+ *   白名单（协议层 `FORWARDABLE_WORLD_EVENT_TYPES`）：unit.click / selection.box / unit.move /
+ *   camera.director。纯视图事件（camera.moved / replay.beat / fx.sound …）**不上行** ——
+ *   service 不需要相机姿态，别拿视图态污染真相。
+ *
  * ============ 唯一的例外：屏位（currentScreen）是**客户端自己的**视图状态 ============
  *   快照里的 `currentScreen` 落在 service 的**共享** store 上 —— 谁跳屏，所有客户端都被拽过去
  *   （task_153 默认连网关后暴露：另一个客户端切到设置屏，本浏览器就被拽进设置屏）。
  *   屏位是**每个客户端自己的视图状态**（跟你把窗口切到哪个标签页一样，不该被别人拽走），
  *   故本实现：① 快照到达时保留**本地**屏位；② 本端发起 `ui.navigate` 时立即本地生效
- *   （不等回执往返），同时照旧把命令转发给 service（协议口径不变、五型词表零改动）。
+ *   （不等回执往返），同时照旧把命令转发给 service（协议口径不变、命令面词表零改动）。
  *   这是「本地视图」而非「本地真相」—— 业务数据仍一律来自快照（铁律 1 不破）。
  *
  * ============ 为什么不是完整的 CoreStore ============
@@ -36,11 +47,12 @@
  */
 
 import { createInitialState, type CoreStore, type StateListener } from '../../../core/store';
-import type { HudCommand, ScreenId, WorldState } from '../../../core/types';
+import type { HudCommand, ScreenId, WorldEvent, WorldState } from '../../../core/types';
 import {
   WORLD_SYNC_ACK_TIMEOUT_MS,
   WORLD_SYNC_PATH,
   WORLD_SYNC_PROTOCOL_VERSION,
+  createEventForwardMessage,
   decodeMessage,
   encodeMessage,
   fromWireState,
@@ -98,6 +110,16 @@ export interface RemoteStore extends Pick<CoreStore, 'getState' | 'subscribe'> {
    * 未连接时**不排队、不补发**（协议 §1.2）：命令未发出，如实回报失败。
    */
   emitCommand(command: HudCommand): string;
+  /**
+   * 把一条**世界事件**转成 `event.forward` 发给 service（@since v3.3，task_156）。
+   *
+   * 只有**状态语义**事件在白名单内才上行（unit.click / selection.box / unit.move /
+   * camera.director）；纯视图事件（camera.moved / replay.beat …）返回 false、**不上行** ——
+   * service 不需要相机姿态，别拿视图态污染真相。
+   *
+   * 返回 true = 已发出；false = 未发出（不在白名单 / 未连接）。
+   */
+  emitWorldEvent(event: WorldEvent): boolean;
   /** 本地视图是否不可信（未连接 / 已断开 / 状态面未附着）。 */
   isStale(): boolean;
   /** 连接是否已建立（socket 已 open 且 hello 已发出）。 */
@@ -281,7 +303,8 @@ export function createRemoteStore(url: string, options: RemoteStoreOptions = {})
         if (message.code === 'not_attached') stale = true;
         return;
       default:
-        // hello / command.forward 是 service → 客户端方向之外的消息型，收到即方向搞反 → 忽略。
+        // hello / command.forward / event.forward 都是**客户端 → service**方向的消息型，
+        //   service 发过来 = 方向搞反 → 忽略。
         logger(`收到方向非法的消息（type=${message.type}）—— 已忽略`);
     }
   };
@@ -392,6 +415,22 @@ export function createRemoteStore(url: string, options: RemoteStoreOptions = {})
     return commandId;
   };
 
+  /**
+   * 事件面（@since v3.3，task_156）：转 `event.forward` 发给 service。
+   *
+   * 白名单外的纯视图事件（camera.moved / replay.beat …）**不上行** —— 不刷日志（camera.moved
+   * 每 120ms 一条，刷屏没意义），返回 false 即「没上行」。
+   */
+  const emitWorldEvent = (event: WorldEvent): boolean => {
+    const message = createEventForwardMessage(event);
+    if (!message) return false; // 不在白名单 —— 纯视图事件，本机表现而已
+    if (!opened || !socket) {
+      logger(`未连接到 service：世界事件未发出（type=${event.type}）`);
+      return false;
+    }
+    return send(message);
+  };
+
   const store: RemoteStore = {
     getState: () => state,
     subscribe: (listener: StateListener) => {
@@ -401,6 +440,7 @@ export function createRemoteStore(url: string, options: RemoteStoreOptions = {})
       };
     },
     emitCommand,
+    emitWorldEvent,
     isStale: () => stale,
     isConnected: () => opened,
     getSeq: () => seq,

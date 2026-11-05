@@ -1,18 +1,19 @@
 /**
- * 单测：world-sync 的**传输端**（task_082 / 前后端分离 B2）。
+ * 单测：world-sync 的**传输端**（task_082 / 前后端分离 B2；@since v3.3 task_156：事件面）。
  * 覆盖（对齐任务验收）：
  *   ① hello 后必收 snapshot（含真实 store 数据）；
  *   ② 命令往返 ack：forward → 状态变更 → ack ok；
  *   ③ 无人接管命令超时 → internal_error ack；
  *   ④ seq 单调递增；
  *   ⑤ 两客户端并存各自收广播（且 ack 只回发起方）；
- *   ＋ 协议错误（坏帧 / 版本不兼容 / 未注册就发命令）与心跳踢死链。
+ *   ⑥ 世界事件转发：event.forward → core 裁决 → 落 store → 快照回推（task_156）；
+ *   ＋ 协议错误（坏帧 / 版本不兼容 / 未注册就发命令 / 方向反了）与心跳踢死链。
  *
  * 传输层用**注入式内存 duplex socket**（不起真端口、不连真 TCP）——
  *   见 __tests__/helpers/memory-socket.ts。
  */
 
-import { emitCommand, resetBus } from '@/core/bus';
+import { emitCommand, emitWorldEvent, resetBus } from '@/core/bus';
 import { createCoreRuntime } from '@/core/runtime';
 import { createStore, type CoreStore } from '@/core/store';
 import type { Notice, UnitView } from '@/core/types';
@@ -55,6 +56,11 @@ function forward(commandId: string, command: unknown): string {
   return JSON.stringify({ type: 'command.forward', commandId, command });
 }
 
+/** event.forward 报文（@since v3.3，task_156）。 */
+function forwardEvent(event: unknown): string {
+  return JSON.stringify({ type: 'event.forward', event });
+}
+
 /** 起一个 runtime（命令的裁决方）；返回收尾闭包（runtime.start() 的返回值）。 */
 function startRuntime(store: CoreStore): () => void {
   const runtime = createCoreRuntime({ store });
@@ -74,6 +80,8 @@ describe('world-sync 端点（task_082）', () => {
     const endpoint = new WorldSyncEndpoint({
       store,
       dispatch: emitCommand,
+      // @since v3.3（task_156）：事件面投递口 = core 总线的 emitWorldEvent（生产同源）。
+      dispatchEvent: emitWorldEvent,
       snapshotThrottleMs: 20,
       ackTimeoutMs: 80,
       heartbeatIntervalMs: 0,
@@ -223,6 +231,108 @@ describe('world-sync 端点（task_082）', () => {
     endpoint.accept(server);
 
     client.send('{ 这不是 JSON');
+
+    const errors = client.messagesOfType<ErrorMessage>('error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0].code).toBe('malformed_message');
+  });
+
+  // -------------------------------------------------------------------------
+  // ⑥ 世界事件转发（@since v3.3，task_156）
+  // -------------------------------------------------------------------------
+
+  it('⑥ event.forward → core 裁决 → 选中落 store → 快照回推（远程模式画布交互的闭环）', async () => {
+    const store = createStore({ units: [makeUnit('u-alpha')] });
+    runtimeStops.push(startRuntime(store)); // service 侧的 runtime = 裁决方
+    const { endpoint } = makeEndpoint({ store });
+    const { client, server } = createDuplexPair();
+    endpoint.accept(server);
+    client.send(hello('electron-1'));
+
+    client.send(
+      forwardEvent({
+        type: 'unit.click',
+        unitId: 'u-alpha',
+        mods: { shift: false, ctrl: false, meta: false, alt: false },
+      }),
+    );
+    await wait(60);
+
+    // 落点真的落进了 core store（不是空转 —— 事件没有「假成功」）
+    expect(store.getState().selection.unitIds).toEqual(['u-alpha']);
+    // 快照回推（节流窗口内推一份新的全量）
+    const snaps = client.messagesOfType<SnapshotMessage>('snapshot');
+    expect(snaps.length).toBeGreaterThanOrEqual(2);
+    expect(snaps[snaps.length - 1].state.selection.unitIds).toEqual(['u-alpha']);
+  });
+
+  it('⑥′ 框选与右击移动同样上行（selection.box / unit.move）', async () => {
+    const store = createStore({ units: [makeUnit('u-alpha'), makeUnit('u-beta')] });
+    runtimeStops.push(startRuntime(store));
+    const { endpoint } = makeEndpoint({ store });
+    const { client, server } = createDuplexPair();
+    endpoint.accept(server);
+    client.send(hello('electron-1'));
+
+    client.send(
+      forwardEvent({
+        type: 'selection.box',
+        bounds: { x: 0, y: 0, width: 100, height: 100 },
+        unitIds: ['u-alpha', 'u-beta'],
+      }),
+    );
+    await wait(60);
+    expect(store.getState().selection.unitIds).toEqual(['u-alpha', 'u-beta']);
+
+    client.send(forwardEvent({ type: 'unit.move', unitIds: ['u-alpha'], x: 300, y: 400 }));
+    await wait(60);
+    // 移动落位（core 侧的编队落位生效 —— 单位状态与任务相位照旧由 core 裁决）
+    expect(store.getState().selection.unitIds).toEqual(['u-alpha', 'u-beta']);
+  });
+
+  it('⑥″ 白名单外的事件（camera.moved）被拒：解不开 → malformed_message', () => {
+    const { endpoint } = makeEndpoint();
+    const { client, server } = createDuplexPair();
+    endpoint.accept(server);
+    client.send(hello('electron-1'));
+
+    client.send(forwardEvent({ type: 'camera.moved', center: { x: 1, y: 2 }, zoom: 1 }));
+
+    const errors = client.messagesOfType<ErrorMessage>('error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0].code).toBe('malformed_message');
+  });
+
+  it('没发 hello 就发事件 → 拒（不认这条连接的写）', async () => {
+    const store = createStore({ units: [makeUnit('u-alpha')] });
+    runtimeStops.push(startRuntime(store));
+    const { endpoint } = makeEndpoint({ store });
+    const { client, server } = createDuplexPair();
+    endpoint.accept(server);
+
+    client.send(
+      forwardEvent({
+        type: 'unit.click',
+        unitId: 'u-alpha',
+        mods: { shift: false, ctrl: false, meta: false, alt: false },
+      }),
+    );
+    await flush();
+
+    const errors = client.messagesOfType<ErrorMessage>('error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0].code).toBe('malformed_message');
+    // 没注册 → 不认它的写：状态纹丝不动
+    expect(store.getState().selection.unitIds).toEqual([]);
+  });
+
+  it('客户端发 service → 客户端方向的消息型（snapshot）仍被拒', () => {
+    const { endpoint } = makeEndpoint();
+    const { client, server } = createDuplexPair();
+    endpoint.accept(server);
+    client.send(hello('electron-1'));
+
+    client.send(JSON.stringify({ type: 'snapshot', seq: 99, state: { units: [] } }));
 
     const errors = client.messagesOfType<ErrorMessage>('error');
     expect(errors).toHaveLength(1);

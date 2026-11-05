@@ -1,6 +1,7 @@
 /**
  * 文件职责：world-sync 的**端点**（前后端分离 B2 / task_082）—— gateway 侧的传输实现：
- *   统一发号（seq）、快照节流广播、命令面回读核对落点、心跳踢死链、多客户端广播。
+ *   统一发号（seq）、快照节流广播、命令面回读核对落点、事件面投递（@since task_156）、
+ *   心跳踢死链、多客户端广播。
  * 输入：一条 WS 连接（生产 = `ws` 的 WebSocket；单测 = 注入的内存 duplex socket）、
  *   core store（真相源）与命令投递口（core 总线）。
  * 输出：发给客户端的 snapshot（广播）/ command.ack（点对点）/ error（点对点）。
@@ -39,7 +40,7 @@ import http from 'http';
 import { WebSocketServer } from 'ws';
 
 import type { CoreStore } from '@/core/store';
-import type { HudCommand, Notice, WorldState } from '@/core/types';
+import type { HudCommand, Notice, WorldEvent, WorldState } from '@/core/types';
 
 import {
   WORLD_SYNC_ACK_TIMEOUT_MS,
@@ -50,6 +51,7 @@ import {
   createOkAck,
   createSnapshotMessage,
   type CommandAckMessage,
+  type ForwardableWorldEvent,
   type SnapshotMessage,
 } from './protocol';
 import { WorldSyncSession, type WorldSyncEndpointPort, type WorldSyncSocket } from './session';
@@ -180,6 +182,11 @@ export interface WorldSyncEndpointOptions {
   readonly store: CoreStore | null;
   /** 命令投递口（生产 = core 总线的 emitCommand）。 */
   readonly dispatch: (command: HudCommand) => void;
+  /**
+   * 世界事件投递口（@since v3.3，task_156；生产 = core 总线的 emitWorldEvent）。
+   * 缺省 = **不投递**（端点没有总线就没有裁决方 —— 事件无处可去，如实丢弃不假装生效）。
+   */
+  readonly dispatchEvent?: (event: WorldEvent) => void;
   /** 命令回执超时（ms）。缺省 = WORLD_SYNC_ACK_TIMEOUT_MS。 */
   readonly ackTimeoutMs?: number;
   /** 快照节流窗口（ms）。缺省 = 100。 */
@@ -220,6 +227,9 @@ export class WorldSyncEndpoint implements WorldSyncEndpointPort {
   /** 命令投递口。 */
   private readonly dispatch: (command: HudCommand) => void;
 
+  /** 世界事件投递口（@since v3.3，task_156；缺省 = 无裁决方，事件无处可去）。 */
+  private readonly dispatchEvent: ((event: WorldEvent) => void) | null;
+
   /** 命令回执超时（ms）。 */
   private readonly ackTimeoutMs: number;
 
@@ -259,6 +269,7 @@ export class WorldSyncEndpoint implements WorldSyncEndpointPort {
   constructor(options: WorldSyncEndpointOptions) {
     this.store = options.store;
     this.dispatch = options.dispatch;
+    this.dispatchEvent = options.dispatchEvent ?? null;
     this.ackTimeoutMs = options.ackTimeoutMs ?? WORLD_SYNC_ACK_TIMEOUT_MS;
     this.snapshotThrottleMs = options.snapshotThrottleMs ?? WORLD_SYNC_SNAPSHOT_THROTTLE_MS;
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? WORLD_SYNC_HEARTBEAT_INTERVAL_MS;
@@ -380,6 +391,35 @@ export class WorldSyncEndpoint implements WorldSyncEndpointPort {
       );
     } finally {
       this.probes.delete(probe);
+    }
+  }
+
+  /**
+   * 事件面（@since v3.3，task_156）：把客户端上行的世界事件投到 **service 的 core 总线**。
+   *
+   * why 端点只做「投递」：裁决在 service 侧的 core runtime（铁律 2）—— 事件进了总线，
+   *   core 落 store → store 变更 → 本端点照旧广播全量 snapshot（回推全体客户端）。
+   *   端点自己**不改 store**（同 dispatchCommand 的纪律）。
+   *
+   * 无回执（fire-and-forget）：世界事件没有「落点 id」可回读，快照是最终一致口径。
+   */
+  dispatchWorldEvent(event: ForwardableWorldEvent): void {
+    const emit = this.dispatchEvent;
+    if (!emit) {
+      // 没有总线 = 没有裁决方。如实记一笔（不假装生效），不炸传输层。
+      this.logger(`[world-sync] 事件面无投递口（type=${event.type}）—— 已丢弃`);
+      return;
+    }
+    if (!this.store) {
+      // 未附着：没有真相可落 —— 事件无处裁决（如实记一笔，不假装生效）。
+      this.logger(`[world-sync] 状态面未附着，事件无处裁决（type=${event.type}）`);
+      return;
+    }
+    try {
+      emit(event);
+    } catch (error) {
+      // 投递口抛错 = 事件没出去。如实记一笔（铁律 4「绝不假装成功」），连接继续活着。
+      this.logger(`[world-sync] 事件投递失败（type=${event.type}）：${describeError(error)}`);
     }
   }
 

@@ -1,11 +1,12 @@
 /**
- * 单测：world-sync 协议契约层（task_081）。
- * 覆盖：五消息型的类型守卫（合法 / 非法样例各 ≥2）、编解码纯函数、编组槽位 wire 互转、协议常量。
+ * 单测：world-sync 协议契约层（task_081；@since v3.3 task_156：event.forward 事件面）。
+ * 覆盖：消息型的类型守卫（合法 / 非法样例各 ≥2）、编解码纯函数、编组槽位 wire 互转、协议常量。
  */
 
 import type { WorldState } from '@/core/types';
 
 import {
+  FORWARDABLE_WORLD_EVENT_TYPES,
   WORLD_SYNC_ACK_TIMEOUT_MS,
   WORLD_SYNC_ERROR_CODES,
   WORLD_SYNC_MESSAGE_TYPES,
@@ -14,6 +15,7 @@ import {
   WORLD_SYNC_PROTOCOL_VERSION,
   WORLD_SYNC_SEQ_START,
   createErrorMessage,
+  createEventForwardMessage,
   createFailedAck,
   createNotAttachedAck,
   createOkAck,
@@ -25,6 +27,8 @@ import {
   isCommandAckMessage,
   isCommandForwardMessage,
   isErrorMessage,
+  isEventForwardMessage,
+  isForwardableWorldEvent,
   isHelloMessage,
   isHudCommand,
   isSnapshotMessage,
@@ -68,19 +72,22 @@ const WIRE_STATE = {
 
 describe('协议常量', () => {
   it('版本与端点路径是冻结值', () => {
-    expect(WORLD_SYNC_PROTOCOL_VERSION).toBe(1);
+    // @since v3.3（task_156）：协议升到 2（新增 event.forward 消息型 —— 升版本是响亮地失败，
+    //   好过老 service 悄悄拒收 event.forward 造成「画布全哑」）。
+    expect(WORLD_SYNC_PROTOCOL_VERSION).toBe(2);
     expect(WORLD_SYNC_MIN_PROTOCOL_VERSION).toBe(1);
     expect(WORLD_SYNC_PATH).toBe('/ws/world-sync');
     expect(WORLD_SYNC_SEQ_START).toBe(1);
     expect(WORLD_SYNC_ACK_TIMEOUT_MS).toBeGreaterThan(0);
   });
 
-  it('消息类型恰好五型，错误码词表封闭', () => {
+  it('消息类型词表封闭（含 event.forward），错误码词表封闭', () => {
     expect(WORLD_SYNC_MESSAGE_TYPES).toEqual([
       'hello',
       'snapshot',
       'command.forward',
       'command.ack',
+      'event.forward',
       'error',
     ]);
     expect(WORLD_SYNC_ERROR_CODES).toContain('not_attached');
@@ -91,7 +98,7 @@ describe('协议常量', () => {
     expect(isSupportedProtocolVersion(WORLD_SYNC_PROTOCOL_VERSION)).toBe(true);
     expect(isSupportedProtocolVersion(WORLD_SYNC_MIN_PROTOCOL_VERSION)).toBe(true);
     expect(isSupportedProtocolVersion(0)).toBe(false);
-    expect(isSupportedProtocolVersion(2)).toBe(false);
+    expect(isSupportedProtocolVersion(3)).toBe(false);
     expect(isSupportedProtocolVersion('1')).toBe(false);
   });
 });
@@ -207,6 +214,87 @@ describe('isCommandForwardMessage', () => {
 });
 
 // ---------------------------------------------------------------------------
+// event.forward（@since v3.3，task_156）
+// ---------------------------------------------------------------------------
+
+describe('isEventForwardMessage / isForwardableWorldEvent', () => {
+  const click = {
+    type: 'unit.click' as const,
+    unitId: 'u1',
+    mods: { shift: false, ctrl: false, meta: false, alt: false },
+  };
+
+  it('合法样例 1：unit.click（点选）', () => {
+    expect(isEventForwardMessage({ type: 'event.forward', event: click })).toBe(true);
+    expect(isForwardableWorldEvent(click)).toBe(true);
+  });
+
+  it('合法样例 2：selection.box（框选，带命中 id）', () => {
+    const event = {
+      type: 'selection.box',
+      bounds: { x: 10, y: 20, width: 100, height: 50 },
+      unitIds: ['u1', 'u2'],
+      additive: true,
+    };
+    expect(isForwardableWorldEvent(event)).toBe(true);
+    expect(isEventForwardMessage({ type: 'event.forward', event })).toBe(true);
+  });
+
+  it('合法样例 3：unit.move（右键移动）与 camera.director（导演开关）', () => {
+    expect(
+      isForwardableWorldEvent({ type: 'unit.move', unitIds: ['u1'], x: 100, y: 200 }),
+    ).toBe(true);
+    expect(isForwardableWorldEvent({ type: 'camera.director', enabled: false })).toBe(true);
+  });
+
+  it('非法样例 1：纯视图事件不上行（camera.moved / replay.beat 不在白名单）', () => {
+    expect(isForwardableWorldEvent({ type: 'camera.moved', center: { x: 1, y: 2 }, zoom: 1 })).toBe(
+      false,
+    );
+    expect(isForwardableWorldEvent({ type: 'replay.beat', beat: { at: 0, kind: 'reset' } })).toBe(
+      false,
+    );
+    expect(isForwardableWorldEvent({ type: 'fx.sound', cue: { kind: 'click' } })).toBe(false);
+    expect(
+      isEventForwardMessage({
+        type: 'event.forward',
+        event: { type: 'camera.moved', center: { x: 1, y: 2 }, zoom: 1 },
+      }),
+    ).toBe(false);
+  });
+
+  it('非法样例 2：形状不对（缺 mods / 坐标非数 / id 非串）', () => {
+    expect(isForwardableWorldEvent({ type: 'unit.click', unitId: 'u1' })).toBe(false);
+    expect(isForwardableWorldEvent({ type: 'unit.move', unitIds: ['u1'], x: 'NaN', y: 2 })).toBe(
+      false,
+    );
+    expect(isForwardableWorldEvent({ type: 'unit.move', unitIds: [1], x: 1, y: 2 })).toBe(false);
+    expect(isForwardableWorldEvent({ type: 'camera.director', enabled: 'yes' })).toBe(false);
+  });
+
+  it('非法样例 3：缺 event 字段 / 类型不是 event.forward', () => {
+    expect(isEventForwardMessage({ type: 'event.forward' })).toBe(false);
+    expect(isEventForwardMessage({ type: 'command.forward', event: click })).toBe(false);
+  });
+
+  it('白名单词表：恰好四条状态语义事件', () => {
+    expect(FORWARDABLE_WORLD_EVENT_TYPES).toEqual([
+      'unit.click',
+      'selection.box',
+      'unit.move',
+      'camera.director',
+    ]);
+  });
+
+  it('createEventForwardMessage：白名单内造得出、白名单外造不出', () => {
+    const message = createEventForwardMessage(click);
+    expect(message?.type).toBe('event.forward');
+    expect(message?.event).toEqual(click);
+    expect(createEventForwardMessage({ type: 'camera.moved', center: { x: 1, y: 2 }, zoom: 1 })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // command.ack
 // ---------------------------------------------------------------------------
 
@@ -294,7 +382,7 @@ describe('isErrorMessage', () => {
 // ---------------------------------------------------------------------------
 
 describe('isWorldSyncMessage', () => {
-  it('五型都认', () => {
+  it('各消息型都认', () => {
     expect(isWorldSyncMessage({ type: 'hello', protocolVersion: 1, clientId: 'c' })).toBe(true);
     expect(isWorldSyncMessage({ type: 'snapshot', seq: 1, state: WIRE_STATE })).toBe(true);
     expect(
@@ -307,10 +395,16 @@ describe('isWorldSyncMessage', () => {
     expect(isWorldSyncMessage({ type: 'command.ack', commandId: 'c1', ok: true, seq: 1 })).toBe(
       true,
     );
+    expect(
+      isWorldSyncMessage({
+        type: 'event.forward',
+        event: { type: 'unit.click', unitId: 'u1', mods: { shift: false, ctrl: false, meta: false, alt: false } },
+      }),
+    ).toBe(true);
     expect(isWorldSyncMessage({ type: 'error', code: 'internal_error', message: 'x' })).toBe(true);
   });
 
-  it('六型之外的一律不认', () => {
+  it('词表之外的一律不认', () => {
     expect(isWorldSyncMessage({ type: 'register' })).toBe(false);
     expect(isWorldSyncMessage({})).toBe(false);
     expect(isWorldSyncMessage([])).toBe(false);
@@ -322,7 +416,7 @@ describe('isWorldSyncMessage', () => {
 // ---------------------------------------------------------------------------
 
 describe('encodeMessage / decodeMessage', () => {
-  it('往返：五型消息 encode → decode 后字段不变', () => {
+  it('往返：各消息型 encode → decode 后字段不变', () => {
     const messages = [
       { type: 'hello', protocolVersion: 1, clientId: 'client-a' },
       { type: 'snapshot', seq: 7, state: WIRE_STATE, delta: null },
@@ -332,6 +426,10 @@ describe('encodeMessage / decodeMessage', () => {
         command: { type: 'unit.select', unitIds: ['u1'], mode: 'toggle' },
       },
       { type: 'command.ack', commandId: 'cmd-1', ok: true, seq: 8 },
+      {
+        type: 'event.forward',
+        event: { type: 'unit.click', unitId: 'u1', mods: { shift: false, ctrl: false, meta: false, alt: false } },
+      },
       { type: 'error', code: 'not_attached', message: '状态面未附着' },
     ];
     for (const message of messages) {

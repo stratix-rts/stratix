@@ -396,6 +396,20 @@ async function boot(): Promise<void> {
     emitState(state);
   });
 
+  // ===== 远程模式：画布交互的世界事件改走转发（@since v3.3，task_156）=====
+  //   远程模式**不启动本地 core runtime**（真相在 service，铁律 1）—— 画布交互（点选 / 框选 /
+  //   右键移动）走的是 world → core 的 WorldEvent 通道：本地总线零消费者 → 静默丢弃 → 画布全哑。
+  //   故这里把**状态语义**事件（白名单：unit.click / selection.box / unit.move / camera.director）
+  //   转成 `event.forward` 上行，由 service 侧的 runtime 裁决（落 store → snapshot 回推 → 选中环出现）。
+  //   白名单在协议层（FORWARDABLE_WORLD_EVENT_TYPES）：纯视图事件（camera.moved / replay.beat）
+  //   不上行 —— service 不需要相机姿态，别拿视图态污染真相。
+  //   本地模式**零改动**：remote 为 null → 压根不订阅这条总线。
+  const stopRemoteEventForward = remote
+    ? onWorldEvent((event) => {
+        remote.emitWorldEvent(event);
+      })
+    : () => undefined;
+
   // ===== HUD 侧：真实 main-screen + 主题控制器，走注入的 bus-adapter =====
   defineStratButton();
   // 浮层堆叠刻度表（@since v3.9，task_146）：z-index 的唯一刻度 —— 注入成 :root 上的
@@ -1621,6 +1635,8 @@ async function boot(): Promise<void> {
       stopAgentDetection();
       // 远程 store（task_083）：退订快照广播 + 关连接 + 停重连定时器（资源必须可清理）。
       stopRemoteFeed?.();
+      // 远程模式的世界事件转发订阅（task_156）：退订总线（与其它总线订阅同一卸载纪律）。
+      stopRemoteEventForward();
       remote?.dispose();
       // 存档协调器先停（内部会冲刷未落盘的站位缓冲），再拆养成服务、任务服务与 runtime。
       saveCoordinator?.stop();

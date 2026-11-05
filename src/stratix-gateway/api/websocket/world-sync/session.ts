@@ -1,13 +1,17 @@
 /**
  * 文件职责：world-sync 的**单连接会话**（前后端分离 B2 / task_082）——
- *   一条客户端连接 = 一个会话：解析来信、按五型协议分派、回消息。
- * 输入：客户端发来的 UTF-8 JSON 文本（hello / command.forward）。
+ *   一条客户端连接 = 一个会话：解析来信、按协议分派、回消息。
+ * 输入：客户端发来的 UTF-8 JSON 文本（hello / command.forward / event.forward）。
  * 输出：发给**本连接**的 snapshot / command.ack / error（点对点；广播是端点的职责）。
  * 禁止事项：
- *   1. 在会话里改 store —— 写只能经 command.forward → core 裁决（铁律 2「裁决在 core」）；
+ *   1. 在会话里改 store —— 写只能经 command.forward / event.forward → core 裁决（铁律 2「裁决在 core」）；
  *   2. 在会话里发 seq —— 发号是端点的单一职责（全 service 统一发号，协议 §3）；
  *   3. 在会话里广播 —— 广播属端点（会话只管自己这一条连接）；
  *   4. 把信封级错误当命令失败 —— 信封级错误走 error，业务级失败走 command.ack{ok:false}（协议 §2.1）。
+ *
+ * @since v3.3（task_156）：新增 `event.forward` 的受理 —— 画布交互的世界事件从客户端
+ *   上行到 service 的 core 总线（此前只有 hello / command.forward 两种客户端消息型，
+ *   远程模式下画布交互进了本地总线却零消费者 → 静默丢弃 → 画布全哑）。
  *
  * 依赖方向：会话只认识 `WorldSyncEndpointPort`（窄接口）+ protocol.ts 的纯函数。
  *   why 不直接依赖端点实现：端点要 import 会话，会话再 import 端点 = 循环依赖。
@@ -26,6 +30,8 @@ import {
   encodeMessage,
   isSupportedProtocolVersion,
   type CommandAckMessage,
+  type EventForwardMessage,
+  type ForwardableWorldEvent,
   type HelloMessage,
   type SnapshotMessage,
   type WorldSyncDecodeResult,
@@ -69,6 +75,11 @@ export interface WorldSyncEndpointPort {
   issueSnapshot(): SnapshotMessage | null;
   /** 命令面：投递 + 回读核对落点 → 回执（绝不假装成功，铁律 4）。 */
   dispatchCommand(commandId: string, command: HudCommand): Promise<CommandAckMessage>;
+  /**
+   * 事件面（@since v3.3，task_156）：把客户端上行的世界事件投到 **service 的 core 总线**。
+   * 无回执（fire-and-forget）：快照是最终一致口径 —— 客户端看结果读下一份 snapshot。
+   */
+  dispatchWorldEvent(event: ForwardableWorldEvent): void;
   /** 会话结束（连接关闭）→ 端点清理该会话。 */
   releaseSession(session: WorldSyncSession): void;
 }
@@ -160,7 +171,7 @@ export class WorldSyncSession {
   // 私有
   // -------------------------------------------------------------------------
 
-  /** 按五型协议分派一帧。 */
+  /** 按协议分派一帧。 */
   private async dispatchMessage(data: unknown): Promise<void> {
     const decoded = this.decode(data);
     if (!decoded.ok) {
@@ -175,6 +186,9 @@ export class WorldSyncSession {
         return;
       case 'command.forward':
         await this.handleCommandForward(message);
+        return;
+      case 'event.forward':
+        this.handleEventForward(message);
         return;
       default:
         // snapshot / command.ack / error 都是 service → 客户端方向；客户端发它们 = 方向搞反了。
@@ -219,6 +233,23 @@ export class WorldSyncSession {
     }
     const ack = await this.endpoint.dispatchCommand(message.commandId, message.command);
     this.send(ack);
+  }
+
+  /**
+   * event.forward（@since v3.3，task_156）：转交端点 → 投到 service 的 core 总线。
+   *
+   * 无回执（fire-and-forget）：世界事件没有「落点 id」可回读，快照是最终一致口径 ——
+   *   客户端想看结果就读下一份 snapshot（选中环 / 面板据此更新）。
+   * 载荷形状已在 protocol 层挡过（isForwardableWorldEvent）—— 白名单外的事件根本解不开，
+   *   走到这里的一定是「类型在册 + 形状对得上」的那几条。
+   */
+  private handleEventForward(message: EventForwardMessage): void {
+    if (!this.registered) {
+      // 未注册的连接不认它的写（同 command.forward 的纪律：先 hello 再写）。
+      this.sendError('malformed_message', '请先发送 hello 完成注册再发事件');
+      return;
+    }
+    this.endpoint.dispatchWorldEvent(message.event);
   }
 
   /** 解码一帧（失败不抛，用返回值判别 —— 协议层口径）。 */

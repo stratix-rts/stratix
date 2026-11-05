@@ -22,7 +22,7 @@ import { ensureDirSync } from 'fs-extra';
 
 import type { SqliteDatabaseLike } from '../app/services/persistence/game-save-dao';
 import type { TaskTransportFactory } from '../app/services/task-service';
-import { emitCommand } from '../core/bus';
+import { emitCommand, emitWorldEvent } from '../core/bus';
 import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
 import { initializeDatabase } from '../stratix-database';
 import { createNocoDBService, type NocoDBServiceOptions } from '../stratix-nocodb';
@@ -321,6 +321,10 @@ export async function startGatewayService(
   const worldSyncEndpoint = attachWorldSyncEndpoint(server, {
     store: service.store,
     dispatch: emitCommand,
+    // 世界事件面（@since v3.3，task_156）：客户端上行的画布交互事件 → **本进程** core 总线
+    //   → service 侧的 runtime 裁决（落 store → snapshot 回推全体客户端）。
+    //   与 dispatch 同源同实例 —— 客户端看到的就是 service 持有的真相（铁律 1「真相唯一」）。
+    dispatchEvent: emitWorldEvent,
   });
   console.log(`[world-sync] endpoint ready on ${WORLD_SYNC_PATH}`);
 
