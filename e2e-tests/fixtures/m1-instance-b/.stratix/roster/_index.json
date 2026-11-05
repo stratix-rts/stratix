@@ -1,0 +1,7 @@
+{
+  "formatVersion": 1,
+  "defaultRoleId": "scout",
+  "roles": [
+    { "id": "scout", "name": "斥候", "agentKind": "claude-code" }
+  ]
+}

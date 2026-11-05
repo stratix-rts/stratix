@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": "../..",
+    "paths": {
+      "@/*": ["src/*"],
+      "@stratix-core/*": ["src/stratix-core/*"],
+      "phaser": ["e2e-tests/m1-instance-switch/phaser-stub.ts"]
+    },
+    "rootDir": "../..",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["../../src/**/*", "./**/*"],
+  "//files": "phaser 的类型声明是**全局脚本**（declare namespace Phaser）⇒ 把真实 phaser 的 .d.ts 拉进来，src/world 里那几百处 `Phaser.Scene` / `Phaser.GameObjects.GameObject` 才认得出类型；模块本体（import Phaser from 'phaser'）仍由上面的 paths 映射到本地桩（node 里跑不了真 Phaser）。",
+  "files": ["../../node_modules/phaser/types/phaser.d.ts"]
+}

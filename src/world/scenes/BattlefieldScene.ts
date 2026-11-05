@@ -381,7 +381,14 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     //   （`stratix:unit-position-seed:<instanceId>`）里；场景只取自己这一副本的那份
     //   ⇒ A 副本的位置不会漏进 B 副本（旧实现是全局单键，design §2.5 #6/#18/#22）。
     // 没接上（纯 vite dev / 读档失败）→ undefined，注册表全部按网格落位，行为与从前一致。
-    const restoredPositions = resolvePositionSeed(this.registry, this.bridge.scope());
+    // why 用 this.instanceId 优先（@since v3.3，task_190 / M1-16 验收发现的真实缺陷）：
+    //   桥接层的 scope 初值恒是**默认沙盒**（它是本场景刚 new 出来的，要等下一次 state
+    //   广播才拿到本次的 activeInstanceId）⇒ 切到第二个副本时 create() 读种子会读到
+    //   **沙盒那份** ⇒ A 副本的单位 id 漏进 B 副本（种子键分家失效）。
+    //   本次真正切进去的副本 id 是 init() 从 scene data 冻结下来的 ⇒ 以它为准；
+    //   没有 instanceId（开机直接进战场）才回落桥接层 scope（= 默认沙盒，老行为不变）。
+    const seedScope = this.instanceId ?? this.bridge.scope();
+    const restoredPositions = resolvePositionSeed(this.registry, seedScope);
     this.units.applyRestoredPositions(restoredPositions);
 
     this.view = new CameraController(this.cameras.main, {

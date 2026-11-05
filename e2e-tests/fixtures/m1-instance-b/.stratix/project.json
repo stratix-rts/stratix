@@ -1,0 +1,14 @@
+{
+  "$schema": "https://stratix.dev/schemas/project/v1.json",
+  "formatVersion": 1,
+  "id": "spx_m1b_7d2f9a4c6b8e1d30f5a2c7b",
+  "name": "荒原哨站",
+  "description": "M1 端到端验收的第二个副本（切进去应当是空的）。",
+  "createdAt": "2026-11-06T09:00:00.000Z",
+  "agents": {
+    "defaultRoleId": "scout",
+    "defaultProfile": "stratix-default"
+  },
+  "engines": { "stratix": ">=3.3.0" },
+  "links": { "dsh": "dsh/profile.json" }
+}
