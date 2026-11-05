@@ -13,6 +13,9 @@
  *   4. 在这里塞渲染层 / 宿主层的东西（DOM / ipc / preload）—— 本模块必须能在纯 node 里跑。
  *
  * 装配顺序（why 这个顺序）：
+ *   ⓪ 默认沙盒物化 + 副本端口（M1-07）：注册表恒含默认沙盒（path = 进程 cwd 快照）
+ *      ⇒ 实例清单随第一帧广播就位（大厅有卡）、`project.enter(DEFAULT_INSTANCE_ID)` 能进；
+ *      排在组合根之前是因为它俩是**组合根的输入件**（runtime 起来就握在手里）；
  *   ① 组合根（A1）：core runtime 起来 → 命令开始落地（这是「大脑醒了」的那一刻）；
  *   ② 世界态恢复（A4）：角色档案从库里回来 → 写进同一份 store（MCP 立刻见真世界态）；
  *   ③ agent 探测（A4，后台）：detectedAgents 逐条进 store → 执行环的出队守门才认得出
@@ -21,9 +24,27 @@
  * @since v3.43（task_080 / service-split A4）。
  */
 
+import {
+  createInstanceRegistryWithDefaultSandbox,
+  publishProjectInstances,
+} from '../../app/services/persistence/default-sandbox';
+import { nodeProcessCwd } from '../../app/services/persistence/default-sandbox-node';
 import type { SqliteDatabaseLike } from '../../app/services/persistence/game-save-dao';
+import {
+  createInstanceLoader,
+  createStoreMissionsProvider,
+} from '../../app/services/persistence/instance-loader';
+import {
+  createSqliteInstanceDataSource,
+  nodePathExists,
+} from '../../app/services/persistence/instance-loader-node';
+import { createProjectArchive } from '../../app/services/persistence/project-archive';
+import {
+  createInstanceRootResolver,
+  createNodeArchiveAppender,
+} from '../../app/services/persistence/project-archive-node';
 import type { TaskTransportFactory } from '../../app/services/task-service';
-import type { CoreStore } from '../../core/store';
+import { worldStore, type CoreStore } from '../../core/store';
 
 import { startAgentDetection, type ServiceAgentDetection } from './agent-detection';
 import type { ServiceStorage } from './storage';
@@ -92,16 +113,49 @@ export interface BootedStratixService {
 export function bootStratixService(options: ServiceBootOptions = {}): BootedStratixService {
   const logger = options.logger ?? ((line: string): void => console.log(line));
 
+  // ===== ⓪ 默认沙盒物化（M1-07）+ 副本装载 / 归档端口 =====
+  // why 排在组合根之前：注册表与两个端口是**组合根的输入件**（runtime 起来就握在手里），
+  //   且实例清单要在第一帧广播里就带着默认沙盒（大厅卡片的数据源）⇒ 必须在 runtime 起来前备好。
+  //
+  // 默认沙盒 = 注册表里的一条真实记录（instanceId = DEFAULT_INSTANCE_ID，path = 进程 cwd 快照）
+  //   ⇒ 大厅有卡、`project.enter(DEFAULT_INSTANCE_ID)` 能进、旧数据（instance_id IS NULL 的行）
+  //   按 COALESCE 口径落它名下（design §2.4 R1-04 / §7.1 M1-07 行）。
+  const store = options.store ?? worldStore;
+  const instanceRegistry = createInstanceRegistryWithDefaultSandbox({ cwd: nodeProcessCwd() });
+  // 装载端口要有库才装得动（读库在 app 侧）；无库 = 不接（`project.enter` 走「未落地」，
+  //   如实说清没接上，不假装能进）。
+  const instanceLoader = options.db
+    ? createInstanceLoader({
+        store,
+        registry: instanceRegistry,
+        source: createSqliteInstanceDataSource(options.db, {
+          missions: createStoreMissionsProvider(store),
+        }),
+        pathExists: nodePathExists,
+      })
+    : undefined;
+  // 归档端口：退出副本时把未终结 mission 追加进 `.stratix/history/*.jsonl`（append-only）。
+  const projectArchive = createProjectArchive({
+    missions: createStoreMissionsProvider(store),
+    resolveInstanceRoot: createInstanceRootResolver(instanceRegistry),
+    appender: createNodeArchiveAppender(),
+  });
+
   // ===== ① 组合根（A1）+ 执行环接线（A2）+ 存储接线（A3）=====
   const service = createStratixService({
-    ...(options.store ? { store: options.store } : {}),
+    store,
     ...(options.storage ? { storage: options.storage } : {}),
     // 执行环：给出即在本进程跑（直接 spawn CLI，不经渲染进程 / IPC）。
     // transport 工厂缺省 = cli-transport 的 node-process 工厂（真实 CLI）；
     // 给了 createTransport 就用它（e2e 剧本注入 fake adapter，见 ServiceBootOptions）。
     taskExecution: options.createTransport ? { createTransport: options.createTransport } : {},
+    // 副本装载 / 归档端口（M1-07）：`project.enter` / `project.exit` 的 IO 出口。
+    ...(instanceLoader ? { instanceLoader } : {}),
+    projectArchive,
     logger,
   });
+  // 实例清单进世界态（大厅卡片的数据源）—— 一次写入 = 一次广播（state 通道）。
+  publishProjectInstances(store, instanceRegistry);
 
   // ===== ② 世界态恢复（A4）：快照（missions + 角色）→ store；再从库里补角色档案 =====
   // 快照是 gateway 自己的世界态真相（missions 与 characters 一起存一起读）；

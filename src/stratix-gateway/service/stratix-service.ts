@@ -73,7 +73,12 @@ import { createCoreRuntime, type CoreRuntime, type UnhandledChannel } from '../.
 import { createSessionManager, type SessionManager, type SessionPersistPort } from '../../core/session';
 import { worldStore, type CoreStore } from '../../core/store';
 import { createTaskManager, type PipelineRunnerPort, type TaskManager } from '../../core/task';
-import type { HudCommand, WorldEvent } from '../../core/types';
+import type {
+  HudCommand,
+  InstanceLoaderPort,
+  ProjectArchivePort,
+  WorldEvent,
+} from '../../core/types';
 
 import { createServiceTaskExecution, type ServiceTaskExecutionPorts } from './task-execution';
 import { settleMissionFromTaskReport } from './mission-report';
@@ -158,6 +163,23 @@ export interface StratixServiceOptions {
    * （其余端口缺席即静默，与 app 层各服务的缺省口径一致）。
    */
   readonly logger?: (line: string) => void;
+  /**
+   * 副本装载端口（可选，@since v3.3，task_181 / M1-07）—— `project.enter` 的 IO 出口。
+   *
+   * 给出即：runtime 能裁决 `project.enter`（inspect → load → 写 activeInstanceId → 广播）。
+   * 缺省 = 不接：`project.enter` 按「未落地」处理（走 onUnhandled，**不假装成功**）。
+   *
+   * why 由组合根注入而不是本模块自己造：端口实现要读库（IO 归 app 侧唯一那层），
+   *   而本组合根**不碰 SQLite 连接**（开库归存储件工厂）—— 与 persistExpEvent 的缺省范式同源。
+   */
+  readonly instanceLoader?: InstanceLoaderPort;
+  /**
+   * 副本归档端口（可选，@since v3.3，task_181 / M1-07）—— `project.exit` 的落盘出口。
+   *
+   * 给出即：退出副本时先归档再卸载（不可归档的 mission 落 `.stratix/history/*.jsonl`）。
+   * 缺省 = 不接：`project.exit` 按「未落地」处理（core 的退出裁决要求两个端口都在）。
+   */
+  readonly projectArchive?: ProjectArchivePort;
 }
 
 /** 组合根产物：service 进程持有的 core 装配。 */
@@ -280,6 +302,11 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
     },
     // 流水线编排器端口：未注入时 pipeline.start 走 onUnhandled（未落地口径，不假装成功）。
     pipeline: options.pipeline,
+    // 副本装载 / 归档端口（@since v3.3，task_181 / M1-07）：`project.enter` / `project.exit`
+    //   的 IO 出口 —— 由组合根注入 app 侧实现（core 不碰 IO，铁律）。
+    //   缺省 = 不接：两条命令按「未落地」处理（走 onUnhandled，不假装切换成功）。
+    ...(options.instanceLoader ? { instanceLoader: options.instanceLoader } : {}),
+    ...(options.projectArchive ? { projectArchive: options.projectArchive } : {}),
     onUnhandled:
       options.onUnhandled ??
       ((channel, payload) => {
