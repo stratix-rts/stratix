@@ -1,12 +1,13 @@
 /**
  * 文件职责：**pixelfx 库的运行时类型声明**（@since v3.3，task_162）。
  *
- * why 需要它：pixelfx 是**仓外**的库（兄弟目录 ../pixelfx，MIT、零依赖），
+ * why 需要它：pixelfx 是**仓内 vendor** 的库（vendor/pixelfx，MIT、零依赖；task_191 起 vendor 进仓），
  *   没有随包发布的 .d.ts；而本仓的 tsc 要能编译引用它的 dev 入口。
  *   这里声明本仓**实际用到的那几个 API**（不是全库）——
  *   声明面越小，与上游漂移的风险越小；上游改了签名，编译期就会报错提醒。
  *
- * why 不用 `paths` 映射到 ../pixelfx：那样 tsc 会真的去读仓外的 .js（allowJs 关着 → 报错），
+ * why 不用 `paths` 映射到 vendor/pixelfx：那样 tsc 会真的去读 vendor 里的 .js
+ *   （allowJs 关着 → 报错），
  *   而且 tsc-alias 会把 require('pixelfx') 改写成机器相关的相对路径 → 产物不可移植。
  *   声明成 ambient module 则：编译期零外部依赖、产物里 require('pixelfx') 原样保留（dev 入口专用）。
  *

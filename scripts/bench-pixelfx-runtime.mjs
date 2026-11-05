@@ -9,8 +9,8 @@
  *     本脚本只负责把「纯 JS 逐像素」这一段单独量出来 —— 两者相加才是真成本。
  *
  * 用法：
- *   node scripts/bench-pixelfx-runtime.mjs
- *   PIXELFX_DIR=/path/to/pixelfx node scripts/bench-pixelfx-runtime.mjs
+ *   node scripts/bench-pixelfx-runtime.mjs      （默认读仓内 vendor/pixelfx —— task_191 起）
+ *   PIXELFX_DIR=/path/to/pixelfx node scripts/bench-pixelfx-runtime.mjs   （覆盖，用于比对手改副本）
  *
  * 禁止事项：
  *   1. 造 mock 数字 —— 本脚本只报实测值；
@@ -23,7 +23,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-const PIXELFX_DIR = path.resolve(process.env.PIXELFX_DIR ?? path.join(ROOT, '..', 'pixelfx'));
+const PIXELFX_DIR = path.resolve(process.env.PIXELFX_DIR ?? path.join(ROOT, 'vendor', 'pixelfx'));
 
 /** 渲染帧率：Stratix 战场按 60fps 走（Phaser 默认 60）。 */
 const FPS = 60;

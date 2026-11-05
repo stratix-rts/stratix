@@ -1,0 +1,36 @@
+pixelfx vendor 快照（Stratix task_191 / AP-01）
+==============================================
+
+上游仓库：https://github.com/patch-gg/pixelfx.git
+上游 commit：a84159688af3ca37a4be05a0d422b94451b2e24e
+commit 日期：2026-10-31 01:41:17 -0700
+上游版本：  0.3.0（package.json）
+许可：      MIT（见同目录 LICENSE 与 NOTICE.md）
+复制日期：  2026-11-06
+复制方式：  git -C <上游> archive HEAD | tar -x -C vendor/pixelfx
+
+本目录是**上游源码的快照**，不是本仓的代码：
+  - 不在本目录内做 Stratix 侧改动（改上游 = 改快照，漂移无从谈起）；
+  - 需要升级上游时，重新 archive 一次并更新本文件里的 commit 号。
+
+保留的子目录
+  src/           运行时（core + fx 效果库）—— vite 别名 'pixelfx' / 'pixelfx/fx' 指向这里
+  tools/         渲染工具（render.mjs 等）—— 一期 sheet 管线用 node tools/render.mjs
+  docs/          效果目录（CATALOG.md）与创作指南（AUTHORING.md）
+  LICENSE        MIT 许可证原文
+  NOTICE.md      第三方素材署名（原文保留）
+  package.json   上游包清单（"type": "module" 决定 .js 按 ESM 解析，删了会坏）
+  README.md      上游说明
+  .gitignore     上游忽略规则
+
+未纳入本快照的子目录（与 Stratix 的特效管线无关）
+  .git/                上游版本库（不入仓）
+  node_modules/        上游依赖（上游运行时零依赖；devDep esbuild 只给 gallery 构建用）
+  records/             上游本地产物（上游 .gitignore 里已忽略）
+  docs/readme/         两张演示动图（约 11 MB 二进制，纯展示）
+  gallery/             上游自己的演示站（含**非 MIT 的字体**，故整目录不入仓；
+                       NOTICE.md 第三条（Patch Pixel 字体）在本快照内无适用资产）
+  skills/              上游的 Claude Code skill（本仓用不到）
+  .claude-plugin/      上游的 Claude Code 插件清单（本仓用不到）
+  .github/             上游 CI（只服务于上游自己的 gallery 发布）
+  package-lock.json    上游锁文件（本仓不安装上游依赖）

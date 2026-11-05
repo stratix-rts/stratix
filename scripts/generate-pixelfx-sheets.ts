@@ -1,10 +1,11 @@
 /**
- * 文件职责：pixelfx 特效的**资产管线**（task_161 一期）—— 把 /Users/kingj/code/pixelfx
+ * 文件职责：pixelfx 特效的**资产管线**（task_161 一期）—— 把仓内 vendor/pixelfx
  *   里选定的像素特效批量导出成 sprite sheet（PNG + JSON），落进 Stratix 的静态资产目录，
  *   并生成一张「运行时索引」（src/world/appearance/fx-sources.generated.ts）。
  *
  * 输入：
- *   - pixelfx 库（MIT、零依赖）：`node tools/render.mjs <id> --sheet` 直出 Aseprite 风格 JSON + PNG；
+ *   - pixelfx 库（MIT、零依赖；task_191 起 vendor 进仓，路径 vendor/pixelfx）：
+ *     `node tools/render.mjs <id> --sheet` 直出 Aseprite 风格 JSON + PNG；
  *   - 皮肤 token（hud/theme/tokens-<skin>.css 的 --srf-* 变量）+ 战场调色板
  *     （core/theme/visual-spec.ts 的 VISUAL_PALETTE，经 PALETTE_CSS_VARS 映射成 --srf-visual-*）——
  *     **调色板一律从这两处取**，不写字面色值（皮肤换色时重跑本脚本即对齐）。
@@ -16,11 +17,12 @@
  *   1. 把 pixelfx 的**运行时代码**引进来 —— 一期只出静态 sheet，运行时零新增依赖；
  *   2. 写字面色值字面量 —— 调色板必须能随皮肤 token 一起变（见上）；
  *   3. 产物不入库 —— 本脚本的产物（PNG/JSON/索引）都要提交，否则换台机器就看不到特效；
- *   4. 往仓库里塞 pixelfx 源码 —— 库是外部依赖，走路径引用，不 vendor。
+ *   4. 改 vendor/pixelfx 里的源码 —— 那是上游快照（上游 commit 记在 vendor/pixelfx/UPSTREAM），
+ *      要动效果本身去上游改，本仓只重跑本脚本。
  *
  * 跑法：npm run fx:generate            （默认皮肤 default）
  *      npm run fx:generate -- --skin pixel
- *      PIXELFX_DIR=/path/to/pixelfx npm run fx:generate
+ *      PIXELFX_DIR=/path/to/pixelfx npm run fx:generate   （覆盖 vendor 路径，用于临时比对手改副本）
  */
 
 import { spawnSync } from 'node:child_process';
@@ -33,8 +35,8 @@ import { SKINS, type SkinId } from '../src/core/theme/skin-registry';
 
 /** 仓库根（脚本在 scripts/ 下）。 */
 const ROOT = path.resolve(__dirname, '..');
-/** pixelfx 库根目录：默认取同级的兄弟目录，可用 PIXELFX_DIR 覆盖。 */
-const PIXELFX_DIR = path.resolve(process.env.PIXELFX_DIR ?? path.join(ROOT, '..', 'pixelfx'));
+/** pixelfx 库根目录：默认取**仓内 vendor**（task_191 / AP-01 起 pixelfx 已 vendor 进仓），可用 PIXELFX_DIR 覆盖。 */
+const PIXELFX_DIR = path.resolve(process.env.PIXELFX_DIR ?? path.join(ROOT, 'vendor', 'pixelfx'));
 /** 产物根（Vite publicDir = assets/，故这里的文件在 dev 挂站点根、build 拷进产物根）。 */
 const FX_ASSET_ROOT = path.join(ROOT, 'assets', 'fx');
 /** 运行时索引（生成物，提交入库 —— 运行时只认它，不再问 pixelfx）。 */

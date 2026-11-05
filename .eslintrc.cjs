@@ -21,11 +21,11 @@ module.exports = {
       },
     },
     /**
-     * pixelfx 是**仓外**的库（兄弟目录 ../pixelfx，MIT、零依赖）。
+     * pixelfx 是**仓内 vendor** 的库（vendor/pixelfx，MIT、零依赖；task_191 / AP-01 起 vendor 进仓）。
      * why 声明成 core module 而不是配 resolver 路径：
-     *   ① tsconfig 的 paths 一旦指向仓外目录，别的机器 clone 下来 tsc 直接报错
-     *      （那个目录不存在）—— 类型声明走 ambient module（src/app/dev/pixelfx.d.ts），
-     *      编译期零外部依赖；
+     *   ① tsconfig 的 paths 一旦指向 vendor 目录，产物里 require('pixelfx') 会被
+     *      tsc-alias 改写成机器相关的相对路径 → 产物不可移植；
+     *      类型声明走 ambient module（src/app/dev/pixelfx.d.ts），编译期零外部依赖；
      *   ② eslint 的 import 解析器（typescript resolver）只认 tsconfig 的 paths，
      *      拿不到别名 → import/no-unresolved 误报。
      *   core-modules 是**纯 lint 侧**的声明：不碰构建、不碰类型、不影响产物。

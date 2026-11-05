@@ -437,10 +437,11 @@ sheet 路由的调色板在**生成期**烘进 PNG —— 换皮肤要重跑 `np
 
 ### 5.3 落地前置条件（要把代码路由接进生产，必须先做这几件）
 
-1. **【最硬】pixelfx 的分发方式**。当前 PoC 用 vite 别名指向**仓外兄弟目录** `../pixelfx`
-   （`vite.config.ts` 的 `resolve.alias` + `server.fs.allow`）——
-   别的机器 clone 下来没有这个目录，**生产构建会直接炸**。必须先定：① vendor 进仓（MIT，保留 `LICENSE` / `NOTICE.md`），
-   或 ② `file:` 依赖 + CI 缓存。这一条不定，PoC 就只能停在 dev 入口。
+1. **【最硬】pixelfx 的分发方式**。~~PoC 原本用 vite 别名指向**仓外兄弟目录**~~ ——
+   **已解决（task_191 / AP-01，2026-11-06）**：pixelfx 源码已 **vendor 进仓**（`vendor/pixelfx/`，
+   MIT，保留 `LICENSE` / `NOTICE.md`，上游 commit 记在 `vendor/pixelfx/UPSTREAM`），
+   vite 别名改指仓内、`server.fs.allow` 的仓外特例随之删除。
+   别的机器 clone 下来即带这份源码，生产构建不再依赖本机的兄弟目录。
 2. **生产接线**。PoC 现在只挂在 dev 验收入口（`/src/app/dev/fx-code-dev.html`），
    生产战场需要：`CodeFxLayer` 挂进 `BattlefieldScene`、组合根写 registry 调色板、
    以及**代码路由效果源**的注册表（目前只有 dev 页里硬编码的两个）。
@@ -462,15 +463,15 @@ sheet 路由的调色板在**生成期**烘进 PNG —— 换皮肤要重跑 `np
 > 加上护栏（面积上限 + 并发上限 + 降频 + 挤实例 + 离屏即停），
 > 代码路由可以安全地作为「特殊效果路由」存在。
 >
-> **但它现在还不该进生产** —— §5.3 的第 1 条（依赖分发）没定之前，PoC 只能停在 dev 入口。
+> **但它现在还不该进生产** —— §5.3 的第 1 条（依赖分发）**已由 task_191 / AP-01 解决**（pixelfx vendor 进仓），
+>   但第 2~4 条（生产接线 / 降级兜底 / reduced-motion）仍未做，PoC 仍只停在 dev 入口。
 
 ---
 
 ## §6 复现与验证
 
 ```bash
-# 0) 依赖：本机克隆 pixelfx 到仓外兄弟目录（PoC 的别名指向它）
-git clone https://github.com/patch-gg/pixelfx ../pixelfx
+# 0) 依赖：pixelfx 已 vendor 进仓（task_191 / AP-01）—— 无需克隆，别名指向 vendor/pixelfx
 
 # 1) 类型检查（零新增依赖应仍通过）
 npx tsc --noEmit
@@ -481,8 +482,8 @@ npx jest src/core/theme/__tests__/fx-palette.test.ts \
          src/world/appearance/__tests__/fx-palette.test.ts \
          src/world/appearance/__tests__/code-fx-policy.test.ts --maxWorkers=1
 
-# 3) Node 基准（纯 JS 逐像素，§3.2 的数字）
-PIXELFX_DIR=../pixelfx node scripts/bench-pixelfx-runtime.mjs
+# 3) Node 基准（纯 JS 逐像素，§3.2 的数字）—— 默认读仓内 vendor/pixelfx
+node scripts/bench-pixelfx-runtime.mjs
 
 # 4) 浏览器基准 + e2e 验收（§3.3 的数字 + §2.5 / §4.5 的断言）
 #    需要 dev vite 在 7523：npm run dev
