@@ -1,0 +1,14 @@
+{
+  "$schema": "https://stratix.dev/schemas/project/v1.json",
+  "formatVersion": 1,
+  "id": "spx_9f3c2a1b7d4e5f60qz81m",
+  "name": "雨林哨站",
+  "description": "在雨林里搭一座能自守的哨站。",
+  "createdAt": "2026-11-05T12:00:00.000Z",
+  "agents": {
+    "defaultRoleId": "scout",
+    "defaultProfile": "stratix-default"
+  },
+  "engines": { "stratix": ">=3.3.0" },
+  "links": { "dsh": "dsh/profile.json" }
+}

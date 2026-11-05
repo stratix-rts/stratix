@@ -20,7 +20,7 @@ import { createStore, type CoreStore } from '../../../core/store';
 import type { CharacterTask, ExpSource, WorldEvent } from '../../../core/types';
 import { createCliTransport } from '../../../app/services/cli-transport/runtime';
 import { createNodeProcessFactory } from '../../../app/services/cli-transport/node-process';
-import type { CliAdapter, TransportEvent } from '../../../app/services/cli-transport/transport';
+import type { CliAdapter, SpawnOptions, TransportEvent } from '../../../app/services/cli-transport/transport';
 import type { TaskPersistRecord, TaskTransportFactory } from '../../../app/services/task-service';
 import { createStratixService, type StratixService } from '../stratix-service';
 
@@ -272,6 +272,55 @@ describe('service 侧任务执行环（service-split A2）', () => {
 
     // 子进程的父进程 = 本进程（测试进程）—— 没有中间一跳（Electron main / IPC 桥）。
     expect(h.settled[0]?.output).toContain(`|ppid:${process.pid}`);
+  });
+
+  it('M0 端口接线：项目契约块进 prompt、cwd 进 spawn 选项（组合根给的端口落得了地）', async () => {
+    // why 有这条：M0 的两个端口（cwdProvider / provideProjectContext）一直挂在 task-service 上，
+    //   但本模块的装配处曾没往下传 ⇒ 组合根即使给了也落不了地（M0-08 端到端验收时暴露）。
+    //   这里钉住「端口能穿过 service 组合根抵达派发链」—— 端到端脚本（M0-08）验的是整条链。
+    const calls: Array<{ prompt: string; cwd: string | undefined }> = [];
+    const createTransport: TaskTransportFactory = () => ({
+      spawn: (prompt: string, options?: SpawnOptions): AsyncIterable<TransportEvent> => {
+        calls.push({ prompt, cwd: options?.cwd });
+        return {
+          [Symbol.asyncIterator]: async function* run(): AsyncGenerator<TransportEvent> {
+            yield { type: 'message', text: 'ok' };
+            yield { type: 'done', exitCode: 0, text: 'ok', sessionId: null };
+          },
+        };
+      },
+    });
+
+    const store = createStore();
+    const service = createStratixService({
+      store,
+      taskExecution: {
+        createTransport,
+        cwdProvider: () => '/tmp/m0-instance-root',
+        provideProjectContext: () => ({ projectName: '雨林哨站' }),
+      },
+    });
+    stops.push(() => service.stop());
+
+    const created = service.character.createCharacter({
+      name: '伽马',
+      agentKind: 'claude-code',
+      skinId: 'skin-default',
+      persona: '冷静的战术分析师。',
+    });
+    if (!created.ok) throw new Error(`建档失败：${created.code}`);
+    store.setDetectedAgents([
+      { kind: 'claude-code', tier: 'T1', installed: true, status: 'installed', version: null, path: null },
+    ]);
+    service.task.assignTask({ characterId: created.character.id, prompt: '汇报项目概况' });
+
+    await waitFor(() => calls.length === 1, '派发出队');
+
+    // cwd：派发链的唯一取值点给的就是它（M0-02）。
+    expect(calls[0]?.cwd).toBe('/tmp/m0-instance-root');
+    // 项目契约块：进了 prompt，且是独立标签（M0-06）。
+    expect(calls[0]?.prompt).toContain('<stratix-project>');
+    expect(calls[0]?.prompt).toContain('雨林哨站');
   });
 
   it('未接执行环时：任务只落 queued（不假装有人在执行）', async () => {

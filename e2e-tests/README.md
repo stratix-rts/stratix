@@ -24,6 +24,11 @@ e2e-tests/
 ├── session-domain.e2e.mjs             # **会话域验收剧本**（互聊超时 → 可见可查）
 ├── session-domain/peer-cli.ts          # 静默 CLI adapter（互聊超时制造机）
 ├── session-domain/service-process.ts   # service 进程启动器 + 互聊夹具（tsx 直跑）
+├── m0-project-context.e2e.mjs         # **M0 端到端验收剧本**（项目块 + cwd + 库零变化）
+├── m0-project-context/fake-cli.ts     # 回报所见（prompt + cwd）的 CLI adapter（执行替身）
+├── m0-project-context/service-process.ts # 生产组合根（真 service）+ 真派单（tsx 直跑）
+├── m0-project-context/schema-baseline.ts  # 「M0 前」的库结构基线快照程序
+├── fixtures/m0-project/               # **入库夹具**：一个最小 `.stratix` 契约面
 └── README.md
 ```
 
@@ -158,6 +163,43 @@ node e2e-tests/session-domain.e2e.mjs --keep   # 保留临时目录（排查用�
 - 数据目录是临时目录（每次跑都是干净世界 → 可重复执行）；
 - 端口占用先查再用，撞上用户端口直接拒绝开跑。
 
+## 剧本：m0-project-context.e2e.mjs（M0 端到端验收）
+
+`docs/DESIGN-workspace.md` §8「M0-08」行的**收口验收**：在**含 `.stratix` 的目录**里真派一单，
+断言三件事 —— ① prompt 含 `<stratix-project>` 项目块（含来源声明行）；② 子进程 cwd == 项目根；
+③ **数据库零变化**（库结构与 M0 前逐字节一致，零 DDL）。
+
+```bash
+node e2e-tests/m0-project-context.e2e.mjs          # 替身模式（确定性，不花 token）
+node e2e-tests/m0-project-context.e2e.mjs --keep   # 保留临时目录（排查用）
+```
+
+**它做了什么**（断言逐条打印在末尾的「验收摘要」里，17 条）：
+
+1. 把入库夹具 `fixtures/m0-project/`（最小 `.stratix` 契约面）拷进临时目录 —— 那个目录就是**项目根**；
+2. 用 `git archive` 展开 **M0 前**那个提交（M0-01 的父提交）的代码树，用**那棵树里的代码**建一次库、
+   抄一次 `sqlite_master` ⇒ 「与 M0 前一致」是可复算的事实，不是断言文案；
+3. 起**生产组合根**（`createStratixService` + service 侧执行环），在项目根派一单：
+   core 总线派单 → task-service 拼 prompt → cli-transport **真拉子进程** → 子进程回报 →
+   任务收尾 → **真落库**（`character_tasks` / `sessions`）；
+4. 从**库里**把子进程的回报捞出来断言（完整往返，不是单点）：
+   - ① 项目块在 prompt 里、开闭标签成对、含来源声明行、内容与契约一致
+     （项目名 / id / 角色 / 默认角色 / 并发上限 / 指令文件）、位置在「角色设定之后、任务指令之前」、
+     独立标签（不在 `<stratix-context>` 内）；
+   - ② 子进程回报的 cwd（realpath）== 项目根；
+   - ③ 派发全程 **零 DDL**（`sqlite_master` 逐字节一致 + `PRAGMA schema_version` 未变），
+     且本轮库结构与 **M0 前基线**逐字节一致；
+5. 收干净：临时目录删掉（`--keep` 保留），不留进程、不碰用户的库。
+
+**唯一替身**：CLI 二进制（`m0-project-context/fake-cli.ts`）—— 它只回报「我看到的 prompt 与 cwd」，
+超时判定 / 杀进程树 / 事件流 / 落库全是真链路。
+
+**两处注入**（都是生产里本来就有的接缝）：项目根与 cwd 由验收脚本按「活跃实例注册表」（S6b，
+尚未落地）的形状给值；被验的是「值一旦给对，派发链会不会把它带到 prompt 与子进程 cwd 上」。
+
+**端口与进程纪律**：本剧本**不监听任何端口**（不起 HTTP/WS 服务），只 spawn 短命子进程，
+故不与 7523 / 7524 / 9222 冲突；数据目录是临时目录（可重复执行）。
+
 ## 环境变量
 
 | 变量 | 默认 | 说明 |
@@ -191,7 +233,8 @@ node e2e-tests/session-domain.e2e.mjs --keep   # 保留临时目录（排查用�
 - **走查脚本**（`probe` / `assign` / `mission`）**不 import 任何 `src/**` 模块**：脚本跑在 node 侧，
   通过 CDP 操作页面，与仓库实现解耦 —— core 契约变了，改脚本里的口径注释即可，不需要引入构建链。
 - **验收剧本**（`service-resident.e2e.mjs` + `service-resident/*.ts`、`session-domain.e2e.mjs` +
-  `session-domain/*.ts`）是例外：它要**拉起真实 service**（注入执行器替身、读真实 MCP / world-sync），
+  `session-domain/*.ts`、`m0-project-context.e2e.mjs` + `m0-project-context/*.ts`）是例外：它们要
+  **拉起真实 service**（注入执行器替身、读真实 MCP / world-sync / 真库），
   所以那些 `.ts` helper 会 import `src/**`。
   它们同样不进 `tsc` / `jest`（不在 include / roots 里），由 `tsx` 直跑（见 `service-resident/service-process.ts` 的文件头）。
 - `lib/service-harness.mjs` 是两个验收剧本共用的**夹具层**（起服务 / 断言 / 回收 pid / MCP / world-sync）：

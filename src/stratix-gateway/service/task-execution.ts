@@ -151,6 +151,15 @@ export function createServiceTaskExecution(deps: ServiceTaskExecutionDeps): Task
     onTaskChunk: deps.onTaskChunk,
     expWeight: deps.expWeight,
     provideContext: deps.provideContext,
+    // M0 端口（@since v3.3，task_172 / DESIGN-workspace §8「M0-02」「M0-06」行）：
+    //   cwdProvider（派发链 cwd = 活跃实例的项目根）+ provideProjectContext（`.stratix` 项目契约块）。
+    //   why 这里补：这两个端口在 app/services/task-service.ts 上一直存在，但本模块的装配处
+    //     没往下传 ⇒ 组合根即使给了也落不了地（M0-08 端到端验收时暴露：service 进程里
+    //     派单既没有 cwd 也没有项目块）。
+    //   缺省仍是 undefined / 不注入 ⇒ 行为与 M0 之前逐字节一致
+    //   （S6b 活跃实例注册表未落地 ⇒ provider 恒给不出值）。
+    cwdProvider: deps.cwdProvider,
+    provideProjectContext: deps.provideProjectContext,
     timeoutMs: deps.timeoutMs,
     logger: deps.logger,
     onTransportError: deps.onTransportError,

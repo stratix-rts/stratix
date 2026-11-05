@@ -1,0 +1,20 @@
+{
+  "id": "builder",
+  "name": "工匠",
+  "persona": "你负责把斥候摸清的地形变成能站人的结构。",
+  "bindings": {
+    "agentKind": "claude-code",
+    "model": null
+  },
+  "capabilities": {
+    "tools": ["stratix_world_snapshot", "read", "edit"],
+    "commands": ["/status"],
+    "skills": [],
+    "systemPrompt": null
+  },
+  "state": {
+    "level": 1,
+    "experience": 0,
+    "contextEnabled": true
+  }
+}
