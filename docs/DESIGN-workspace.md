@@ -2,6 +2,7 @@
 
 > 状态：**草案，待冻结**（设计冻结需用户过目；本任务只交文档，不含实现）
 > 任务：task_159。依赖：task_157（`docs/research/dsh-architecture.md`）、task_158（`docs/research/dsh-integration-map.md`）
+> **姊妹文档**：[DESIGN-project-map.md](DESIGN-project-map.md)（设计 B，task_160）—— 本文档回答「项目是什么、怎么被找到」，它回答「项目长什么样（一张地图 = 一个副本）、agent 怎么进去干活、活干在哪」。**接缝在 §4.2 的 project / instance 两个 id**：本设计的 `project.json.id`（逻辑）与 `workspaces.json` 的 `instanceId`（物理）是 task_160 的两个锚点，task_160 **不新增第三种 id**，其 core 契约侧的 instance 维度字段沿用本文 §4.4 的 `instanceId` / `instance_id` 命名
 > dsh 参照版本：只读仓库 `/Users/kingj/code/deepseek-harness`，**HEAD `fcc0ad4621`**（`@deepseek-ai/dsh-root@0.2.2-rc.1`）。开工前置已执行 `git pull`，结果「已经是最新的」，HEAD 与 task_158 报告所注 HEAD **完全一致**（task_157 报告所注 HEAD 为更早的 `ce7073d5`，两者差异面见本文 §3.0）
 > 原则出处：`docs/SERVICE-SPLIT-PLAN.md` 七铁律（尤其铁律 1：WorldState 真相源在 Stratix core）；`docs/DSH-INTEGRATION-PLAN.md`（已冻结的三桥总纲）；`docs/PERFORMANCE_GUIDELINES.md`
 > 本任务**未修改任何 `src/` 代码**（纯设计文档）
@@ -573,6 +574,8 @@ project（逻辑）  id = .stratix/project.json.id      随契约传播，同仓
 **运行期只有一个活跃 instance（D11）**——上图的「instance」维度在**存储层**是全量分区（每行带 `instance_id`），在**运行层**是「当前激活的那一个」。存储层保留分区，是为了让「切回上一个项目」不必重建历史。
 
 **为什么不引入第三个维度**（如「工作区 = 多个项目的集合」）：dsh 的 workspace 注册表本身就是「多根管理器」，一个注册表里多条目即多项目（集成报告 §4.4）。**注册表 = workspace，条目 = instance，条目指向 project**。不另造层级。
+
+> **下游落地（设计 B）**：本节的「instance 维度」在 [DESIGN-project-map.md](DESIGN-project-map.md) §1.2 被展开为 core 契约的 `instanceId?: ProjectInstanceId | null` 可选字段（缺省 = 默认沙盒实例），并进一步把「一张地图 = 一个副本」落成 world 层的场景切换（该文 §2，含 BattlefieldScene 单例假设的破除点清单）。该文的命名纪律与本文一致：`projectId` ⇒ 逻辑项目，`instanceId` ⇒ 物理副本，落库列名 `instance_id`。
 
 ### 4.3 逐概念的归位
 
