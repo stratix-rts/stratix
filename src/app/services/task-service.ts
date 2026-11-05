@@ -37,6 +37,13 @@
  *   —— task_055 复核：这两分支即统一重启恢复策略（有效→透传 resume / 无效→首发重建）的
  *   任务侧口径，已有单测固化（「批准 → 同 session 续发短指令」/「session 丢失 → 重讲」），不动。
  *
+ * ============ 派发时的 cwd（@since v3.44，task_166 / §8 M0-02）============
+ * 每次派发（首发 runTask / 批准后续段 runContinuation）都往 SpawnOptions 填 **cwd**，
+ *   取值 = **活跃实例的项目根**；取值规则只有一份（dispatch-cwd.ts 的 resolveDispatchCwd），
+ *   本服务不自己判断目录 ⇒ 派发链上 cwd 不散落。
+ * M0 阶段供给口缺省恒 undefined ⇒ cwd 仍为 undefined ⇒ 子进程继承宿主进程 cwd，
+ *   **行为与今天逐字节一致**（S6b 接入活跃实例后才给值）。
+ *
  * ============ 任务审批门（@since v3.25，task_049）============
  * plan-first 人设（personaPlanFirst 判定，两路：手写「先出计划」/ plan-first 预设）的任务：
  *   ① 派发拼装时在 prompt 尾部追加「先输出执行计划并以单独一行 PLAN_WAIT 结束」指令；
@@ -139,6 +146,11 @@ import type {
 import { MISSION_TITLE_PENDING, NOTICE_TTL_MS, TASK_PLAN_WAIT_MARKER } from '../../core/types';
 import type { TaskManager } from '../../core/task';
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
+import {
+  defaultDispatchCwdProvider,
+  resolveDispatchCwd,
+  type DispatchCwdProvider,
+} from './dispatch-cwd';
 import { defaultExpWeight } from './exp-config';
 import {
   resolveSessionReferences,
@@ -447,6 +459,13 @@ export interface TaskServiceDeps {
   readonly getState: () => Pick<WorldState, 'characters' | 'detectedAgents' | 'tasks' | 'units'>;
   /** transport 工厂（生产：复用 chat-transport-bridge 的 IPC 工厂；单测：打桩）。 */
   readonly createTransport: TaskTransportFactory;
+  /**
+   * 派发链 cwd 供给口（@since v3.44，task_166 / DESIGN-workspace §8 M0-02）。
+   * 取值 = **活跃实例的项目根**；缺省 = `defaultDispatchCwdProvider`（恒 undefined）
+   *   ⇒ M0 下派发仍不带 cwd（行为与今天逐字节一致，S6b 接入后才给值）。
+   * 取值规则只有一份（见 dispatch-cwd.ts 的「唯一取值点」），本服务不自己判断目录。
+   */
+  readonly cwdProvider?: DispatchCwdProvider;
   /** core 任务域写入面（相位回报：start / complete / fail）。与 runtime 注入同一个实例。 */
   readonly taskManager: TaskManager;
   /** 任务落库口（缺省不落库）。同步签名、实现方内部异步 —— fire-and-forget，失败只记日志。 */
@@ -573,6 +592,11 @@ export interface TaskService {
 export function createTaskService(deps: TaskServiceDeps): TaskService {
   const logger = deps.logger ?? ((): void => { /* 缺省静默 */ });
   const timeoutMs = deps.timeoutMs ?? DEFAULT_TASK_TIMEOUT_MS;
+  /**
+   * 派发 cwd 供给口（@since v3.44，task_166）：缺省恒 undefined（M0 行为不变）。
+   * 每轮派发现问一次 —— 活跃实例可在两次派发之间换（取值点见 dispatch-cwd.ts）。
+   */
+  const cwdProvider = deps.cwdProvider ?? defaultDispatchCwdProvider;
   const manager = deps.taskManager;
   const expWeight = deps.expWeight ?? defaultExpWeight;
 
@@ -1024,7 +1048,12 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
       // 会话埋点（@since v3.46，task_105）：关键节点一 —— 执行启动（transport 已就位）。
       recorder.step(task.id, '执行开始', `agent=${kind}`);
       // sessionId 恒 null：常规任务会话一次性，不复用聊天会话也不跨任务续接（见文件头「会话隔离」）。
-      for await (const event of transport.spawn(prompt, { sessionId: null, timeoutMs })) {
+      // cwd：派发链的唯一取值点（task_166 / §8 M0-02）—— 取活跃实例的项目根；M0 下为 undefined。
+      for await (const event of transport.spawn(prompt, {
+        sessionId: null,
+        timeoutMs,
+        cwd: resolveDispatchCwd(cwdProvider, logger),
+      })) {
         if (event.type === 'message') {
           output += event.text;
           emitChunk(task.characterId, event.text); // 实时 tail 视图（task_046）：原序转发，不拦流
@@ -1135,7 +1164,12 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
       const transport = transportFor(kind);
       // 会话埋点（@since v3.46，task_105）：关键节点三 —— 计划已批准，续段执行。
       recorder.step(task.id, '计划已批准', '续段执行');
-      for await (const event of transport.spawn(prompt, { sessionId, timeoutMs })) {
+      for await (const event of transport.spawn(prompt, {
+        sessionId,
+        timeoutMs,
+        // cwd：派发链的唯一取值点（task_166 / §8 M0-02）—— 同 runTask 一口径。
+        cwd: resolveDispatchCwd(cwdProvider, logger),
+      })) {
         if (event.type === 'message') {
           output += event.text;
           emitChunk(task.characterId, event.text);

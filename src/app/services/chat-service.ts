@@ -16,6 +16,15 @@
  *   3. 引入新依赖 —— Node 内置 + core 契约 + 注入端口，仅此而已；
  *   4. 把消息存成本地第二份真相 —— 消息真相在抽屉的会话存储（036 落库后换 SQLite 回填），本服务只转发。
  *
+ * ============ 派发时的 cwd（@since v3.44，task_166 / §8 M0-02）============
+ * 每轮派发都往 SpawnOptions 填 **cwd**，取值 = **活跃实例的项目根**；
+ *   取值规则只有一份（dispatch-cwd.ts 的 resolveDispatchCwd），本服务不自己判断目录
+ *   ⇒ 派发链上 cwd 不散落。
+ * M0 阶段供给口缺省恒 undefined ⇒ cwd 仍为 undefined ⇒ **行为与今天逐字节一致**
+ *   （S6b 接入活跃实例后才给值）。
+ * 注：渲染层这条路 cwd 经 IPC 桥时**当前不透传**（chat-transport-bridge 只搬 sessionId/timeout）
+ *   ⇒ 真正落地要等 S6b 在主进程侧注入 transport 层 provider（M0-01 的端口）；本条只铺派发侧的管道。
+ *
  * ============ 各家 adapter 的会话（sessionRef）语义差异表 ============
  * （spawn 时透传 options.sessionId；「首发」指该角色还没有 sessionId 的那一轮）
  *
@@ -119,6 +128,11 @@ import type {
   WorldState,
 } from '../../core/types';
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
+import {
+  defaultDispatchCwdProvider,
+  resolveDispatchCwd,
+  type DispatchCwdProvider,
+} from './dispatch-cwd';
 import { defaultExpWeight } from './exp-config';
 import { resolveStratixContextBlock, type StratixContextSource } from './stratix-context';
 
@@ -292,6 +306,13 @@ export interface ChatServiceDeps {
   readonly getState: () => Pick<WorldState, 'characters' | 'detectedAgents' | 'units'>;
   /** transport 工厂（生产：IPC 桥；单测：打桩）。 */
   readonly createTransport: ChatTransportFactory;
+  /**
+   * 派发链 cwd 供给口（@since v3.44，task_166 / DESIGN-workspace §8 M0-02）。
+   * 取值 = **活跃实例的项目根**；缺省 = `defaultDispatchCwdProvider`（恒 undefined）
+   *   ⇒ M0 下派发仍不带 cwd（行为与今天逐字节一致，S6b 接入后才给值）。
+   * 取值规则只有一份（见 dispatch-cwd.ts 的「唯一取值点」），本服务不自己判断目录。
+   */
+  readonly cwdProvider?: DispatchCwdProvider;
   /** 会话 id 回写口（组合根接 worldStore —— 存档协调器会顺着档案 diff 自动落库）。 */
   readonly persistSessionId: (characterId: string, sessionId: string) => void;
   /**
@@ -363,6 +384,11 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
   const view = deps.view;
   const logger = deps.logger ?? ((): void => { /* 缺省静默 */ });
   const timeoutMs = deps.timeoutMs ?? DEFAULT_CHAT_ROUND_TIMEOUT_MS;
+  /**
+   * 派发 cwd 供给口（@since v3.44，task_166）：缺省恒 undefined（M0 行为不变）。
+   * 每轮派发现问一次 —— 活跃实例可在两次派发之间换（取值点见 dispatch-cwd.ts）。
+   */
+  const cwdProvider = deps.cwdProvider ?? defaultDispatchCwdProvider;
   const expWeight = deps.expWeight ?? defaultExpWeight;
 
   /** characterId → 会话状态。懒建：首次对话的角色才进表。 */
@@ -579,6 +605,8 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
         sessionId: session.sessionId,
         signal: run.controller.signal,
         timeoutMs,
+        // cwd：派发链的唯一取值点（task_166 / §8 M0-02）—— 取活跃实例的项目根；M0 下为 undefined。
+        cwd: resolveDispatchCwd(cwdProvider, logger),
       })) {
         if (event.type === 'message') {
           sawText = true;
