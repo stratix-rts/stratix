@@ -60,6 +60,9 @@
 
 import Phaser from 'phaser';
 
+// 副本展示口径（@since v3.3，task_188 / M1-14）：「路径尾段」「在办任务数」搬到 core ——
+//   HUD 的大厅卡片（M1-14）要用**同一份**口径，而 HUD 不得 import world（铁律）⇒ 共同口径落 core。
+import { countActiveTasks, pathTailOf } from '../../core/project/instance-display';
 import type {
   Bounds,
   CharacterTask,
@@ -1396,37 +1399,13 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 }
 
 /**
- * 在办任务数（@since v3.3，task_187 / M1-13）—— 名牌上的「在办 N 条任务」。
+ * 在办任务数 / 路径尾段（@since v3.3，task_187 / M1-13 建，task_188 / M1-14 搬家）。
  *
- * 口径 = **未终结**的任务条数（queued / running / awaiting_approval）：
- *   终态（completed / failed / cancelled）是历史，不算「在办」。
- * why 在场景里算：桥接层转来的任务**已经按 scope 过滤**（M1-10）
- *   ⇒ 这里数到的就是「当前副本在办几条」，不需要再回 core 查一遍。
+ * ★ 这两个纯函数的**定义**搬到了 `core/project/instance-display.ts`：
+ *   HUD 的大厅卡片（M1-14）要同一份口径，而 HUD 不得 import world（铁律）⇒ 共同口径落 core。
+ *   这里保留 re-export：world 侧的既有单测（task_187）与调用点不必改 import 路径。
  */
-export function countActiveTasks(tasks: readonly CharacterTask[]): number {
-  let count = 0;
-  for (const task of tasks) {
-    if (
-      task.status === 'queued' ||
-      task.status === 'running' ||
-      task.status === 'awaiting_approval'
-    ) {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-/**
- * 路径尾段（@since v3.3，task_187 / M1-13）—— 名牌上的目录名。
- *
- * why 只取尾段：整条绝对路径在名牌上放不下，也没信息量（尾段就是「这是哪个副本」的落点）。
- * 兼容 posix / windows 分隔符；空路径 = null（未知就不画那一段）。
- */
-export function pathTailOf(path: string): string | null {
-  const segments = path.split(/[\\/]+/).filter((segment) => segment.length > 0);
-  return segments.length > 0 ? segments[segments.length - 1] : null;
-}
+export { countActiveTasks, pathTailOf };
 
 /** 读出点击修饰键，供 core 决定 set / toggle 语义（见 core/types.ts 的 ClickMods）。 */
 function readModifiers(pointer: Phaser.Input.Pointer): ClickMods {

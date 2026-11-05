@@ -331,6 +331,14 @@ export const OVERLAY_REGISTRY: readonly OverlayRegistration[] = Object.freeze([
     note: '战场空态覆盖：整屏但在所有 HUD 件之下（它只是「没人时的一句话」）。',
   },
   {
+    id: 'lobby-panel',
+    layer: 'overlay',
+    zone: 'full-screen',
+    host: '#hud-side',
+    note: '大厅面板（@since v3.3，task_188 / M1-14）：副本卡片网格 —— 大厅态时整屏覆盖战场，'
+      + '压住主屏常驻件、让位给全屏弹窗（设置 / 角色）。',
+  },
+  {
     id: 'screen-fx',
     layer: 'fx',
     zone: 'screen-space',

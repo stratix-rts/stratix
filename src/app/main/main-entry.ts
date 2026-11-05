@@ -101,7 +101,7 @@ import { createCoreRuntime, type UnhandledChannel } from '../../core/runtime';
 import { createSessionManager } from '../../core/session';
 import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
-import { DEFAULT_INSTANCE_ID, type DetectedAgent, type HudCommand, type Point, type WorldEvent } from '../../core/types';
+import { DEFAULT_INSTANCE_ID, type DetectedAgent, type HudCommand, type Point, type WorldEvent, type WorldState } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
 // ⌘K 命令面板（@since v3.9，task_150）：全应用键盘可达 —— 命令定义在共享注册表
 //   （hud/lib/command-registry.ts），底栏 composer 与本面板共用一份事实源。
@@ -138,8 +138,10 @@ import { errorGlowTrigger } from '../../hud/components/screen-fx/screen-fx-catal
 // 宿主动作登记口（@since v3.9，task_150）：⌘K 面板要能叫到组合根这一层的能力
 //   （建档向导 / 回放控制器 / 快捷键帮助浮层）—— 它们不落总线契约，走这张动作表登记。
 import { registerAppAction } from '../../hud/lib/app-actions';
-import { createMainScreen } from '../../hud/screens/main-screen';
+// 大厅面板（@since v3.3，task_188 / M1-14）：副本卡片网格 —— 大厅态的 HUD 面。
 import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
+import { mountLobbyPanel } from '../../hud/screens/lobby-panel';
+import { createMainScreen } from '../../hud/screens/main-screen';
 // 演示声音包（@since v3.3，task_083 建 / task_087 升级）：五音（选中 ack / 派活哒 / 完成 /
 //   报错低鸣 / 里程碑琶音）优先回放 **public/sfx/ 下的真实音源**（Freesound CC0），
 //   文件缺失 / 加载失败时回退到 WebAudio 代码合成（保证任何环境都有声）。
@@ -543,6 +545,28 @@ async function boot(): Promise<void> {
   });
   const { unmount: unmountGatewayBanner } = mountGatewayBanner(hudSide, { link: gatewayLink });
   const stopGatewayLink = gatewayLink.start();
+
+  // ===== 大厅面板（@since v3.3，task_188 / M1-14）=====
+  // 大厅态 = 「当前没有活跃副本」（core 广播的 `activeInstanceId === null`）⇒ 盖一层副本卡片网格。
+  // why 由组合根挂、而不是 main-screen 的一个屏位：设计 D4「大厅态 = 独立的世界场景，不是一个 HUD 屏位」
+  //   ⇒ HUD 侧不新增 ScreenId（不动总线契约）；大厅面板是**世界状态驱动**的覆盖层，
+  //   与 world 的场景切换（LobbyScene ⇄ BattlefieldScene，M1-12）读同一份事实。
+  // why 挂 #hud-side（与网关横幅 / 回放角标同一口径）：#hud-root 每次重绘都被 innerHTML 重写，挂里面会被抹掉。
+  // why 判据只认**显式 null**：undefined = 未知（开机首帧 / 老快照 / 单测夹具都属此类）——
+  //   把它们一律当大厅会让开机就盖住战场（world 开机不进大厅，见 M1-12 的 LobbyScene 文件头）⇒ HUD 与 world 打架。
+  const lobbyHost = document.createElement('div');
+  hudSide.appendChild(lobbyHost);
+  let unmountLobbyPanel: (() => void) | null = null;
+  const syncLobbyLayer = (state: WorldState): void => {
+    const inLobby = state.activeInstanceId === null;
+    if (inLobby && !unmountLobbyPanel) {
+      unmountLobbyPanel = mountLobbyPanel(adapter, lobbyHost).unmount;
+    } else if (!inLobby && unmountLobbyPanel) {
+      unmountLobbyPanel();
+      unmountLobbyPanel = null;
+    }
+  };
+  const stopLobbyLayer = adapter.subscribe(syncLobbyLayer);
 
   // ===== 模式状态条（@since v3.6，task_117）=====
   // 顶栏下方的一条全局细条：演示模式 / 导演镜头任一开启就亮出「开着的是什么 + 怎么关」。
@@ -1650,6 +1674,10 @@ async function boot(): Promise<void> {
       // 网关连通性横幅（task_114）：停周期探测（清定时器）+ 卸横幅宿主（退订）。
       stopGatewayLink();
       unmountGatewayBanner();
+      // 大厅面板（task_188）：退状态订阅 + 卸面板（元素内部退订总线）。
+      stopLobbyLayer();
+      unmountLobbyPanel?.();
+      unmountLobbyPanel = null;
       // 模式状态条（task_117）：卸宿主（退订两个端口 + 撤版面让位变量）。
       unmountModeStrip();
       // 屏幕空间特效（task_086）：退总线订阅 + 卸两个覆盖层宿主（同卸载纪律；

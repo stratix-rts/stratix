@@ -20,6 +20,8 @@ DOM-layer shell for V3. Zero framework deps: vanilla Custom Elements + Shadow DO
 - `components/task-output/` — 任务实时输出面板（task_046：嵌挂于 chat-drawer 头部下的 `<strat-task-output-panel>` 折叠区；流式端口 appendTaskOutput(characterId, chunk) 接组合根的 onTaskChunk，相位读 WorldState.tasks；32k 截头保尾、自动滚底 + 暂停跟随，完成态保留、下次派发清空重开）
 - `panels/agent-panel.ts` — Agent 侧栏（单选详情/编组；task_038：角色任务队列读数 40 字摘要+排队数，与「派任务」自由文本表单 → task.assign 命令；task_050：表单增「交给谁」选择器 —— 自动（推荐）/手动指定承接人，卡片 kind 徽标 + 忙闲实时 + 推荐角标，全忙提示排队预计）
 - `panels/task-assign-catalog.ts` — 派发智能推荐纯函数（task_050：score = 空闲加分 + suitableKinds 反向专属度 + 历史成功率（无历史 0.5 中性），权重常量集中可调；输出排序 + 理由短语「空闲 · 擅长此类 · 成功率 86%」；零 DOM 零 IO，历史统计经注入）
+- `screens/lobby-catalog.ts` — 大厅卡片视图模型纯函数（@since v3.3，task_188 / M1-14：卡片六字段（名字/路径尾段/分支/实例级状态 active·idle·missing/最近进入/在办任务数）派生 + 默认沙盒识别 + 空态判定 + 渲染判重签名；零 DOM 零 IO）
+- `screens/lobby-panel.ts` — 副本大厅卡片网格（@since v3.3，task_188 / M1-14：`<strat-lobby-panel>` 整屏覆盖层；卡片网格 / 明确空态（「没有可用副本 · 添加副本」可点）/ 派单入口（空态禁用但有出口）；数据只来自注入的 bus-adapter）
 - `theme/tokens-*.css` — skin tokens（8 套：default / pixel / crimson / forest / ocean / sunset / mono / aurora）
 - `theme/skin-registry.ts` — skin registry: `listSkins()` / `randomSkin(seed?)` / `resolveAccent()`
 - `theme/theme-controller.ts` — theme switching
