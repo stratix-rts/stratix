@@ -1,11 +1,12 @@
 /**
- * 项目契约上下文块（task_167 / M0-03）单测。
+ * 项目契约上下文块（task_167 / M0-03、task_168 / M0-04）单测。
  * 覆盖：渲染形状 / 单字段上限截断 / 注入特征降级（可追溯）/ 总体积上限从尾段砍 /
  *      provider 抛错降级 / 纯函数性。
  */
 
 import {
   buildProjectContextBlock,
+  createProjectContextProvider,
   resolveProjectContextBlock,
   sanitizeContractText,
   sanitizeProjectPersona,
@@ -266,6 +267,63 @@ describe('resolveProjectContextBlock —— provider 抛错降级', () => {
     const block = resolveProjectContextBlock(() => sampleInput());
     expect(block).toContain('# 项目');
     expect(block).toContain('雨林哨站');
+  });
+});
+
+describe('createProjectContextProvider —— 三段式第二段（provider 工厂）', () => {
+  it('读数口给出快照 ⇒ provider 原样透出纯数据（零加工、零 IO）', () => {
+    const input = sampleInput();
+    const source = createProjectContextProvider({ load: () => input });
+
+    expect(source()).toBe(input);
+  });
+
+  it('读数口给出 null / undefined ⇒ provider 返回 null（不注入）', () => {
+    expect(createProjectContextProvider({ load: () => null })()).toBeNull();
+    expect(createProjectContextProvider({ load: () => undefined })()).toBeNull();
+  });
+
+  it('缺省 deps（组合根未接线）⇒ provider 返回 null，行为与今天一致', () => {
+    expect(createProjectContextProvider()()).toBeNull();
+    expect(createProjectContextProvider({})()).toBeNull();
+  });
+
+  it('provider 出口经 resolve ⇒ 渲染出项目块（三段式串起来）', () => {
+    const source = createProjectContextProvider({ load: () => sampleInput() });
+    const block = resolveProjectContextBlock(source);
+
+    expect(block.startsWith('<stratix-project>')).toBe(true);
+    expect(block).toContain('# 项目');
+    expect(block).toContain('雨林哨站');
+  });
+
+  it('provider 读数口抛错 ⇒ provider 上抛、resolve 吞错降级为空串且不抛', () => {
+    const logger = jest.fn();
+    const source = createProjectContextProvider({
+      load: () => {
+        throw new Error('读 .stratix 失败');
+      },
+    });
+
+    let result: string | undefined;
+    expect(() => {
+      result = resolveProjectContextBlock(source, logger);
+    }).not.toThrow();
+    expect(result).toBe('');
+    expect(logger).toHaveBeenCalledTimes(1);
+    expect(String(logger.mock.calls[0][0])).toContain('读 .stratix 失败');
+  });
+
+  it('provider 抛错时绝不返回半截数据（降级为无块，不是坏块）', () => {
+    const source = createProjectContextProvider({
+      load: () => {
+        throw new Error('契约文件损坏');
+      },
+    });
+
+    const block = resolveProjectContextBlock(source, () => {});
+    expect(block).toBe('');
+    expect(block).not.toContain('<stratix-project>');
   });
 });
 

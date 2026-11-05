@@ -1,12 +1,14 @@
 /**
  * 文件职责：项目契约上下文块（task_167 / M0-03）—— 把 `.stratix` 契约快照渲染成结构化
  *   `<stratix-project>` 块，交给 service 层注入派单 prompt。
- *   两件事：
+ *   三件事（**三段式**，照抄 src/app/services/stratix-context.ts 的既有范式）：
  *   ① buildProjectContextBlock：纯函数（渲染 + 截断 + 注入特征过滤）—— 输入纯数据，
  *      输出整块文本；零 IO，app 侧读 `.stratix` 的动作在组合根（M0-05），本文件只拼串；
- *   ② resolveProjectContextBlock：取件口 —— provider 抛错 ⇒ 返回 '' 且不外泄
+ *   ② createProjectContextProvider：provider 工厂（注入件）—— 把「读 `.stratix` 的读数口」
+ *      装配成 ProjectContextSource 端口；本工厂**零 IO**（读盘在组合根，见 M0-05）；
+ *   ③ resolveProjectContextBlock：service 侧统一入口 —— provider 抛错 ⇒ 返回 '' 且不外泄
  *      （「上下文是增强，不是依赖，坏了不能绑架任务回路」）。
- *   provider 工厂（createProjectContextProvider）与开关是 M0-04 的范围，本文件只留接缝。
+ *   开关（STRATIX_PROJECT_CONTEXT_TOGGLE_KEY）是 M0-07 的范围，本文件只留接缝。
  * 输入：ProjectContextInput（纯数据，无 IO、无 Date.now、无环境读取）。
  * 输出：'<stratix-project>…</stratix-project>' 字符串（无可注入内容 ⇒ ''，调用方按无块处理）。
  *
@@ -47,6 +49,8 @@
  *
  * @since v3.3，task_167（M0-03）。设计依据：docs/DESIGN-workspace.md §8「M0-03」行 +
  * docs/DESIGN-project-map.md §3.3.3（内容契约 / 体积预算 / 注入特征过滤）。
+ * @since v3.3，task_168（M0-04）：补齐三段式的**第二段**（createProjectContextProvider）
+ *   —— 第三段（resolveProjectContextBlock）已在 M0-03 落地并保持吞错口径。
  */
 
 import { truncateByCodePoints } from './stratix-context';
@@ -367,6 +371,53 @@ export function buildProjectContextBlock(input: ProjectContextInput | null | und
     // 防御：渲染不该抛（渲染内部无 throw 路径），真抛了降级为不注入。
     return '';
   }
+}
+
+// ============================================================================
+// provider（注入件工厂 —— 组合根装配，service 只消费纯输入）
+// ============================================================================
+
+/**
+ * 项目契约快照读数口（**app 侧读 `.stratix` 的注入点** —— 组合根装配，M0-05 落地真实实现）。
+ *
+ * why 抽成口：读 `.stratix` 是 IO（app 层权限），而 provider / builder / resolve 三段全部零 IO
+ *   ⇒ 读盘结果只能以**纯数据**的形式注入进来（M0-05 在 main-entry.ts 组装）。
+ *
+ * 约定：本口**允许抛错**（读盘失败 / 契约损坏等）—— 唯一的兜底点是 resolveProjectContextBlock
+ *   （provider 本身不吞错，与 stratix-context 的既有范式一致：单一兜底点，日志不重复）。
+ */
+export type ProjectContextLoader = () => ProjectContextInput | null | undefined;
+
+export interface ProjectContextProviderDeps {
+  /**
+   * 快照读数口。缺省 = 恒无快照（不注入）—— 组合根尚未接线时行为与今天一致（M0 零迁移）。
+   */
+  readonly load?: ProjectContextLoader;
+}
+
+/**
+ * 组装项目契约 provider（`ProjectContextSource` 端口的实现）。
+ *
+ * 形状对齐 dsh（DESIGN-workspace §8 M0-04 的双面向）：
+ *   - **用**：dsh 的「宿主裁决、失败不半注册」形态（ctx.effect / disposer）⇒ 本 provider
+ *     出错时**降级而非阻断**是同构选择（降级动作统一落在 resolve，见下）；
+ *   - **暴露**：provider 是「宿主往模型上下文里注入项目信息」的**接缝**（宿主可见控制面）——
+ *     将来 dsh 的插件宿主可注入不同 provider（换一个项目、换一份契约视图），
+ *     而 task / chat service 一行不改（service 只认 ProjectContextSource 这个端口）。
+ *
+ * 失败语义（dsh 同构）：provider 本身**不吞错** —— 读数口抛错时错误上抛，
+ *   由 resolveProjectContextBlock 统一吞掉并降级为 ''（本轮不注入），
+ *   **半截数据绝不返回**（要么完整快照，要么 null ⇒ 无块）。
+ */
+export function createProjectContextProvider(
+  deps: ProjectContextProviderDeps = {}
+): ProjectContextSource {
+  const load = deps.load;
+  return (): ProjectContextInput | null => {
+    if (!load) return null;
+    const input = load();
+    return input ?? null;
+  };
 }
 
 // ============================================================================
