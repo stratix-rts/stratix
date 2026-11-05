@@ -73,6 +73,7 @@ export {
   asArray,
   asRecord,
   asString,
+  defaultCwdProvider,
   stderrTail,
   tryParseJson,
   MAX_STDERR_TAIL,
@@ -81,6 +82,7 @@ export {
   type CliProcessHandle,
   type CliTransport,
   type CliTransportKind,
+  type CwdProvider,
   type ProcessFactory,
   type SpawnOptions,
   type TransportErrorCode,
@@ -93,7 +95,20 @@ import { createAdapter, type CliAdapterOptions, type CustomAgentAdapterSpec } fr
 import { createCustomAdapter } from './adapters/custom';
 import { createNodeProcessFactory } from './node-process';
 import { createCliTransport } from './runtime';
-import type { CliTransport, ProcessFactory } from './transport';
+import type { CliTransport, CwdProvider, ProcessFactory } from './transport';
+
+/** 一站式造 transport 的依赖面（子进程工厂 / 工作目录供给口 / 日志口）。 */
+export interface TransportDeps {
+  /** 子进程工厂（缺省用真实的 child_process 工厂；单测注入假工厂）。 */
+  readonly factory?: ProcessFactory;
+  /**
+   * 工作目录供给口（@since v3.44，task_165 / DESIGN-workspace §8 M0-01）。
+   * 缺省 = 返回 undefined ⇒ 子进程 cwd 与今天逐字节一致。
+   */
+  readonly cwdProvider?: CwdProvider;
+  /** 日志口（缺省静默）。 */
+  readonly logger?: (line: string) => void;
+}
 
 /**
  * 一站式造一个 transport（生产用）。
@@ -104,11 +119,15 @@ import type { CliTransport, ProcessFactory } from './transport';
 export function createTransportFor(
   kind: AgentKind,
   options: CliAdapterOptions = {},
-  deps: { readonly factory?: ProcessFactory; readonly logger?: (line: string) => void } = {}
+  deps: TransportDeps = {}
 ): CliTransport {
   const adapter = createAdapter(kind, options);
   const factory = deps.factory ?? createNodeProcessFactory();
-  return createCliTransport(adapter, { factory, logger: deps.logger });
+  return createCliTransport(adapter, {
+    factory,
+    cwdProvider: deps.cwdProvider,
+    logger: deps.logger,
+  });
 }
 
 /**
@@ -118,9 +137,13 @@ export function createTransportFor(
  */
 export function createTransportForCustomAgent(
   spec: CustomAgentAdapterSpec,
-  deps: { readonly factory?: ProcessFactory; readonly logger?: (line: string) => void } = {}
+  deps: TransportDeps = {}
 ): CliTransport {
   const adapter = createCustomAdapter(spec);
   const factory = deps.factory ?? createNodeProcessFactory();
-  return createCliTransport(adapter, { factory, logger: deps.logger });
+  return createCliTransport(adapter, {
+    factory,
+    cwdProvider: deps.cwdProvider,
+    logger: deps.logger,
+  });
 }

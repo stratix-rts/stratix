@@ -20,14 +20,19 @@
  *   （spawn-env.ts）—— STRATIX_CLI_ENV > 主进程代理类变量透传 > 调用方逐次 env。
  *   why 在这层：这是唯一「所有 CLI 都会经过」的 spawn 口，各 adapter 零改动。
  *
+ * cwd 供给（@since v3.44，task_165 / DESIGN-workspace §8 M0-01）：子进程工作目录由注入的
+ *   `CwdProvider` 端口供给（缺省实现返回 undefined ⇒ 与今天逐字节一致）—— 见「resolveCwd」。
+ *
  * @since v3.8（task_023）
  */
 
 import { resolveSpawnEnv } from './spawn-env';
 import {
+  defaultCwdProvider,
   stderrTail,
   type CliAdapter,
   type CliTransport,
+  type CwdProvider,
   type ProcessFactory,
   type SpawnOptions,
   type TransportEvent,
@@ -37,6 +42,11 @@ import {
 export interface CliTransportDeps {
   /** 子进程工厂（真实实现 node-process.ts；单测注入假工厂）。 */
   readonly factory: ProcessFactory;
+  /**
+   * 工作目录供给口（@since v3.44，task_165 / DESIGN-workspace §8 M0-01）。
+   * 缺省 = `defaultCwdProvider`（返回 undefined）⇒ 子进程 cwd 与今天逐字节一致。
+   */
+  readonly cwdProvider?: CwdProvider;
   /** 日志回调；缺省不打日志（单测里静默，真机调试时接 console）。 */
   readonly logger?: (line: string) => void;
 }
@@ -48,6 +58,23 @@ export interface CliTransportDeps {
  */
 export function createCliTransport(adapter: CliAdapter, deps: CliTransportDeps): CliTransport {
   const logger = deps.logger ?? ((): void => { /* 默认静默 */ });
+  const cwdProvider = deps.cwdProvider ?? defaultCwdProvider;
+
+  /**
+   * 解析子进程工作目录（@since v3.44，task_165 / DESIGN-workspace §8 M0-01）。
+   * 口径：**端口优先** —— 注入的 provider 给出值时以它为准（它才是工作目录的供给方）；
+   *   provider 返回 undefined ⇒ 回落到 `SpawnOptions.cwd`（缺省即今天的口径，行为零变更）。
+   * why 吞错降级：cwd 是「增强」不是「依赖」—— provider 坏了不该让整轮对话失败（照旧继承进程 cwd）。
+   */
+  const resolveCwd = (options: SpawnOptions): string | undefined => {
+    let supplied: string | undefined;
+    try {
+      supplied = cwdProvider();
+    } catch (error) {
+      logger(`[cli-transport] cwdProvider 失败：${describe(error)}`);
+    }
+    return supplied ?? options.cwd;
+  };
 
   async function* run(prompt: string, options: SpawnOptions): AsyncGenerator<TransportEvent> {
     // —— 准备（可失败：prepare 里做端口探测等）——
@@ -75,7 +102,7 @@ export function createCliTransport(adapter: CliAdapter, deps: CliTransportDeps):
     for (const warning of envAssembly.warnings) logger(`[cli-transport] ${warning}`);
     try {
       handle = deps.factory(adapter.binary, adapter.buildArgs(prompt, effective), {
-        cwd: effective.cwd,
+        cwd: resolveCwd(effective),
         env: envAssembly.env,
       });
     } catch (error) {

@@ -81,7 +81,13 @@ export interface SpawnOptions {
   readonly signal?: AbortSignal;
   /** 超时（ms）：缺省不限。超时按 abort 路径处理，只是错误码不同。 */
   readonly timeoutMs?: number;
-  /** 工作目录。 */
+  /**
+   * 工作目录（缺省 = 继承当前进程 cwd）。
+   *
+   * @since v3.44，task_165：工作目录的**供给方**已抽成端口 `CwdProvider` ——
+   *   注入的 provider 给出值时以它为准；缺省 provider（返回 undefined）⇒ 本字段照旧生效，
+   *   行为与今天一致（见 runtime 的 resolveCwd）。
+   */
   readonly cwd?: string;
   /** 追加的环境变量（不覆盖既有环境）。 */
   readonly env?: Readonly<Record<string, string>>;
@@ -119,6 +125,31 @@ export type ProcessFactory = (
   args: readonly string[],
   options: { readonly cwd?: string; readonly env?: Readonly<Record<string, string>> }
 ) => CliProcessHandle;
+
+// ============================================================================
+// cwd 供给端口（注入点 —— @since v3.44，task_165 / docs/DESIGN-workspace.md §8 M0-01）
+// ============================================================================
+
+/**
+ * cwd 供给端口：给出**子进程的工作目录**。
+ *
+ * why 抽成端口：「进程在哪儿跑」是**供给问题**（谁给路径），不是「怎么 spawn」的问题
+ *   （后者归 ProcessFactory）⇒ 供给方单独成端口，将来换供给方不必动 spawn 逻辑。
+ *
+ * 形状对齐 dsh（DESIGN-workspace §8 M0-01 的 A 面）：dsh headless **没有 `--cwd` 选项**，
+ *   cwd 只能靠**进程 cwd**（`apps/cli/src/args.ts`）⇒ 本端口返回的就是「进程 cwd 该是什么」。
+ *   将来 `ctx.remote.stratix.enterInstance` = 「切 cwdProvider 实现」的薄封装（宿主可见控制面）。
+ *
+ * 缺省实现（`defaultCwdProvider`）返回 `undefined` ⇒ 子进程继承当前进程 cwd，
+ *   与今天**逐字节一致**（本条只铺管道，无行为变更）。
+ */
+export type CwdProvider = () => string | undefined;
+
+/**
+ * 缺省 cwd 供给实现：恒返回 `undefined`（= 继承当前进程 cwd）。
+ * why 单独导出而不是「没传就不调」：让「缺省行为」有**唯一一份真相**，可被单测钉住。
+ */
+export const defaultCwdProvider: CwdProvider = (): string | undefined => undefined;
 
 // ============================================================================
 // Adapter 契约（纯函数，无 IO）
