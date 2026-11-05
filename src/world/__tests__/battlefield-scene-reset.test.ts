@@ -165,7 +165,8 @@ describe('BattlefieldScene.init()：切副本前的显式清理（M1-09）', () 
       path.join(__dirname, '..', 'scenes', 'BattlefieldScene.ts'),
       'utf-8'
     );
-    expect(extractMethod(source, 'init(): void {')).not.toMatch(/speechBoard/);
+    // init() 的签名带 scene data（@since v3.3，task_187 / M1-13：进副本的 instanceId 从这里读）。
+    expect(extractMethod(source, 'init(data?: unknown): void {')).not.toMatch(/speechBoard/);
     expect(extractMethod(source, 'create(): void {')).toMatch(
       /this\.speechBoard = new SpeechBubbleBoard\(/
     );

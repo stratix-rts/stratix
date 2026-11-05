@@ -14,6 +14,9 @@
  *   - state 通道 → 场景（@since v3.3，task_184 / M1-10）：转发**前**按当前 instanceId 过滤 ——
  *     转发给场景的 units / missions / tasks **全部**属于当前副本（scope 感知转发）；
  *     当前副本的真相来源 = state 通道的 `activeInstanceId`（随 store 同步广播，见下）；
+ *   - state 通道 → 场景（@since v3.3，task_187 / M1-13）：再转发**活跃副本的实例视图**
+ *     （`projectInstances` 里命中 `activeInstanceId` 的那一条）→ syncInstanceView，
+ *     战场据此画「进副本仪式」的副本名牌（名字 / 分支 / 路径尾段）。
  *   - world 通道 → 场景（@since v3.21，task_045）：同一条订阅还转发 unit.position ——
  *     右击移动时 runtime 把编队终值广播出来，场景据此更新 UnitObject（立即）并 tween（表现）；
  *     @since v3.33（task_057）：再转发 camera.center（HudCommand 同名命令经 core 钳制后的
@@ -45,6 +48,7 @@ import {
   type MissionView,
   type Point,
   type ProjectInstanceId,
+  type ProjectInstanceView,
   type ReplayBeat,
   type SelectionState,
   type SoundCue,
@@ -74,6 +78,20 @@ export const CAMERA_EVENT_INTERVAL_MS = 120;
  */
 function scopeOf(instanceId?: ProjectInstanceId | null): ProjectInstanceId {
   return instanceId ?? DEFAULT_INSTANCE_ID;
+}
+
+/**
+ * 取出**当前活跃副本**的实例视图（@since v3.3，task_187 / M1-13）。
+ *
+ * why 缺省 / 空清单 ⇒ null：`activeInstanceId` 为 null（大厅态）或清单里没这条
+ *   ⇒ 场景没有可画的副本名牌（**不猜**哪个副本）。
+ * @param state state 通道上的世界快照。
+ * @returns 活跃副本的视图；没有则 null。
+ */
+function activeInstanceView(state: WorldState): ProjectInstanceView | null {
+  const activeId = state.activeInstanceId ?? null;
+  if (!activeId) return null;
+  return (state.projectInstances ?? []).find((view) => view.instanceId === activeId) ?? null;
 }
 
 /** 场景侧需要被 state 驱动的接口（由 BattlefieldScene 实现）。 */
@@ -181,6 +199,16 @@ export interface WorldScenePort {
    * 载荷只携 characterId：战场认单位的方式与任务事件一致（按 characterId 反查单位）。
    */
   syncLevelUp?(characterId: string, toLevel: number): void;
+  /**
+   * 活跃副本视图钩子（@since v3.3，task_187 / M1-13）：state 通道上的 `projectInstances`
+   * 里**当前活跃副本**那一条转发进场景 —— 战场据此画「进副本仪式」的副本名牌
+   * （名字 / 分支 / 路径尾段；在办任务数由场景按 scope 过滤后的任务数得出）。
+   * 可选成员：不实现不破编译（同 syncLevelUp 惯例）。
+   * why 传**视图**而不是整份清单：名牌只关心「我现在站在哪个副本」⇒
+   *   在桥接层按 `activeInstanceId` 归拢（与 scope 过滤同一口径，见 onState 里的注释）；
+   *   `activeInstanceId` 为 null（大厅态）⇒ 传 null（名牌不画）。
+   */
+  syncInstanceView?(view: ProjectInstanceView | null): void;
 }
 
 /** 场景侧的交互出口：场景调这些方法，桥接层负责转成 WorldEvent 发给 core。 */
@@ -287,6 +315,14 @@ export function createWorldBridge(
       (state.missions ?? []).filter((mission) => inScope(mission.instanceId)),
       (state.tasks ?? []).filter((task) => inScope(task.instanceId)),
     );
+    // 活跃副本视图（task_187 / M1-13）：state 通道的 `projectInstances` 里命中
+    // `activeInstanceId` 的那一条 ⇒ 场景据此画副本名牌（名字 / 分支 / 路径尾段）。
+    // why 在桥接层归拢：与 scope 过滤同一口径 —— 转发给场景的必须是**当前副本**那一条，
+    //   场景不该自己从整份清单里挑（清单是 core 的事实，挑谁是转发层的活）。
+    // why 用 `activeInstanceId` 原值而不是 currentScope：`activeInstanceId` 为 null = 大厅态，
+    //   此时**没有**活跃副本 ⇒ 传 null（名牌不画）；currentScope 是 COALESCE 后的口径
+    //   （null ⇒ 默认沙盒），拿它去挑会把大厅态说成「站在默认沙盒」。
+    port.syncInstanceView?.(activeInstanceView(state));
   });
 
   // world 通道 → 场景（@since v3.17，task_038；@since v3.21，task_045 补 unit.position）：

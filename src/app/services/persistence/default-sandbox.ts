@@ -86,6 +86,14 @@ export interface DefaultSandboxParams {
   readonly cwd: string;
   /** 最后进入时刻（epoch ms；缺省 0 = 从未进入过）。 */
   readonly now?: number;
+  /**
+   * 当前分支短名（@since v3.3，task_187 / M1-13；缺省 / null = 未知）。
+   *
+   * why 走参数而不是模块内自己读：分支是**运行态事实**（要问 git）⇒ 探测发生在
+   *   唯一持有 node 能力的那一层（default-sandbox-node.ts），本模块保持**零 IO**。
+   * 取法与 e2e 的项目上下文同款：`git rev-parse --abbrev-ref HEAD`。
+   */
+  readonly branch?: string | null;
 }
 
 /**
@@ -107,6 +115,8 @@ export function createDefaultSandboxInstanceView(params: DefaultSandboxParams): 
     archived: false,
     status: 'idle',
     sandbox: true,
+    // 分支未知时**不摆 vcs 字段**（缺省 = 未知）—— 读方按「未知」处理，不猜。
+    ...(params.branch ? { vcs: { branch: params.branch } } : {}),
   };
 }
 

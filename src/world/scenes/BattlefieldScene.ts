@@ -66,6 +66,7 @@ import type {
   ClickMods,
   MissionView,
   Point,
+  ProjectInstanceView,
   ReplayBeat,
   SelectionState,
   UnitView,
@@ -100,6 +101,10 @@ import { CloudLayer } from '../objects/cloud-layer';
 import { DirectorFrameLayer } from '../objects/director-frame-layer';
 import { FocusLinkLayer } from '../objects/focus-link-layer';
 import { GroundLayer, GROUND_DEPTH } from '../objects/ground-layer';
+import {
+  InstanceNameplate,
+  type InstanceNameplateData,
+} from '../objects/instance-nameplate';
 import { ReplayBoard, replayAnchorId, replayAvatarPosition } from '../objects/replay-board';import { ReplayLayer } from '../objects/replay-layer';
 import { SelectionBox } from '../objects/selection-box';
 import { SpeechBubbleBoard } from '../objects/speech-bubble';
@@ -223,6 +228,22 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private rubberTween: Phaser.Tweens.Tween | null = null;
   /** 入夜变暖的巡检定时器（每分钟看一眼真实时间）。 */
   private warmthTimer: Phaser.Time.TimerEvent | null = null;
+  /**
+   * 本次进入的**副本 id**（@since v3.3，task_187 / M1-13；design §2.5 破除点 #1）。
+   *
+   * 来源 = Phaser 的 scene data（`scene.start('battlefield', { instanceId })`）——
+   *   **不走全局变量**（那是解除「BattlefieldScene 单例假设」的抓手）。
+   * null = 不是「进副本」这一回（开机直接进战场）⇒ 不演仪式。
+   * why 冻结在 init()：场景实例会被 Phaser 复用（scene.start 不重建）⇒
+   *   每次启动都得重新读一次 scene data，不能沿用上一次的值。
+   */
+  private instanceId: string | null = null;
+  /** 副本名牌板（进副本仪式，@since v3.3，task_187 / M1-13）；null = 本次没进副本。 */
+  private nameplate: InstanceNameplate | null = null;
+  /** 活跃副本的实例视图（@since v3.3，task_187 / M1-13；桥接层转发）。 */
+  private instanceView: ProjectInstanceView | null = null;
+  /** 在办任务数（未终结的任务条数；null = 还没收到任务快照）。 */
+  private activeTaskCount: number | null = null;
 
   private dragMode: DragMode = 'none';
   private dragStartScreen: Point = { x: 0, y: 0 };
@@ -268,7 +289,17 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    * why speechBoard 不清：它在 create() 里 new（构造期拿不到场景时钟 this.time.now），
    *   每次 create() 都是全新实例 ⇒ 天然零残留，无需清理。
    */
-  init(): void {
+  init(data?: unknown): void {
+    // 本次进入的副本 id（@since v3.3，task_187 / M1-13；design §2.5 破除点 #1）：
+    //   从 Phaser 的 scene data 读出并**冻结**（不走全局变量 —— 那是解除单例假设的抓手）。
+    //   没有 instanceId = 这次不是「进副本」（开机直接进战场）⇒ 不演进副本仪式。
+    //   why 每次启动都重读：Phaser 复用场景实例 ⇒ 上一次的 instanceId 不能沿用。
+    const raw = (data as { instanceId?: unknown } | undefined)?.instanceId;
+    this.instanceId = typeof raw === 'string' && raw.length > 0 ? raw : null;
+    // 仪式态复位（Phaser 复用场景实例 ⇒ 上一次的值不能带进下一次）：
+    //   视图 / 在办任务数都是**本副本**的投影，换副本就得清零。
+    this.instanceView = null;
+    this.activeTaskCount = null;
     // 单位注册表：清 objects / restoredPositions / spawnCursor（已有析构方法，此前全仓无调用方）。
     this.units.destroy();
     // 任务表现板：清浮标（working / done / failed / awaiting 四态）。
@@ -367,6 +398,17 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 可见性要等第一次拖拽/滚轮才被纠正。
     this.unitLayer.setCameraZoom(this.view.current.zoom);
 
+    // 进副本仪式（@since v3.3，task_187 / M1-13；design §2.2 两拍表）：
+    //   本次是「进副本」（scene data 带了 instanceId）才演 —— 开机直接进战场不演（老行为不变）。
+    // why 排在相机控制器之后：仪式的第一拍就要把相机送回 overviewPose（位姿真相在相机控制器）。
+    if (this.instanceId) {
+      this.nameplate = new InstanceNameplate(this, {
+        cameraHome: (durationMs) => this.cameraHome(durationMs),
+        cameraHomeNow: () => this.cameraHomeNow(),
+      });
+      this.nameplate.start(this.nameplateData());
+    }
+
     this.input.on('pointerdown', this.onPointerDown, this);
     this.input.on('pointermove', this.onPointerMove, this);
     this.input.on('pointerup', this.onPointerUp, this);
@@ -374,6 +416,10 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.input.on('wheel', this.onWheel, this);
     // ESC 回全景（@since v3.3，task_079）：镜头编排的「归位」键。
     this.input.keyboard?.on('keydown-ESC', this.onEscape, this);
+    // 任意按键 = 跳过进副本仪式（@since v3.3，task_187 / M1-13：「任意输入即跳到末态」）。
+    // why 排在 ESC 之后：Phaser 先发键专属事件再发通用 'keydown'（KeyboardPlugin.update）
+    //   ⇒ ESC 走 onEscape（它自己也会吃掉仪式），别的键才落到这里。
+    this.input.keyboard?.on('keydown', this.onKeyDown, this);
     // 右键语义（task_045）：浏览器默认的右键菜单会吃掉 pointerup，短按判定就废了 ——
     // 顺手也让右键拖拽平移不再被菜单打断（战场是全屏画布，没有"右键菜单"的正当需求）。
     this.input.mouse?.disableContextMenu();
@@ -433,6 +479,22 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.playTaskPointFx(result);
     // 动画八态（@since v3.8，task_141）：快照路的任务相位 → 单位基态。
     this.syncUnitTaskPhases(tasks);
+    // 在办任务数（@since v3.3，task_187 / M1-13）：副本名牌第三行。
+    // why 在这里算：桥接层转发过来的 tasks **已按副本过滤**（M1-10 的 scope 过滤）
+    //   ⇒ 这里的条数就是「本副本在办几条」，不需要场景再判归属。
+    this.activeTaskCount = countActiveTasks(tasks);
+    this.refreshNameplate();
+  }
+
+  /**
+   * 活跃副本视图同步（@since v3.3，task_187 / M1-13；由桥接层转发 state 通道的实例视图）。
+   *
+   * why 场景只存不解释：视图是 core 的事实（注册表的投影）⇒ 场景只把它画成名牌，
+   *   不自己从整份清单里挑「哪个是活跃副本」（那是转发层的活，见 bridge/bus-adapter）。
+   */
+  syncInstanceView(view: ProjectInstanceView | null): void {
+    this.instanceView = view;
+    this.refreshNameplate();
   }
 
   /**
@@ -745,6 +807,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   // ==========================================================================
 
   private onPointerDown(pointer: Phaser.Input.Pointer): void {
+    // 仪式在演 ⇒ 这次点击用来跳过仪式（不吃掉的话会顺手选中单位）。
+    if (this.consumeCeremonyInput()) return;
     // 右键 / 中键拖拽 = 平移候选；左键留给框选与点击。
     // 右键在 pointerup 才分流（task_045）：短按 = 移动指令（对选中编队），拖远 = 平移。
     if (pointer.rightButtonDown() || pointer.middleButtonDown()) {
@@ -809,6 +873,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   }
 
   private onPointerUp(pointer: Phaser.Input.Pointer): void {
+    // 仪式在演 ⇒ 这次松手用来跳过仪式（不吃掉的话会顺手框选 / 发移动指令）。
+    if (this.consumeCeremonyInput()) return;
     const mode = this.dragMode;
     this.dragMode = 'none';
 
@@ -934,6 +1000,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     _deltaX: number,
     deltaY: number
   ): void {
+    // 仪式在演 ⇒ 这次滚轮用来跳过仪式（不吃掉的话会顺手缩放镜头）。
+    if (this.consumeCeremonyInput()) return;
     // Phaser 的 wheel 事件只给增量，没有"滚轮停止"信号；用一次延时补发收尾
     void pointer;
     // 缩放区间 0.6-1.6x（@since v3.3，task_079）：越界即夹住（缩放没有回弹 ——
@@ -952,6 +1020,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.view.syncViewport();
     // 取景框几何跟着视口走（@since v3.4，task_092）：中屏变了，框的位置也要变。
     this.directorFrame.sync(this.viewport());
+    // 副本名牌（@since v3.3，task_187 / M1-13）：遮罩要重新铺满，名牌要回到正中。
+    this.nameplate?.resize(this.scale.width, this.scale.height);
   }
 
   /**
@@ -1127,12 +1197,71 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
   /** ESC = 回全景：整个战场装进视口（同时解除跟随）。 */
   private onEscape(): void {
+    // 仪式在演 ⇒ ESC = 跳过仪式（跳到末态），不回全景（回全景正是仪式的收尾动作）。
+    if (this.consumeCeremonyInput()) return;
     this.releaseFollow();
     // 手动优先（task_081）：ESC 回全景也是手动操作 —— 导演让位。
     this.releaseDirector();
     this.view.clearOvershoot();
     this.rubberOffset = { x: 0, y: 0 };
     this.tweenCameraTo(overviewPose(this.viewport(), DEFAULT_WORLD_BOUNDS));
+  }
+
+  /**
+   * 任意按键（@since v3.3，task_187 / M1-13）：仪式在演就跳过它。
+   *
+   * why 单独一个监听：验收②「任意输入即跳到末态」—— 不只是鼠标，键盘也算输入。
+   */
+  private onKeyDown(): void {
+    this.consumeCeremonyInput();
+  }
+
+  /**
+   * 吃掉「仪式期间」的一次输入（@since v3.3，task_187 / M1-13）。
+   *
+   * @returns true = 这次输入被仪式吃掉了（调用方别再处理它 ——
+   *   仪式期间的一次点击不该顺手选中单位）。
+   */
+  private consumeCeremonyInput(): boolean {
+    const plate = this.nameplate;
+    if (!plate?.active) return false;
+    plate.skip();
+    return true;
+  }
+
+  /** 相机归位（进副本仪式的正常收尾）：补间回 `overviewPose()`。 */
+  private cameraHome(durationMs: number): void {
+    this.tweenCameraTo(overviewPose(this.viewport(), DEFAULT_WORLD_BOUNDS), durationMs);
+  }
+
+  /** 相机归位（进副本仪式被跳过）：**瞬跳**回 `overviewPose()`（跳到末态，不补间）。 */
+  private cameraHomeNow(): void {
+    this.cameraTween?.remove();
+    this.cameraTween = null;
+    this.view.apply(overviewPose(this.viewport(), DEFAULT_WORLD_BOUNDS));
+  }
+
+  /**
+   * 副本名牌的数据（@since v3.3，task_187 / M1-13）—— **投影自 WorldState**。
+   *
+   * why 每一项都可能缺省：state 通道的快照可能后于仪式第一帧到达（远程模式）
+   *   ⇒ 不知道的项留 null（名牌不画那一段），数据到了再补（不重演仪式）。
+   */
+  private nameplateData(): InstanceNameplateData {
+    const view = this.instanceView;
+    return {
+      name: view?.title || this.instanceId || '副本',
+      branch: view?.vcs?.branch ?? null,
+      pathTail: view ? pathTailOf(view.path) : null,
+      activeTaskCount: this.activeTaskCount,
+    };
+  }
+
+  /** 把最新的名牌数据推给牌子板（只在仪式还在演时推 —— 演完了牌子已撤）。 */
+  private refreshNameplate(): void {
+    const plate = this.nameplate;
+    if (!plate?.active) return;
+    plate.setData(this.nameplateData());
   }
 
   /**
@@ -1200,6 +1329,10 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.rubberTween?.remove();
     this.rubberTween = null;
     this.input.keyboard?.off('keydown-ESC', this.onEscape, this);
+    // 副本名牌板（@since v3.3，task_187 / M1-13）：遮罩 / 名牌 / 淡出补间一并回收。
+    this.nameplate?.destroy();
+    this.nameplate = null;
+    this.input.keyboard?.off('keydown', this.onKeyDown, this);
     this.units.destroy();
     // 交互态复位（task_045）：场景重启（Phaser 复用场景实例）时不携带上一次的拖拽残留。
     this.dragMode = 'none';
@@ -1260,6 +1393,39 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       // 地面各层压在底板之下（task_078 的深度口径）。
       .setDepth(GROUND_DEPTH.bounds);
   }
+}
+
+/**
+ * 在办任务数（@since v3.3，task_187 / M1-13）—— 名牌上的「在办 N 条任务」。
+ *
+ * 口径 = **未终结**的任务条数（queued / running / awaiting_approval）：
+ *   终态（completed / failed / cancelled）是历史，不算「在办」。
+ * why 在场景里算：桥接层转来的任务**已经按 scope 过滤**（M1-10）
+ *   ⇒ 这里数到的就是「当前副本在办几条」，不需要再回 core 查一遍。
+ */
+export function countActiveTasks(tasks: readonly CharacterTask[]): number {
+  let count = 0;
+  for (const task of tasks) {
+    if (
+      task.status === 'queued' ||
+      task.status === 'running' ||
+      task.status === 'awaiting_approval'
+    ) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/**
+ * 路径尾段（@since v3.3，task_187 / M1-13）—— 名牌上的目录名。
+ *
+ * why 只取尾段：整条绝对路径在名牌上放不下，也没信息量（尾段就是「这是哪个副本」的落点）。
+ * 兼容 posix / windows 分隔符；空路径 = null（未知就不画那一段）。
+ */
+export function pathTailOf(path: string): string | null {
+  const segments = path.split(/[\\/]+/).filter((segment) => segment.length > 0);
+  return segments.length > 0 ? segments[segments.length - 1] : null;
 }
 
 /** 读出点击修饰键，供 core 决定 set / toggle 语义（见 core/types.ts 的 ClickMods）。 */

@@ -28,7 +28,7 @@ import {
   createInstanceRegistryWithDefaultSandbox,
   publishProjectInstances,
 } from '../../app/services/persistence/default-sandbox';
-import { nodeProcessCwd } from '../../app/services/persistence/default-sandbox-node';
+import { nodeProcessCwd, nodeProcessGitBranch } from '../../app/services/persistence/default-sandbox-node';
 import type { SqliteDatabaseLike } from '../../app/services/persistence/game-save-dao';
 import {
   createInstanceLoader,
@@ -121,7 +121,12 @@ export function bootStratixService(options: ServiceBootOptions = {}): BootedStra
   //   ⇒ 大厅有卡、`project.enter(DEFAULT_INSTANCE_ID)` 能进、旧数据（instance_id IS NULL 的行）
   //   按 COALESCE 口径落它名下（design §2.4 R1-04 / §7.1 M1-07 行）。
   const store = options.store ?? worldStore;
-  const instanceRegistry = createInstanceRegistryWithDefaultSandbox({ cwd: nodeProcessCwd() });
+  const instanceRegistry = createInstanceRegistryWithDefaultSandbox({
+    cwd: nodeProcessCwd(),
+    // 分支（@since v3.3，task_187 / M1-13）：副本名牌上的「分支」一行。
+    // 取不到 = null（未知不是错误）⇒ 名牌不画「分支」那一段，不猜。
+    branch: nodeProcessGitBranch(),
+  });
   // 装载端口要有库才装得动（读库在 app 侧）；无库 = 不接（`project.enter` 走「未落地」，
   //   如实说清没接上，不假装能进）。
   const instanceLoader = options.db

@@ -1253,6 +1253,19 @@ export interface ProjectInstanceView {
    * 默认沙盒**必须物化**（注册表一条真实记录 + 大厅一张卡）⇒ 否则历史数据不可达。
    */
   readonly sandbox?: boolean;
+  /**
+   * 运行态的**版本控制事实**（@since v3.3，task_187 / M1-13）。
+   *
+   * why 挂在实例上不在契约里（design §3.3.3 R1-01）：分支是**物理副本**的运行态事实 ——
+   *   同一个逻辑项目的主仓与 worktree 可以停在**不同分支**上，而 `.stratix/project.json`
+   *   随 git 传播 ⇒ 分支绝不能进契约（会把工作区弄脏、还会跟分支冲突）。
+   * 刻意可选：缺省 = 该副本没有版本控制信息（不是 git 仓库 / 没探测到）；
+   *   读取方缺省时按「分支未知」处理，**不猜**。
+   */
+  readonly vcs?: {
+    /** 当前分支名（短名，如 `demo/v3.3`）；null / 缺省 = 未知或不在分支上（detached HEAD）。 */
+    readonly branch?: string | null;
+  };
 }
 
 /**
