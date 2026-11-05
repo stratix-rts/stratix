@@ -1876,7 +1876,23 @@ export type HudCommand =
    * 任一步失败 ⇒ **拒绝**：activeInstanceId **保持不变** + 广播 `project.enter.failed`。
    * why 命令是 fire-and-forget：裁决是异步的（load 是 Promise），失败经事件回报，不靠返回值。
    */
-  | { type: 'project.enter'; instanceId: ProjectInstanceId };
+  | { type: 'project.enter'; instanceId: ProjectInstanceId }
+  /**
+   * @since v3.3（task_178 / M1-04）退出副本（回到大厅态）。
+   * 发出方：HUD 战场里的「退出副本」按钮（design §7.1 M1-04 行）。
+   * core 裁决（**纯逻辑 + 端口调用**，core 零 IO —— IO 全在 app 层注入的端口实现里）：
+   *   ① archive(activeInstanceId) ⇒ app 侧把该实例的**未终结 mission** 归档到
+   *      `.stratix/history/missions-YYYYMM.jsonl`（append-only，见 §2.2 Q9 落地）
+   *   ② unload(activeInstanceId) ⇒ 清理 store 里的该实例实体
+   *   ③ 写 WorldState.activeInstanceId = null + 广播 `project.changed`（**唯一权威信号**，R1-08）
+   * 任一步失败 ⇒ **拒绝退出**（用户留在副本内）：activeInstanceId **保持不变**、
+   *   **不广播** `project.changed` + 广播 `project.exit.failed`。
+   * why 顺序固定（archive → unload → 落状态）：**先落盘再丢弃** ——
+   *   archive 是 append-only 事件 log（dsh session 同构语义），unload 是丢弃；
+   *   反序（先 unload 后 archive）等于先把要记的东西扔了。
+   * why 命令是 fire-and-forget：裁决是异步的（archive / unload 是 Promise），失败经事件回报。
+   */
+  | { type: 'project.exit' };
 
 /**
  * @since v3.18 经验来源词表（`exp.gained` 事件的 source 字段，task_039）。
@@ -2159,4 +2175,13 @@ export type WorldEvent =
    *   分类词表在 M1-02 已定死（core 裁决 / HUD 文案 / app 端口实现三处共用同一套词表，
    *   不各抄一份）；自由文本会让三处各写各的。
    */
-  | { type: 'project.enter.failed'; instanceId: ProjectInstanceId; reason: PortFailureReason };
+  | { type: 'project.enter.failed'; instanceId: ProjectInstanceId; reason: PortFailureReason }
+  /**
+   * @since v3.3（task_178 / M1-04）退出被拒（归档失败 / 卸载失败）—— HUD 据此提示。
+   * why 必须有这条「拒绝」信号：拒绝的判据是**没有** `project.changed`（design §7.1 M1-04 行验收①），
+   *   而「没有事件」对 HUD 而言与「命令没人管」不可区分 ⇒ 拒绝必须**显式回报**，
+   *   否则用户按了「退出副本」却毫无反馈（同 project.enter.failed 的动机）。
+   * why reason 复用**冻结的分类枚举**（PortFailureReason）：'archive-failed' = 归档失败已留在副本内，
+   *   'unload-failed' = 卸载失败（已归档但未能清场，同样留在副本内）。
+   */
+  | { type: 'project.exit.failed'; instanceId: ProjectInstanceId; reason: PortFailureReason };

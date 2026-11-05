@@ -152,5 +152,8 @@ function describe(event: WorldEvent): string {
       return `${event.type.padEnd(15)} ${event.instanceId ?? '大厅'}`;
     case 'project.enter.failed':
       return `${event.type.padEnd(15)} ${event.instanceId} :: ${event.reason}`;
+    // 退出副本被拒（@since v3.3，task_178 / M1-04）：归档/卸载失败 ⇒ 留在副本内，看一眼为何没走成。
+    case 'project.exit.failed':
+      return `${event.type.padEnd(15)} ${event.instanceId} :: ${event.reason}`;
   }
 }

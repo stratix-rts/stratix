@@ -388,6 +388,9 @@ const HUD_COMMAND_TYPE_FLAGS: Readonly<Record<HudCommand['type'], true>> = {
   // @since v3.3（task_177 / M1-03）进入副本：远程模式下渲染进程不起 core runtime，
   //   切换裁决在 service 侧的 core ⇒ 这条命令必须入册（否则远程端进不去副本）。
   'project.enter': true,
+  // @since v3.3（task_178 / M1-04）退出副本：同 project.enter 的理由 —— 切换裁决在
+  //   service 侧的 core ⇒ 远程端要能退出副本，这条命令必须入册。
+  'project.exit': true,
 };
 
 /**

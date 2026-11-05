@@ -62,6 +62,11 @@
  *   失败 ⇒ 拒绝(activeInstanceId 保持不变)+ 广播 project.enter.failed。
  *   IO 全在 app 层注入的 InstanceLoaderPort 里(core 零 IO 铁律);裁决经串行链执行
  *   (load 是异步的 ⇒ 并发进入会让事件交错、状态被后写覆盖)。
+ * @since v3.3(task_178 / M1-04)追加 project.exit 命令接线:**先归档后卸载**的纯裁决
+ *   (archive → unload → 写 activeInstanceId = null → 广播 project.changed(null));
+ *   归档失败 ⇒ 拒绝退出(activeInstanceId 保持不变、**不广播** project.changed)。
+ *   归档 IO 在 app 层注入的 ProjectArchivePort 里;与 project.enter 共用同一条串行链
+ *   (切换方向相反 ⇒ 必须互斥)。
  */
 
 import type { AgentLinkManager } from './agent-link';
@@ -82,6 +87,7 @@ import {
   MIN_CONTROL_GROUP_SLOT,
   NOTICE_TTL_MS,
   type AgentKind,
+  type ArchiveResult,
   type HudCommand,
   type InstanceInspection,
   type InstanceLoaderPort,
@@ -89,6 +95,7 @@ import {
   type NoticeLevel,
   type PortFailureReason,
   type PortResult,
+  type ProjectArchivePort,
   type ProjectInstanceId,
   type WorldEvent,
   type WorldState,
@@ -176,6 +183,16 @@ export interface CoreRuntimeOptions {
    *   与 session.resume / pipeline.start 同一口径。
    */
   readonly instanceLoader?: InstanceLoaderPort;
+  /**
+   * 项目归档端口（@since v3.3，task_178 / M1-04）—— **离开副本前的落盘出口**。
+   * why 独立于 instanceLoader：归档写的是 `.stratix/history/*.jsonl`（append-only），
+   *   装载 / 卸载动的是 store 里的实体行 —— 两件事的**失败语义不同**：
+   *   归档失败 = 数据没落盘（**拒绝退出**，用户留在副本内）；
+   *   卸载失败 = 实体没清干净（同样拒绝退出，避免带着旧实体回大厅串数据）。
+   * 未注入时 `project.exit` 按未落地处理（onUnhandled）—— **不假装退出成功**，
+   *   同 project.enter 的口径（不假装进入成功）。
+   */
+  readonly projectArchive?: ProjectArchivePort;
   /**
    * 尚未实现的命令 / 事件出口。
    * why 需要它:契约已冻结(§5),Phase 2 之前留了一些尚未接地的命令(chat.send 等);
@@ -465,6 +482,86 @@ async function adjudicateProjectEnter(
   emitWorldEvent({ type: 'project.changed', instanceId });
 }
 
+/**
+ * 归档端口调用的**兜底**（@since v3.3，task_178 / M1-04）。
+ *
+ * 契约上归档失败用**返回值**表达（`ArchiveResult.ok === false` + 分类 reason），
+ *   但实现方若仍抛错（design §1.2.5 失败语义表：「archive 抛错 ⇒ 拒绝退出」），
+ *   异常**不得逃出 core** —— 一律按拒绝处理。
+ * why 落 'archive-failed' 这一档：HUD 要的就是「归档失败，已留在副本内」这句文案。
+ */
+async function safeArchive(
+  archive: ProjectArchivePort,
+  instanceId: ProjectInstanceId
+): Promise<ArchiveResult> {
+  try {
+    return await archive.archive(instanceId);
+  } catch {
+    return { ok: false, reason: 'archive-failed' };
+  }
+}
+
+/**
+ * 卸载端口调用的**兜底**（@since v3.3，task_178 / M1-04）—— 与 safeArchive 同一纪律。
+ */
+async function safeUnload(
+  loader: InstanceLoaderPort,
+  instanceId: ProjectInstanceId
+): Promise<PortResult> {
+  try {
+    return await loader.unload(instanceId);
+  } catch {
+    return { ok: false, reason: 'unload-failed' };
+  }
+}
+
+/**
+ * 拒绝退出（@since v3.3，task_178 / M1-04）：**状态不变** + **不广播 project.changed**。
+ * why 状态不变是硬要求（design §7.1 M1-04 行验收①）：拒绝 ⇒ 用户仍站在副本内，
+ *   半退出（实体清了、人还在副本里）比不退更糟。
+ */
+function rejectProjectExit(instanceId: ProjectInstanceId, reason: PortFailureReason): void {
+  emitWorldEvent({ type: 'project.exit.failed', instanceId, reason });
+}
+
+/**
+ * 退出副本的**纯裁决**（@since v3.3，task_178 / M1-04；design §7.1 M1-04 行）。
+ *
+ * 三拍：archive（先落盘）→ unload（再丢弃）→ 写 activeInstanceId = null + 广播 project.changed。
+ * 任一拍失败 ⇒ **拒绝退出**：activeInstanceId **保持不变** + **不广播** project.changed。
+ *
+ * why 顺序固定（archive 在 unload 之前）：**先落盘再丢弃** ——
+ *   archive 是 append-only 事件 log（与 dsh 的 session log 同构），unload 是丢弃内存态；
+ *   反序等于「先把要记的东西扔了，再想记已经没了」。
+ * why 成功后只发**一条** project.changed（instanceId = null）：与进入路径同口径 ——
+ *   切换的**意图**只有这一条事件（唯一权威信号，R1-08），state 通道只同步结果。
+ */
+async function adjudicateProjectExit(
+  archive: ProjectArchivePort,
+  loader: InstanceLoaderPort,
+  store: CoreStore
+): Promise<void> {
+  const instanceId = store.getState().activeInstanceId;
+  // 大厅态没有可退出的副本 ⇒ 无事可做（命令被消费掉，不是未落地）：
+  //   没有状态变化、没有广播 —— 也不发失败事件（没有 instanceId 可报）。
+  if (!instanceId) return;
+  const archived = await safeArchive(archive, instanceId);
+  if (!archived.ok) {
+    rejectProjectExit(instanceId, archived.reason);
+    return;
+  }
+  const unloaded = await safeUnload(loader, instanceId);
+  if (!unloaded.ok) {
+    rejectProjectExit(instanceId, unloaded.reason);
+    return;
+  }
+  // 落状态（state 通道广播的是**结果**）→ 再广播 project.changed（**意图**，唯一权威信号）。
+  store.setState((state) =>
+    state.activeInstanceId === null ? state : { ...state, activeInstanceId: null }
+  );
+  emitWorldEvent({ type: 'project.changed', instanceId: null });
+}
+
 export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime {
   const store = options.store ?? worldStore;
   const agentLink = options.agentLink;
@@ -485,10 +582,16 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
   // @since v3.3(task_177 / M1-03)实例装载端口:只持引用不构造(见 options.instanceLoader 注释)。
   //   core 零 IO:端口实现(读注册表/库)由 app 层注入,core 只调形状。
   const instanceLoader = options.instanceLoader;
-  // 进入副本的**串行链**(@since v3.3,task_177 / M1-03):load 是异步的 ⇒ 连点两次可能并发,
+  // @since v3.3(task_178 / M1-04)项目归档端口:只持引用不构造(见 options.projectArchive 注释)。
+  //   core 零 IO:归档实现(写 .stratix/history/*.jsonl)由 app 层注入,core 只调形状。
+  const projectArchive = options.projectArchive;
+  // 副本切换的**串行链**(@since v3.3,task_177 / M1-03;task_178 / M1-04 扩到 exit):
+  //   load / archive / unload 都是异步的 ⇒ 连点两次可能并发,
   //   并发会让两条 project.changed 交错、activeInstanceId 被后写覆盖(谁赢取决于 IO 完成顺序)。
   //   串行化 ⇒ 一次切换一条事件、顺序确定(后点的后切)。
-  let enterChain: Promise<void> = Promise.resolve();
+  // why enter 与 exit 共用一条链:切换方向相反 ⇒ 必须**互斥** ——
+  //   exit 若插进 enter 的 IO 中途,会把「刚载入还没落稳」的实例直接归档卸载。
+  let switchChain: Promise<void> = Promise.resolve();
   const reportUnhandled = options.onUnhandled ?? ((): void => { /* 默认不打扰;dev 入口与单测会注入 */ });
 
   /**
@@ -742,10 +845,26 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
           reportUnhandled('command', command);
           return;
         }
-        enterChain = enterChain
+        switchChain = switchChain
           .then(() => adjudicateProjectEnter(instanceLoader, store, command.instanceId))
           .catch(() => {
             // 端口失败已在裁决内兜成「拒绝」;此处只保证**链条不断**(后续进入仍能排队执行)。
+          });
+        return;
+      // @since v3.3(task_178 / M1-04)退出副本:core 一手裁决(**纯逻辑 + 端口调用**,core 零 IO)。
+      //   ① archive ⇒ ② unload ⇒ ③ 写 activeInstanceId = null + 广播 project.changed(null)。
+      //   任一步失败 ⇒ **拒绝退出**(用户留在副本内):activeInstanceId 保持不变、**不广播** project.changed。
+      //   端口缺席 = 命令没人接管 → 按未落地处理(不假装退出成功;同 project.enter 口径)。
+      //   why 与 enter 共用串行链:切换方向相反 ⇒ 必须互斥(exit 不能插进 enter 的 IO 中途)。
+      case 'project.exit':
+        if (!instanceLoader || !projectArchive) {
+          reportUnhandled('command', command);
+          return;
+        }
+        switchChain = switchChain
+          .then(() => adjudicateProjectExit(projectArchive, instanceLoader, store))
+          .catch(() => {
+            // 端口失败已在裁决内兜成「拒绝」;此处只保证**链条不断**(后续切换仍能排队执行)。
           });
         return;
       // @since v3.6 屏位路由:
@@ -896,11 +1015,13 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         //   不写 WorldState -- 同 unit.bubble 惯例显式接地,不进 onUnhandled
         //   (否则拖一次时间轴就会报一串「未处理」噪音)。
         if (event.type === 'replay.beat') return;
-        // project.changed / project.enter.failed(@since v3.3,task_177 / M1-03):core 自己在
-        //   world 通道上发出的两条事件(切换信号 / 拒绝信号),会绕回本订阅一次 —— 显式接地
+        // project.changed / project.enter.failed / project.exit.failed(@since v3.3,
+        //   task_177 / M1-03;task_178 / M1-04):core 自己在
+        //   world 通道上发出的三条事件(切换信号 / 拒绝信号),会绕回本订阅一次 —— 显式接地
         //   (同 camera.center 惯例),不进 onUnhandled(否则每次切副本都报一次「未处理」噪音)。
         if (event.type === 'project.changed') return;
         if (event.type === 'project.enter.failed') return;
+        if (event.type === 'project.exit.failed') return;
         reportUnhandled('world', event);
     }
   };
