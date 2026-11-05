@@ -181,8 +181,12 @@ import {
   migrateLegacyPositionSeed,
 } from '../../world/objects/unit-registry';
 import { BattlefieldScene } from '../../world/scenes/BattlefieldScene';
+// 大厅场景（@since v3.3，task_186 / M1-12）：workspace 总览的世界层底景，只画背景/氛围（零业务状态）。
+import { LobbyScene } from '../../world/scenes/LobbyScene';
 // 特效素材加载场景（@since v3.3，task_161）：独立预载 sheet，战场 create() 不等素材（见该文件头注释）。
 import { FxAssetScene } from '../../world/scenes/fx-asset-scene';
+// 场景切换策略（@since v3.3，task_186 / M1-12）：大厅 ⇄ 战场互斥、FxAssetScene 常驻 —— 唯一切换入口。
+import { switchToBattlefield, switchToLobby } from '../../world/scenes/scene-switch';
 // 入口 HTML 相对站点根的目录层数（音频基址等相对 URL 的事实源，见 app/entry-paths.ts）。
 import { ENTRY_PATH_DEPTH } from '../entry-paths';
 // 当日回放读取口（@since v3.3，task_082）：读 service 的只读 REST（当天 task_run 事件流）。
@@ -1383,7 +1387,7 @@ async function boot(): Promise<void> {
     parent: battlefieldHost,
     backgroundColor: '#0f131b',
     scale: { mode: Phaser.Scale.RESIZE },
-    scene: [BattlefieldScene, FxAssetScene],
+    scene: [BattlefieldScene, FxAssetScene, LobbyScene],
     // 形象精灵源在 boot 前就位（场景自己实例化，构造器拿不到注入 —— 走 game.registry）。
     callbacks: {
       preBoot: (booting) => {
@@ -1406,6 +1410,25 @@ async function boot(): Promise<void> {
         booting.registry.set(FX_ASSET_BASE_URL_KEY, fxBaseUrl(document.baseURI, ENTRY_PATH_DEPTH));
       },
     },
+  });
+
+  // ===== world 场景切换（@since v3.3，task_186 / M1-12）：project.changed ⇒ 大厅 ⇄ 战场 =====
+  // core 裁决完 project.enter / project.exit 后广播 project.changed（唯一权威信号，design §2.1），
+  // 这里把它翻译成 world 层的场景切换：互斥与常驻的裁决在 world/scenes/scene-switch.ts
+  // （大厅 ⇄ 战场互停；FxAssetScene 常驻，素材管线不随切换断掉）。
+  // why 组合根接：world 不订阅业务事件（铁律 1）—— 大厅场景零业务状态，
+  //   战场场景的桥接层只认 world 通道的业务事件；场景切换是**装配级**动作，归组合根。
+  const stopSceneSwitch = onWorldEvent((event) => {
+    if (event.type !== 'project.changed') return;
+    if (event.instanceId === null) {
+      switchToLobby(game.scene);
+      return;
+    }
+    switchToBattlefield(game.scene, event.instanceId);
+    // 场景重建 ⇒ 桥接层重新订阅 ⇒ store.subscribe 不回放历史（core/store.ts）
+    // ⇒ 补发一次当前态（与首帧 POST_RENDER 那次补发同一理由）。
+    // 远程模式不回发：此刻 worldStore 不是真相源（task_083，远程快照未到时补发等于说「战场空了」）。
+    if (!remote) emitState(worldStore.getState());
   });
 
   // ===== core 侧：闭环接线（command/world → store → state 广播）=====
@@ -1583,6 +1606,8 @@ async function boot(): Promise<void> {
     () => {
       stopOnboardingWatch();
       onboarding.dispose();
+      // 场景切换订阅（task_186）：退总线订阅（页面销毁前退干净，与其它订阅同一纪律）。
+      stopSceneSwitch();
       // 预览实例（Phaser）由向导屏 / 角色屏在各自卸载时销毁；这里再兜一次底（两个屏都没挂过时也不会有事）。
       appearancePreview.destroy();
       // 升级 toast 订阅（task_041）：与其它总线订阅同一卸载纪律 —— 页面销毁前退干净。
