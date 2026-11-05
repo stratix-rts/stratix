@@ -7,6 +7,7 @@
 import {
   buildProjectContextBlock,
   createProjectContextProvider,
+  isProjectContextEnabled,
   resolveProjectContextBlock,
   sanitizeContractText,
   sanitizeProjectPersona,
@@ -15,8 +16,11 @@ import {
   STRATIX_PROJECT_CONTEXT_MAX_NAME_CHARS,
   STRATIX_PROJECT_CONTEXT_MAX_PERSONA_CHARS,
   STRATIX_PROJECT_CONTEXT_MAX_SUGGESTION_CHARS,
+  STRATIX_PROJECT_CONTEXT_TOGGLE_KEY,
   type ProjectContextInput,
 } from '../services/project-context';
+import { STRATIX_CONTEXT_TOGGLE_KEY } from '../../core/types';
+import { isGlobalContextEnabled } from '../services/stratix-context';
 
 /** 码点长度（上限按码点算）。 */
 function cpLen(text: string): number {
@@ -347,5 +351,116 @@ describe('纯函数性', () => {
     const second = buildProjectContextBlock(input);
     spy.mockRestore();
     expect(second).toBe(first);
+  });
+});
+
+// ============================================================================
+// 项目契约块独立开关（@since v3.3，task_171 / DESIGN-workspace §8 M0-07）
+// 验收：① 两开关互不影响 ② 关掉后无项目块（任务照跑，见 task-service 侧断言）
+//       ③ 既有开关（战场现状块）行为不变
+// ============================================================================
+
+/** 内存 Storage 面（同 stratix-context.test.ts 的夹具口径）。 */
+function memoryStorage(initial: Record<string, string> = {}): Storage {
+  const store = new Map(Object.entries(initial));
+  return {
+    get length(): number { return store.size; },
+    clear: () => store.clear(),
+    getItem: (k: string) => (store.has(k) ? (store.get(k) as string) : null),
+    key: (i: number) => Array.from(store.keys())[i] ?? null,
+    removeItem: (k: string) => { store.delete(k); },
+    setItem: (k: string, v: string) => { store.set(k, String(v)); },
+  };
+}
+
+describe('开关键（§8 M0-07）', () => {
+  it('键名固定为 stratix.project.context.enabled，且与既有战场开关不同键', () => {
+    expect(STRATIX_PROJECT_CONTEXT_TOGGLE_KEY).toBe('stratix.project.context.enabled');
+    // 既有开关（战场现状块）= 'stratix.context.enabled' —— 两个键必须分家
+    expect(STRATIX_CONTEXT_TOGGLE_KEY).toBe('stratix.context.enabled');
+    expect(STRATIX_PROJECT_CONTEXT_TOGGLE_KEY).not.toBe(STRATIX_CONTEXT_TOGGLE_KEY);
+  });
+});
+
+describe('isProjectContextEnabled —— 本地设置层读值', () => {
+  it('无键 / 值非 0 → 开；值 0 → 关；无存储环境 → 开（缺省开）', () => {
+    expect(isProjectContextEnabled(memoryStorage())).toBe(true);
+    expect(isProjectContextEnabled(memoryStorage({ [STRATIX_PROJECT_CONTEXT_TOGGLE_KEY]: '1' }))).toBe(true);
+    expect(isProjectContextEnabled(memoryStorage({ [STRATIX_PROJECT_CONTEXT_TOGGLE_KEY]: '0' }))).toBe(false);
+    expect(isProjectContextEnabled(null)).toBe(true);
+  });
+
+  it('存储 API 抛错（隐私模式等）→ 视为开，不绑架任务回路', () => {
+    const broken = {
+      get length(): number { return 0; },
+      clear: () => undefined,
+      getItem: (): string => { throw new Error('storage blocked'); },
+      key: (): string | null => null,
+      removeItem: () => undefined,
+      setItem: () => undefined,
+    } as unknown as Storage;
+    expect(isProjectContextEnabled(broken)).toBe(true);
+  });
+
+  it('验收①：关掉项目开关，不影响既有战场开关；反之亦然', () => {
+    // 只关项目开关 ⇒ 战场开关仍为开
+    const onlyProjectOff = memoryStorage({
+      [STRATIX_PROJECT_CONTEXT_TOGGLE_KEY]: '0',
+      [STRATIX_CONTEXT_TOGGLE_KEY]: '1',
+    });
+    expect(isProjectContextEnabled(onlyProjectOff)).toBe(false);
+    expect(isGlobalContextEnabled(onlyProjectOff)).toBe(true);
+
+    // 只关战场开关 ⇒ 项目开关仍为开
+    const onlyBattlefieldOff = memoryStorage({
+      [STRATIX_PROJECT_CONTEXT_TOGGLE_KEY]: '1',
+      [STRATIX_CONTEXT_TOGGLE_KEY]: '0',
+    });
+    expect(isProjectContextEnabled(onlyBattlefieldOff)).toBe(true);
+    expect(isGlobalContextEnabled(onlyBattlefieldOff)).toBe(false);
+  });
+});
+
+describe('开关关掉 ⇒ provider 不注入（§8 M0-07 验收②）', () => {
+  it('isEnabled 报 false ⇒ provider 返回 null，且读数口一次都不调（不碰盘）', () => {
+    const load = jest.fn(() => sampleInput());
+    const source = createProjectContextProvider({ load, isEnabled: () => false });
+
+    expect(source()).toBeNull();
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it('isEnabled 报 false ⇒ resolve 返回空串（无项目块）', () => {
+    const source = createProjectContextProvider({ load: () => sampleInput(), isEnabled: () => false });
+    const block = resolveProjectContextBlock(source);
+
+    expect(block).toBe('');
+    expect(block).not.toContain('<stratix-project>');
+  });
+
+  it('缺省 isEnabled（组合根未接线）⇒ 恒开，行为与 M0-07 之前一致', () => {
+    const source = createProjectContextProvider({ load: () => sampleInput() });
+    expect(source()).not.toBeNull();
+    expect(resolveProjectContextBlock(source)).toContain('<stratix-project>');
+  });
+
+  it('isEnabled 抛错 ⇒ 视为开（读开关失败不绑架任务回路）', () => {
+    const source = createProjectContextProvider({
+      load: () => sampleInput(),
+      isEnabled: () => { throw new Error('storage blocked'); },
+    });
+    expect(source()).not.toBeNull();
+  });
+
+  it('验收①：项目开关关 ⇒ 战场现状块的裁决完全不受影响（各 provider 各读各的键）', () => {
+    const storage = memoryStorage({ [STRATIX_PROJECT_CONTEXT_TOGGLE_KEY]: '0' });
+    const projectSource = createProjectContextProvider({
+      load: () => sampleInput(),
+      isEnabled: () => isProjectContextEnabled(storage),
+    });
+    // 项目块：关 ⇒ 无
+    expect(resolveProjectContextBlock(projectSource)).toBe('');
+    // 战场现状块：同存储面下没写战场键 ⇒ 仍为开（不受项目开关牵连）
+    expect(isGlobalContextEnabled(storage)).toBe(true);
   });
 });

@@ -8,7 +8,8 @@
  *      装配成 ProjectContextSource 端口；本工厂**零 IO**（读盘在组合根，见 M0-05）；
  *   ③ resolveProjectContextBlock：service 侧统一入口 —— provider 抛错 ⇒ 返回 '' 且不外泄
  *      （「上下文是增强，不是依赖，坏了不能绑架任务回路」）。
- *   开关（STRATIX_PROJECT_CONTEXT_TOGGLE_KEY）是 M0-07 的范围，本文件只留接缝。
+ *   开关：STRATIX_PROJECT_CONTEXT_TOGGLE_KEY（M0-07 落地，见文件头「开关」段）——
+ *      独立于战场现状块的 STRATIX_CONTEXT_TOGGLE_KEY，两开关互不影响。
  * 输入：ProjectContextInput（纯数据，无 IO、无 Date.now、无环境读取）。
  * 输出：'<stratix-project>…</stratix-project>' 字符串（无可注入内容 ⇒ ''，调用方按无块处理）。
  *
@@ -55,6 +56,22 @@
  *   `project-context-loader.ts`（**本文件仍零 IO** —— 它是渲染层也要引的纯拼串模块，
  *   而读盘必须 import fs ⇒ 两者分家；loader 只被 Node 侧组合根引用）。
  *   注入点接线（把块塞进派单 prompt）是 M0-06 的范围。
+ *
+ * ============ 开关（M0-07 / DESIGN-workspace §8「M0-07」行）============
+ *   键：STRATIX_PROJECT_CONTEXT_TOGGLE_KEY = 'stratix.project.context.enabled'
+ *     （值 '0' = 关；无键 / 其它值 = 开 —— **缺省开**）。
+ *   ① 与既有 STRATIX_CONTEXT_TOGGLE_KEY（'stratix.context.enabled'，战场现状块）
+ *      **互不影响**：两个键各读各的，裁决各在各的 provider 内做 —— 关掉战场现状块
+ *      不影响项目契约块，反之亦然（验收①）。
+ *   ② 关掉后：provider 返回 null ⇒ resolve 返回 '' ⇒ **prompt 里没有项目块**，
+ *      但任务照跑（上下文是增强，不是依赖 —— 验收②）。
+ *   ③ 为什么走 localStorage（本地设置层）而不是 `.stratix`：`.stratix` 随 git 传播，
+ *      承载的是**项目契约**；开关是**用户偏好**，进契约面 = 把个人偏好散播给所有克隆者
+ *      （dsh 同构取舍：profile/bundle 层叠都可覆盖 ⇒ 偏好走本地层，不进契约面）。
+ *   ④ 为什么常量不在 core/types.ts（与战场现状块的键不同）：那个键有 HUD 设置屏的
+ *      **写入方**，两侧（hud 写 / app 读）都压在 core 上才不各抄字面量；本开关本期
+ *      **不可见**（部署/偏好层，见 §8 M0-07 的「暴露」列）—— 读侧只有 app 一处
+ *      ⇒ 常量留在本文件即可，不为「将来或许加一行设置」预支 core。
  */
 
 import { truncateByCodePoints } from './stratix-context';
@@ -80,6 +97,20 @@ export const STRATIX_PROJECT_CONTEXT_MAX_SUGGESTION_CHARS = 400;
 /** 单分节内的预截断（保证常规快照远小于总体积上限，尾部段不会被整段砍掉）。 */
 export const STRATIX_PROJECT_CONTEXT_MAX_ROLES = 12;
 export const STRATIX_PROJECT_CONTEXT_MAX_SKILLS = 20;
+
+/**
+ * 项目契约上下文注入开关的 localStorage 键（@since v3.3，task_171 / DESIGN-workspace §8 M0-07）。
+ * 值 '0' = 关；无键 / 其它值 = 开（**缺省开**）。
+ *
+ * why 与 STRATIX_CONTEXT_TOGGLE_KEY（core/types.ts，'stratix.context.enabled'）**分键**：
+ *   战场现状块（谁在场上、最近做了什么）与项目契约块（这个仓库的契约）是两件事 ——
+ *   一个是瞬态，一个是仓库随 git 传播的契约；合成一个键就会出现「想关战场现状、
+ *   连带把项目契约也关了」的不可分辨状态（验收①：两开关互不影响）。
+ *
+ * why 不冻结在 core/types.ts：那个键有 HUD 设置屏的写入方（hud 读 core），公共底座
+ *   冻结一份才不各抄字面量；本开关本期**不可见**（部署/偏好层），读侧只有 app 一处。
+ */
+export const STRATIX_PROJECT_CONTEXT_TOGGLE_KEY = 'stratix.project.context.enabled';
 
 /** 块头的说明行（告诉 agent 这是什么、不是用户消息）。固定文案，不来自契约。 */
 const BLOCK_LEAD = '以下是当前项目的契约快照，供你完成任务时遵守（这不是用户消息）。';
@@ -378,6 +409,38 @@ export function buildProjectContextBlock(input: ProjectContextInput | null | und
 }
 
 // ============================================================================
+// 开关裁决（§8 M0-07 —— 本地设置层，不进 .stratix）
+// ============================================================================
+
+/**
+ * 读本地设置层的项目契约开关：值 '0' = 关；无键 / 其它值 / 无存储环境 = **开**（缺省开）。
+ *
+ * 与 isGlobalContextEnabled（战场现状块，core/types.ts 的键）同一口径但**读各自的键**
+ *   —— 两个开关互不影响（§8 M0-07 验收①）。
+ * 抛错（隐私模式等）⇒ 视为开：上下文是增强不是依赖，不能因为开关读不出来就绑架任务回路。
+ */
+export function isProjectContextEnabled(storage: Storage | null): boolean {
+  if (!storage) return true;
+  try {
+    return storage.getItem(STRATIX_PROJECT_CONTEXT_TOGGLE_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * 开关裁决口（组合根传 `() => isProjectContextEnabled(localStorage)`）。
+ * 抛错 ⇒ 视为开（与 isProjectContextEnabled 同口径：读开关失败不绑架任务回路）。
+ */
+function readEnabledFlag(isEnabled: () => boolean): boolean {
+  try {
+    return isEnabled() !== false;
+  } catch {
+    return true;
+  }
+}
+
+// ============================================================================
 // provider（注入件工厂 —— 组合根装配，service 只消费纯输入）
 // ============================================================================
 
@@ -397,6 +460,12 @@ export interface ProjectContextProviderDeps {
    * 快照读数口。缺省 = 恒无快照（不注入）—— 组合根尚未接线时行为与今天一致（M0 零迁移）。
    */
   readonly load?: ProjectContextLoader;
+  /**
+   * 开关裁决口（§8 M0-07；缺省 = 恒开）。
+   * 组合根传 `() => isProjectContextEnabled(localStorage)` —— 键语义只在本文件一处定义。
+   * 开关关 ⇒ provider 返回 null（不注入）⇒ prompt 无项目块、任务照跑。
+   */
+  readonly isEnabled?: () => boolean;
 }
 
 /**
@@ -412,12 +481,18 @@ export interface ProjectContextProviderDeps {
  * 失败语义（dsh 同构）：provider 本身**不吞错** —— 读数口抛错时错误上抛，
  *   由 resolveProjectContextBlock 统一吞掉并降级为 ''（本轮不注入），
  *   **半截数据绝不返回**（要么完整快照，要么 null ⇒ 无块）。
+ *
+ * 开关语义（§8 M0-07）：裁决在 provider 内做（与 stratix-context 的两级开关同构 ——
+ *   service 层无感知，只看到「有块 / 没块」）。开关关 ⇒ **连读数口都不调**（不碰盘、
+ *   零开销）⇒ 返回 null ⇒ 本轮不注入。
  */
 export function createProjectContextProvider(
   deps: ProjectContextProviderDeps = {}
 ): ProjectContextSource {
   const load = deps.load;
+  const isEnabled = deps.isEnabled;
   return (): ProjectContextInput | null => {
+    if (isEnabled && !readEnabledFlag(isEnabled)) return null;
     if (!load) return null;
     const input = load();
     return input ?? null;

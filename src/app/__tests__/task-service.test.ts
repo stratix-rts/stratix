@@ -51,6 +51,7 @@ import {
   type TaskTransportFactory,
 } from '../services/task-service';
 import { parseTaskArtifactsJson } from '../services/task-artifacts';
+import { createProjectContextProvider } from '../services/project-context';
 
 // ============================================================================
 // 夹具
@@ -1530,6 +1531,49 @@ describe('项目契约块注入（task_170 / M0-06）：首发注 <stratix-proje
       createdAt: 1, startedAt: null, endedAt: null, output: '', plan: '计划全文',
     };
     expect(buildResumedTaskPrompt(character, task, '计划全文')).not.toContain('<stratix-project>');
+  });
+});
+
+// ============================================================================
+// 项目契约块独立开关（@since v3.3，task_171 / DESIGN-workspace §8 M0-07）
+// 验收②：关掉后 prompt 里没有项目块，但任务照跑。
+// ============================================================================
+
+describe('项目契约块开关（task_171 / M0-07）：关掉 ⇒ 无项目块、任务照跑', () => {
+  /** 项目契约快照夹具（纯数据）。 */
+  const projectInput = (): import('../services/project-context').ProjectContextInput => ({
+    projectId: 'demo',
+    projectName: '示例项目',
+    roles: [{ id: 'scout', name: '斥候', agentKind: 'claude-code' }],
+  });
+
+  test('开关关 ⇒ prompt 不含 <stratix-project>，任务照常完成', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'done', exitCode: 0, text: '', sessionId: null })],
+      // 组合根形态：provider 工厂 + 开关裁决口（本地设置层读值）
+      provideProjectContext: createProjectContextProvider({
+        load: () => projectInput(),
+        isEnabled: () => false,
+      }),
+    });
+    assign(h, '干活');
+    await flush();
+
+    expect(h.calls[0]?.prompt).not.toContain('<stratix-project>');
+    // 任务照跑（照常完成，任务单落 completed）
+    expect(h.store.getState().tasks?.[0]).toMatchObject({ status: 'completed' });
+  });
+
+  test('开关开（缺省）⇒ prompt 仍含 <stratix-project>（既有行为不变）', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'done', exitCode: 0, text: '', sessionId: null })],
+      provideProjectContext: createProjectContextProvider({ load: () => projectInput() }),
+    });
+    assign(h, '干活');
+    await flush();
+
+    expect(h.calls[0]?.prompt).toContain('<stratix-project>');
+    expect(h.calls[0]?.prompt).toContain('示例项目');
   });
 });
 
