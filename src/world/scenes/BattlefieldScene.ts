@@ -255,6 +255,30 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     return this.units.size;
   }
 
+  /**
+   * 场景启动前的显式清理（@since v3.3，task_183 / M1-09）。
+   *
+   * why 必须显式清：Phaser 的 `scene.start` **不重建场景实例**（SceneManager 取已有实例，
+   *   见 node_modules/phaser/src/scene/SceneManager.js 的 start → bootScene）⇒ 字段初始化器
+   *   只跑一次 ⇒ 同一批 board 会跨副本复用 ⇒ A 副本的残留会直接串到 B 副本。
+   * why 放在 init() 而不是 create()：init() 跑在 create() 之前 ⇒ 清完之后 create() 才注入
+   *   当前副本的数据（含恢复站位 applyRestoredPositions）——放 create() 会把刚灌的数据一起清掉。
+   * why 是「四板各清一次」而不是清整个场景：四块板是跨副本复用的表现态真相，
+   *   渲染层（taskFxLayer / unitLayer / buildingLayer …）在 shutdown 时已逐层析构，不重复回收。
+   * why speechBoard 不清：它在 create() 里 new（构造期拿不到场景时钟 this.time.now），
+   *   每次 create() 都是全新实例 ⇒ 天然零残留，无需清理。
+   */
+  init(): void {
+    // 单位注册表：清 objects / restoredPositions / spawnCursor（已有析构方法，此前全仓无调用方）。
+    this.units.destroy();
+    // 任务表现板：清浮标（working / done / failed / awaiting 四态）。
+    this.taskFx.clearAll();
+    // 回放表现板：清化身 / 相位 / 占位（拖动回放时的那次 reset 走的是同一份清场逻辑）。
+    this.replayBoard.reset();
+    // 地图对账板：清区域占格 / nextSlot / 上次态 / 已点亮区域（M1-08 的对称析构）。
+    this.mapBoard.reset();
+  }
+
   create(): void {
     this.cameras.main.setBackgroundColor(BACKGROUND_COLOR);
     this.drawWorldBounds();
