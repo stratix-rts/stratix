@@ -43,6 +43,9 @@ import {
   type UnitView,
   type WorldState,
 } from '../../core/types';
+// 承接人推荐（@since v3.11，task_155：提示词直发的承接人 = 推荐排序第一位）——
+//   与新建任务对话框的「派发」同一算法（一份择人口径，不各写一份）。
+import { recommendAssignees } from './task-assign-catalog';
 
 /** 侧栏的三种形态。判定输入只有 WorldState.selection.unitIds.length，面板本地不留副本。 */
 export type AgentPanelMode = 'empty' | 'single' | 'group';
@@ -517,6 +520,43 @@ export function buildTaskAssignCommand(
   if (trimmed.length === 0) return null;
   if (!target || target === characterId) return { type: 'task.assign', characterId, prompt: trimmed };
   return { type: 'task.assign', characterId, prompt: trimmed, targetCharacterId: target };
+}
+
+/**
+ * 提示词直发 → task.assign 命令（@since v3.11，task_155）—— **一条提示词 = 一条任务**。
+ *
+ * 与 buildTaskAssignCommand 的差别只有一处：**顺带立一条任务单**（createMission）。
+ *   任务单的标题留空（core 侧填占位「生成中…」），由 Agent 第一轮工作回报生成后回写 ——
+ *   用户不再提供标题（发起流程里没有标题输入环节，见 command-panel 的输入语义）。
+ *
+ * 承接人 = 推荐排序第一位（与新建任务对话框的「派发」同一算法 recommendAssignees）。
+ * 没有候选角色 → 返回 null（**不发半截命令**）：没有承接人就没有人能跑这条任务，
+ *   如实拒绝比派一条注定失败的命令强。
+ *
+ * 任务单挂在承接人的单位上（unitId）：任务单要处在「在办」相位，
+ *   终态回报（completeMission 只认 running → done）才有落点。
+ *   角色没有单位时**不立任务单**（立在没有指派对象的任务单上会永远停在草稿相位）。
+ *
+ * @since v3.11（task_155）。
+ */
+export function buildLaunchTaskCommand(
+  prompt: string,
+  state: WorldState | null
+): HudCommand | null {
+  const trimmed = prompt.trim();
+  if (trimmed.length === 0) return null;
+  if (!state) return null;
+  const assignee = recommendAssignees(state)[0];
+  if (!assignee) return null;
+  const unitId = state.units.find((unit) => unit.characterId === assignee.characterId)?.id;
+  return {
+    type: 'task.assign',
+    characterId: assignee.characterId,
+    prompt: trimmed,
+    ...(unitId
+      ? { createMission: { unitId, brief: { requirements: trimmed } } }
+      : {}),
+  };
 }
 
 /**

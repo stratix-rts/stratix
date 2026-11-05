@@ -147,7 +147,9 @@ function evaluate(spec: CommandSpec, ctx: CommandContext): ResolvedCommand {
       }
       // @since v3.10（task_154）：常驻的「任务标题」输入框已删（底栏双框合一）——
       //   标题从任务条上来，所以这句提示指向**唯一的那块输入面**，别再指向一个不存在的框。
-      if (!isUsableTitle(title)) return { spec, enabled: false, reason: '先在下方写任务标题' };
+      // @since v3.11（task_155）：任务条不再承担「发起前确认」，标题改为 composer 首行派生 ——
+      //   所以禁用原因说的是「写一句」，不是「写标题」（任务发起本身已经不要标题了）。
+      if (!isUsableTitle(title)) return { spec, enabled: false, reason: '先在下方写一句任务指令' };
       return { spec, enabled: true, hint: `「${title}」${target.length > 0 ? ` · 指派给 ${target.length} 个单位` : ' · 待指派'}` };
     }
 
@@ -318,7 +320,9 @@ export function renderSignature(
   query = ''
 ): string {
   if (!state) return `none|${draftTitle}|${query}`;
-  const missionSig = state.missions.map((m) => `${m.id}:${m.phase}`).join(',');
+  // @since v3.11（task_155）：任务单的**标题**也进签名 —— Agent 首轮回报把占位标题
+  //   换成生成的标题时，面板（在办任务条）必须重画；只带相位就看不见这个变化。
+  const missionSig = state.missions.map((m) => `${m.id}:${m.phase}:${m.title}`).join(',');
   const noticeSig = state.notices
     .slice(0, MAX_VISIBLE_NOTICES)
     .map((n) => `${n.id}:${n.level}`)

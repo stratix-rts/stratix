@@ -71,6 +71,17 @@ export const MAX_MISSIONS = 100;
 export const MAX_MISSION_CHECKPOINTS = 64;
 
 /**
+ * @since v3.11（task_155）任务标题的**占位值** —— 任务发起时还没有标题（用户不提供标题了），
+ *   由 Agent 在第一轮工作回报里生成标题后回写（见 core/mission 的 setMissionTitle）。
+ *
+ * why 是常量而不是各处的字面量：占位文案要出现在**三处**（core 立单时写入、
+ *   HUD 提示语、任务列表的初始显示），三处各写一份字面量迟早对不上。
+ * why 放在 core/types.ts：它是**契约语义**（"这条任务还没标题"），
+ *   hud 与 core 都只认这一份（core/types.ts 是唯一的契约面）。
+ */
+export const MISSION_TITLE_PENDING = '生成中…';
+
+/**
  * @since v3.38（task_077）单条任务的**依赖**条数上限（core/mission 强制）。
  * why 需要它：dependsOn 同样是随状态全量广播的数组，且依赖越多，isMissionUnlocked 的判定越贵
  * （逐条查表）。32 条对"一条任务等几件前置事"足够宽松。
@@ -1461,6 +1472,15 @@ export type HudCommand =
    * @since v3.36（task_076）可选 missionId：**这条任务替哪条战场任务（mission）跑**。
    *   给出时随任务一路带到终态，app 层 task-service 据此把终态回报给那条 mission
    *   （回报链的钥匙）；缺省 = 与 mission 无关的普通派发（老行为，零影响）。
+   * @since v3.11（task_155）可选 createMission：**顺带立一条任务单**（一条提示词 = 一条任务）。
+   *   发起链路契约（title 可选化）：标题**不再要求用户提供** —— title 缺省即占位
+   *   （MISSION_TITLE_PENDING「生成中…」），由 Agent 第一轮工作回报生成后回写
+   *   （写面：core/mission 的 setMissionTitle，经 app 层 task-service 的回报通道）。
+   *   unitId = 这条任务单挂给谁（一般 = 承接人所在单位；缺省 = 待指派的任务单）。
+   *   brief = 任务正文（requirements = 用户原话）。
+   *   why 挂在 task.assign 上而不是另立一条命令：立单 + 派工必须**原子**地在同一个 core
+   *   runtime 里落地（任务单 id 是回报链的钥匙，HUD 拿不到新 mission 的 id ——
+   *   HUD 派发是 fire-and-forget 的，两步走会断链）。
    */
   | {
       type: 'task.assign';
@@ -1468,6 +1488,14 @@ export type HudCommand =
       prompt: string;
       targetCharacterId?: string;
       missionId?: string | null;
+      createMission?: {
+        /** 任务单标题；缺省 / 空 = 占位「生成中…」（由 Agent 首轮回报生成）。 */
+        readonly title?: string;
+        /** 任务单指派给哪个单位（缺省 = 待指派）。 */
+        readonly unitId?: string;
+        /** 任务单正文（结构化 brief）。 */
+        readonly brief?: MissionBrief;
+      };
     }
   /**
    * @since v3.23 排队任务取消（task_047）：把一条 **queued** 任务收尾成 cancelled。

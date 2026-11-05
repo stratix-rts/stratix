@@ -73,6 +73,7 @@ import type { PipelineRunnerPort } from './task';
 import {
   MAX_CONTROL_GROUP_SLOT,
   MAX_NOTICES,
+  MISSION_TITLE_PENDING,
   MIN_CONTROL_GROUP_SLOT,
   NOTICE_TTL_MS,
   type AgentKind,
@@ -392,6 +393,35 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
     }
   };
 
+  /**
+   * 提示词直发的立单（@since v3.11，task_155）：`task.assign` 带 `createMission` 时，
+   * **先立一条任务单**（标题缺省 = 占位「生成中…」），再把任务挂到这条任务单上。
+   *
+   * why 立单与派工必须在同一个 runtime 里一次落地：任务单的 id 是回报链的钥匙
+   *   （app 层 task-service 据此把终态与**生成的标题**回报给这条任务单），
+   *   而 HUD 派发是 fire-and-forget 的 —— 拿不到新任务单的 id，两步走必然断链。
+   *
+   * why 立完单就确认开工（accept → running）：任务单要先处在「在办」相位，
+   *   终态回报（completeMission）才有着陆点（终态机只认 running → done）。
+   *
+   * 返回任务单 id；立单失败（超上限等）返回 undefined —— 那时任务照常派发（不带任务单），
+   *   用户至少还能把活儿派出去（失败原因由 mission manager 的 Notice 如实报出）。
+   */
+  const launchMissionId = (command: Extract<HudCommand, { type: 'task.assign' }>): string | undefined => {
+    const spec = command.createMission;
+    if (!spec) return command.missionId ?? undefined;
+    const title = spec.title?.trim() || MISSION_TITLE_PENDING;
+    const created = mission.createMission({
+      title,
+      unitIds: spec.unitId ? [spec.unitId] : [],
+      brief: spec.brief,
+    });
+    if (!created) return undefined;
+    // 接单即开工：确认后任务单落在 running（终态回报有着陆点）。
+    const running = mission.decideMission(created.id, 'accept');
+    return (running ?? created).id;
+  };
+
   const handleCommand = (command: HudCommand): void => {
     switch (command.type) {
       case 'unit.select':
@@ -526,12 +556,15 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
       // @since v3.26(task_050):可选 targetCharacterId 透传 —— 指定承接人直达其队列,
       // 在档校验在 manager(不存在 → error Notice);「自动」的择人决策在 HUD 推荐纯函数。
       // @since v3.36(task_076):可选 missionId 原样透传,终态回报由 app 层 task-service 完成。
+      // @since v3.11(task_155):可选 createMission —— **顺带立一条任务单**(提示词直发路径)。
+      //   立单与派工在同一个 core runtime 里原子落地:任务单的 id 就是回报链的钥匙
+      //   (HUD 派发是 fire-and-forget 的,拿不到新任务单的 id —— 两步走必然断链)。
       case 'task.assign':
         task.assignTask({
           characterId: command.characterId,
           prompt: command.prompt,
           targetCharacterId: command.targetCharacterId,
-          missionId: command.missionId,
+          missionId: launchMissionId(command),
         });
         return;
       // @since v3.23 排队任务取消(task_047):同口径直调 manager。相位裁决(仅 queued 可取消)

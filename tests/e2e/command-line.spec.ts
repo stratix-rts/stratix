@@ -1,12 +1,16 @@
 /**
  * e2e：命令行命令注册表（@since v3.6，task_113）。
  *
+ * ★ @since v3.11（task_155）输入语义定稿：命令一律带 `/` 前缀
+ *   （非 `/` 开头一律是提示词 → 回车直接发起任务）。命令**本身**的行为一字未改，
+ *   变的只是触发方式 —— 这正是「既有已注册命令行为不受影响」要验的东西。
+ *
  * 覆盖验收口径（死功能 #2 的原症状：底栏命令行敲什么都不认、Enter 毫无反应）：
- *   ① `mission <标题>` → 新建任务对话框 1s 内可见且标题已预填（复用 task_112 的通路）；
- *   ② `theme` → 皮肤真的换了（DOM 上那张 token 样式表变了，不是只发了一条命令）；
- *   ③ `settings` → 设置屏现身；
- *   ④ `replay` → 有人话回执（今天没活儿 / 网关不可用都给提示 + 重试指引）；
- *   ⑤ `help` → 列出全部可用命令；未匹配输入 → 也回一份可用命令清单。
+ *   ① `/mission <标题>` → 新建任务对话框 1s 内可见且标题已预填（复用 task_112 的通路）；
+ *   ② `/theme` → 皮肤真的换了（DOM 上那张 token 样式表变了，不是只发了一条命令）；
+ *   ③ `/settings` → 设置屏现身；
+ *   ④ `/replay` → 有人话回执（今天没活儿 / 网关不可用都给提示 + 重试指引）；
+ *   ⑤ `/help` → 列出全部可用命令；未匹配输入 → 也回一份可用命令清单。
  *
  * 跑法：npx playwright test tests/e2e/command-line.spec.ts
  *   （仓库默认的 globalSetup 会清端口 7523/7524 —— 只在需要重起服务时才用默认配置。）
@@ -60,7 +64,7 @@ test.describe('命令行命令注册表', () => {
 
     await boot(page);
 
-    await runCommand(page, 'mission 走查验收任务');
+    await runCommand(page, '/mission 走查验收任务');
 
     const dialog = page.locator(DIALOG);
     await expect(dialog).toBeVisible({ timeout: 1000 });
@@ -75,7 +79,7 @@ test.describe('命令行命令注册表', () => {
 
     expect(await activeSkin(page)).toBe('default');
 
-    await runCommand(page, 'theme');
+    await runCommand(page, '/theme');
 
     await expect.poll(() => activeSkin(page)).toBe('pixel');
     expect(await outputText(page)).toContain('像素风');
@@ -84,7 +88,7 @@ test.describe('命令行命令注册表', () => {
   test('settings → 设置屏现身', async ({ page }) => {
     await boot(page);
 
-    await runCommand(page, 'settings');
+    await runCommand(page, '/settings');
 
     await expect(page.locator('strat-settings-screen')).toBeVisible({ timeout: 1000 });
   });
@@ -92,7 +96,7 @@ test.describe('命令行命令注册表', () => {
   test('replay → 有人话回执（今天没活儿 / 网关不可用都给提示与重试指引）', async ({ page }) => {
     await boot(page);
 
-    await runCommand(page, 'replay');
+    await runCommand(page, '/replay');
 
     // 回执里必须有话（不能是空白，也不能是错误码）。
     await expect.poll(() => outputText(page)).not.toBe('');
@@ -107,13 +111,13 @@ test.describe('命令行命令注册表', () => {
   test('help → 列出全部可用命令；未匹配输入 → 也回一份清单', async ({ page }) => {
     await boot(page);
 
-    await runCommand(page, 'help');
+    await runCommand(page, '/help');
     let text = await outputText(page);
     for (const usage of ['mission <标题>', 'theme', 'settings', 'replay', 'help']) {
       expect(text).toContain(usage);
     }
 
-    await runCommand(page, '瞎敲的');
+    await runCommand(page, '/瞎敲的');
     text = await outputText(page);
     expect(text).toContain('没有匹配的命令');
     expect(text).toContain('mission <标题>');
@@ -126,8 +130,8 @@ test.describe('命令行命令注册表', () => {
     const input = page.locator('strat-command-panel').locator('textarea[data-role="query"]');
     await input.click();
     // 逐字敲（不是 fill / insertText）—— 只有真键盘事件才暴露"空格被吞"这个回归。
-    await input.pressSequentially('mission 整理战场', { delay: 20 });
-    await expect(input).toHaveValue('mission 整理战场');
+    await input.pressSequentially('/mission 整理战场', { delay: 20 });
+    await expect(input).toHaveValue('/mission 整理战场');
 
     await input.press('Enter');
 
@@ -140,7 +144,7 @@ test.describe('命令行命令注册表', () => {
   test('help → 五命令清单（含中文别名），且完整可见（复测 P2：help 零反馈）', async ({ page }) => {
     await boot(page);
 
-    await runCommand(page, 'help');
+    await runCommand(page, '/help');
     const text = await outputText(page);
     // 五条命令的用法都在。
     for (const usage of ['mission <标题>', 'theme [default|pixel]', 'settings', 'replay', 'help']) {

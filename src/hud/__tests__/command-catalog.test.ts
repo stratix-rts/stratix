@@ -98,7 +98,9 @@ describe('WorldState 驱动的可用性', () => {
     const commands = resolveCommands(ctx(selected('u-neo'), '   '));
     expect(commandOf('mission.create', commands).enabled).toBe(false);
     // @since v3.10（task_154）：常驻的「任务标题」框已删 —— 原因指向唯一那块输入面。
-    expect(commandOf('mission.create', commands).reason).toBe('先在下方写任务标题');
+    // @since v3.11（task_155）：任务条不再承担「发起前确认」，标题由 Agent 首轮回报生成 ——
+    //   所以禁用原因说的是「写一句」（任务发起本身已经不要标题了）。
+    expect(commandOf('mission.create', commands).reason).toBe('先在下方写一句任务指令');
   });
 
   test('没有待确认 / 在办任务时，对应命令禁用', () => {

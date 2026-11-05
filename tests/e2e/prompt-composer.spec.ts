@@ -1,12 +1,15 @@
 /**
  * e2e：提示词 composer（@since v3.9，task_144）—— 命令面板输入面的重造验收。
  *
+ * ★ @since v3.11（task_155）输入语义定稿：命令一律带 `/` 前缀
+ *   （非 `/` 开头一律是提示词 → 回车直接发起任务；中文别名同理：`/设置`）。
+ *
  * 覆盖验收口径：
  *   ① 粘贴 800 字多行中文提示词 → 一个字符不丢、composer 平滑长高、无横向溢出；
- *   ② IME 合成「你好世界」过程中按 Enter **不提交**，合成完成后 Enter 才提交（中文用户命门）；
+ *   ② IME 合成「/你好世界」过程中按 Enter **不提交**，合成完成后 Enter 才提交（中文用户命门）；
  *   ③ ↑↓ 历史切换（首/末行）+ 中部光标 ↑↓ 不抢键；
  *   ④ 聚焦态一眼可辨（失焦 / 聚焦对照截图落 reports/shots/）；
- *   ⑤ 既有五命令 + 中文别名无回归。
+ *   ⑤ 既有五命令 + 中文别名无回归（触发方式改成 `/` 前缀，命令行为不变）。
  *
  * 跑法：npx playwright test --config=tests/e2e/playwright.prompt-composer.config.ts
  */
@@ -117,12 +120,12 @@ test.describe('提示词 composer（task_144）', () => {
     expect(await outputText(page)).toBe('');
 
     // 合成完成（提交合成结果）→ 再按 Enter 才提交。
-    await client.send('Input.insertText', { text: '你好世界' });
+    await client.send('Input.insertText', { text: '/你好世界' });
     await page.keyboard.press('Enter');
 
     await expect.poll(() => outputText(page)).not.toBe('');
     const text = await outputText(page);
-    // 「你好世界」不是命令 → 未匹配回执（说明走完了命令行，而不是静默）。
+    // 「/你好世界」不是命令 → 未匹配回执（说明走完了命令行，而不是静默）。
     expect(text).toContain('没有匹配的命令');
   });
 
@@ -132,24 +135,25 @@ test.describe('提示词 composer（task_144）', () => {
     await el.click();
 
     // 先提交两条命令（进历史）。
-    await el.fill('help');
+    await el.fill('/help');
     await el.press('Enter');
     await expect.poll(() => outputText(page)).toContain('可用命令');
 
-    await el.fill('replay');
+    await el.fill('/replay');
     await el.press('Enter');
     await page.waitForTimeout(300);
 
     // ↑ 在首行 → 翻出最近一条（replay）。
+    // why 历史存的是**原文**（含 / 前缀）：命令一律带 / 触发，翻出来的就是要能直接回车再执行的那句。
     await el.fill('');
     await el.press('ArrowUp');
-    expect(await el.inputValue()).toBe('replay');
+    expect(await el.inputValue()).toBe('/replay');
     // 再 ↑ → 更旧的一条（help）。
     await el.press('ArrowUp');
-    expect(await el.inputValue()).toBe('help');
+    expect(await el.inputValue()).toBe('/help');
     // ↓ → 回到更新的那条。
     await el.press('ArrowDown');
-    expect(await el.inputValue()).toBe('replay');
+    expect(await el.inputValue()).toBe('/replay');
 
     // 中部光标：↑ 不抢键（值不变、光标所在行不被动）。
     await el.fill('第一行\n第二行\n第三行');
@@ -199,7 +203,7 @@ test.describe('提示词 composer（task_144）', () => {
     await boot(page);
     const el = composer(page);
     await el.click();
-    await el.fill('theme');
+    await el.fill('/theme');
     await el.press('Enter');
     await page.waitForTimeout(300);
 
@@ -221,7 +225,7 @@ test.describe('提示词 composer（task_144）', () => {
     await el.click();
 
     // help → 五条命令的用法都在。
-    await el.fill('help');
+    await el.fill('/help');
     await el.press('Enter');
     let text = await outputText(page);
     for (const usage of ['mission <标题>', 'theme [default|pixel]', 'settings', 'replay', 'help']) {
@@ -232,7 +236,7 @@ test.describe('提示词 composer（task_144）', () => {
     }
 
     // 中文别名「设置」→ 设置屏现身。
-    await el.fill('设置');
+    await el.fill('/设置');
     await el.press('Enter');
     await expect(page.locator('strat-settings-screen')).toBeVisible({ timeout: 1000 });
   });

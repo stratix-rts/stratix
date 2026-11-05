@@ -329,6 +329,19 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
         options.taskExecution.missionExists ??
         ((missionId: string) =>
           (store.getState().missions ?? []).some((missionItem) => missionItem.id === missionId)),
+      // 标题回写（@since v3.11，task_155）：worker 首轮回报给出标题 → 写回任务单
+      //   （占位「生成中…」→ 生成值）。读口判"是不是标题待生成"，写口落进 core/mission。
+      //   why service 侧也接：远程模式下**任务是在 service 进程里跑的**（真相唯一）——
+      //   渲染进程不跑任务，标题自然得在跑任务的那一侧回写。
+      missionTitle:
+        options.taskExecution.missionTitle ??
+        ((missionId: string) =>
+          (store.getState().missions ?? []).find((item) => item.id === missionId)?.title ?? null),
+      onMissionTitle:
+        options.taskExecution.onMissionTitle ??
+        ((missionId: string, title: string) => {
+          mission.applyGeneratedTitle(missionId, title);
+        }),
       store,
       taskManager: task,
       // 会话域写入面（@since v3.43，task_093）：任务收尾时记 task_run / mission_run 会话

@@ -9,6 +9,7 @@
  */
 
 import type { HudCommand, MissionView, UnitView, WorldState } from '../../core/types';
+import { MISSION_TITLE_PENDING } from '../../core/types';
 import type { CommandPanelDeps } from '../panels/command-panel';
 import {
   COMMAND_PANEL_TAG,
@@ -22,6 +23,33 @@ const UNITS: UnitView[] = [
   { id: 'u-neo', name: 'Neo', status: 'idle', missionId: null, power: 3 },
   { id: 'u-trinity', name: 'Trinity', status: 'busy', missionId: 'm-1', power: 5 },
 ];
+
+/** 一个有角色档案、有单位、且角色绑了 agent 的世界（提示词直发需要承接人）。 */
+const AGENT_UNITS: UnitView[] = [
+  { id: 'u-neo', name: 'Neo', status: 'idle', missionId: null, power: 3, characterId: 'c-neo' },
+];
+
+function withAgent(partial: Partial<WorldState> = {}): WorldState {
+  return makeState({
+    units: AGENT_UNITS,
+    characters: [
+      {
+        id: 'c-neo',
+        name: 'Neo',
+        persona: '重构好手',
+        level: 1,
+        experience: 0,
+        agentKind: 'claude-code',
+      },
+    ],
+    ...partial,
+  });
+}
+
+/** 一条任务单（夹具）。 */
+function mission(id: string, title: string, phase: MissionView['phase']): MissionView {
+  return { id, title, phase, unitIds: ['u-neo'], createdAt: 1 };
+}
 
 function makeState(partial: Partial<WorldState> = {}): WorldState {
   return {
@@ -89,16 +117,14 @@ function clickCommand(panel: StratCommandPanelElement, id: string, scope: string
 }
 
 /**
- * 写任务标题（@since v3.10，task_154 后的新路径）。
- * 常驻的「任务标题」输入框已删（底栏双框合一）：标题现在住在**任务条的行内 chip** 上，
- *   而任务条只在 composer 里是「大段提示词」时浮现 —— 所以先写一段提示词，再改 chip。
+ * 在 composer 里敲一句（@since v3.11，task_155 后的新路径）。
+ *
+ * 任务条上的**行内标题 chip 已删**（154 建的，155 收编）：发起流程里不再有标题编辑环节，
+ *   标题由 Agent 首轮回报生成。composer 里敲的字实时派生出标题草稿（首行、≤30 字），
+ *   「新建任务 / 发起任务」按钮与 ⌘K 面板读的是这一份（draft-store 是唯一那份）。
  */
 function setDraft(panel: StratCommandPanelElement, title: string): void {
-  setQuery(panel, `${title}\n（测试用第二行：让输入被判为提示词）`);
-  const chip = panel.shadowRoot?.querySelector<HTMLInputElement>('[data-role="task-title"]');
-  if (!chip) throw new Error('任务条未浮现（长文本输入后应出现）');
-  chip.value = title;
-  chip.dispatchEvent(new Event('input', { bubbles: true }));
+  setQuery(panel, title);
 }
 
 function setQuery(panel: StratCommandPanelElement, query: string): void {
@@ -280,30 +306,39 @@ describe('命令派发：一切经注入的 adapter，不碰 core 内部', () =>
 });
 
 describe('搜索', () => {
-  test('输入查询词后命令列表按子序列匹配收敛', () => {
+  test('命令模式（/ 开头）下按子序列匹配收敛命令清单', () => {
     const { panel, harness } = mountPanel();
     mounted.push(harness.unmount);
 
-    setQuery(panel, 'sett');
+    setQuery(panel, '/sett');
     const ids = panel.visibleCommandIds;
     expect(ids).toContain('settings.open');
     expect(ids).not.toContain('chat.open');
   });
 
-  test('搜不到时显示空态而不是空白面板', () => {
+  test('提示词模式（非 / 开头）不再筛命令 —— 清单保持完整（@since v3.11，task_155）', () => {
     const { panel, harness } = mountPanel();
     mounted.push(harness.unmount);
 
-    setQuery(panel, 'zzzz不存在');
+    setQuery(panel, 'sett');
+    expect(panel.visibleCommandIds).toEqual(expect.arrayContaining(['settings.open', 'chat.open']));
+  });
+
+  test('命令模式下搜不到 → 引导语说清没匹配（不再是空白面板）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    setQuery(panel, '/zzzz不存在');
     expect(panel.visibleCommandIds).toHaveLength(0);
-    expect(panel.shadowRoot?.querySelector('[data-role="empty"]')?.textContent).toBe('没有匹配的命令');
+    const hint = panel.shadowRoot?.querySelector('[data-role="composer-hint"]');
+    expect(hint?.textContent).toContain('没有匹配的命令');
   });
 
   test('清空搜索词后命令全部回来', () => {
     const { panel, harness } = mountPanel();
     mounted.push(harness.unmount);
 
-    setQuery(panel, 'sett');
+    setQuery(panel, '/sett');
     setQuery(panel, '');
     expect(panel.visibleCommandIds).toEqual(expect.arrayContaining(['settings.open', 'chat.open']));
   });
@@ -364,7 +399,7 @@ describe('提示词 composer（@since v3.9，task_144）', () => {
     const { panel, harness } = mountPanel();
     mounted.push(harness.unmount);
 
-    setQuery(panel, 'help');
+    setQuery(panel, '/help');
     pressInComposer(panel, { key: 'Enter' });
 
     const output = panel.shadowRoot?.querySelector('[data-role="output"]')?.textContent ?? '';
@@ -376,7 +411,7 @@ describe('提示词 composer（@since v3.9，task_144）', () => {
     const { panel, harness } = mountPanel();
     mounted.push(harness.unmount);
 
-    setQuery(panel, 'help');
+    setQuery(panel, '/help');
     pressInComposer(panel, { key: 'Enter', shiftKey: true });
 
     const output = panel.shadowRoot?.querySelector('[data-role="output"]')?.textContent ?? '';
@@ -387,7 +422,7 @@ describe('提示词 composer（@since v3.9，task_144）', () => {
     const { panel, harness } = mountPanel();
     mounted.push(harness.unmount);
 
-    setQuery(panel, '你好世界');
+    setQuery(panel, '/你好世界');
     const el = panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="query"]');
     el?.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
     pressInComposer(panel, { key: 'Enter', isComposing: true });
@@ -404,9 +439,11 @@ describe('提示词 composer（@since v3.9，task_144）', () => {
     expect(output).toContain('没有匹配的命令');
   });
 
-  test('多行提示词 → 任务条浮现（标题取首行、行内可改），点「发起」才走任务通路', () => {
+  test('非 / 开头回车 → 直接发起任务，没有标题确认步骤（@since v3.11，task_155）', () => {
     const { panel, harness } = mountPanel();
     mounted.push(harness.unmount);
+
+    harness.emit(withAgent());
 
     const opened: string[] = [];
     const onOpen = (event: Event): void => {
@@ -414,59 +451,83 @@ describe('提示词 composer（@since v3.9，task_144）', () => {
     };
     document.addEventListener(NEW_TASK_OPEN_EVENT, onOpen);
     try {
-      const prompt = `第一行：把总线重构一遍\n第二行：记得补测试\n第三行：跑一遍 jest`;
-      setQuery(panel, prompt);
-
-      // ① 任务条浮现，标题自动取首行（≤30 字）。
-      const bar = panel.shadowRoot?.querySelector<HTMLElement>('[data-role="task-bar"]');
-      expect(bar?.hidden).toBe(false);
-      const chip = panel.shadowRoot?.querySelector<HTMLInputElement>('[data-role="task-title"]');
-      expect(chip?.value).toBe('第一行：把总线重构一遍');
-      // 回车 = 确认提示词就绪（不直接弹窗：标题要先给他改）。
+      setQuery(panel, '把总线重构一遍');
       pressInComposer(panel, { key: 'Enter' });
+
+      // ① 直接派任务：一条 task.assign（带上立任务单的 createMission）。
+      expect(harness.commands).toHaveLength(1);
+      expect(harness.commands[0]).toMatchObject({
+        type: 'task.assign',
+        characterId: 'c-neo',
+        prompt: '把总线重构一遍',
+      });
+      // ② 没有标题确认环节：不弹新建任务对话框，也不再要用户填标题。
       expect(opened).toEqual([]);
-
-      // ② 行内改标题 → ③ 点「发起」→ 走既有任务通路（新建任务对话框）。
-      chip!.value = '重构总线';
-      chip!.dispatchEvent(new Event('input', { bubbles: true }));
-      const submit = panel.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="task-submit"]');
-      expect(submit?.disabled).toBe(false);
-      submit!.click();
-
-      expect(opened).toEqual(['重构总线']);
+      expect(panel.shadowRoot?.querySelector('[data-role="task-title"]')).toBeNull();
+      expect(panel.shadowRoot?.querySelector('[data-role="task-submit"]')).toBeNull();
     } finally {
       document.removeEventListener(NEW_TASK_OPEN_EVENT, onOpen);
     }
   });
 
-  test('标题为空 → 「发起」禁用并给出原因（必填校验，task_154）', () => {
+  test('多行提示词 → 仍是一句话提示词，回车直接发起（不判为命令、不弹标题）', () => {
     const { panel, harness } = mountPanel();
     mounted.push(harness.unmount);
 
-    setQuery(panel, '一段足够长的提示词，长度超过八十个字符才会被判定为提示词模式，所以这里多写一点内容凑够长度。');
-    const chip = panel.shadowRoot?.querySelector<HTMLInputElement>('[data-role="task-title"]');
-    expect(chip).not.toBeNull();
-    chip!.value = '';
-    chip!.dispatchEvent(new Event('input', { bubbles: true }));
+    harness.emit(withAgent());
 
-    const submit = panel.shadowRoot?.querySelector<HTMLButtonElement>('[data-role="task-submit"]');
-    expect(submit?.disabled).toBe(true);
-    expect(submit?.title).toBe('先给任务起个标题');
-    const reason = panel.shadowRoot?.querySelector<HTMLElement>('[data-role="task-reason"]');
-    expect(reason?.hidden).toBe(false);
-    expect(reason?.textContent).toBe('先给任务起个标题');
+    setQuery(panel, '第一行：把总线重构一遍\n第二行：记得补测试');
+    pressInComposer(panel, { key: 'Enter' });
+
+    expect(harness.commands).toHaveLength(1);
+    expect(harness.commands[0]).toMatchObject({ type: 'task.assign' });
   });
 
-  test('底部只有一个输入框：常驻的「任务标题」框已删（双框合一，task_154）', () => {
+  test('没有可承接的角色 → 如实说不派发（不发注定失败的命令）', () => {
     const { panel, harness } = mountPanel();
     mounted.push(harness.unmount);
 
-    const inputs = panel.shadowRoot?.querySelectorAll('input');
-    // 唯一的一个 input 是任务条上的行内 chip（未浮现时它也在 DOM 里，但任务条是隐藏的）。
-    const roles = Array.from(inputs ?? []).map((el) => (el as HTMLElement).dataset.role);
-    expect(roles).toEqual(['task-title']);
+    harness.emit(makeState());
+    setQuery(panel, '把总线重构一遍');
+    pressInComposer(panel, { key: 'Enter' });
+
+    expect(harness.commands).toEqual([]);
+    const output = panel.shadowRoot?.querySelector('[data-role="output"]')?.textContent ?? '';
+    expect(output).toContain('没有可承接的角色');
+  });
+
+  test('底部只有一个输入框：标题框与行内 chip 都没了（单框发消息，task_155）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    expect(panel.shadowRoot?.querySelectorAll('input')).toHaveLength(0);
     expect(panel.shadowRoot?.querySelector('[data-role="draft"]')).toBeNull();
+    expect(panel.shadowRoot?.querySelector('[data-role="task-title"]')).toBeNull();
     expect(panel.shadowRoot?.querySelectorAll('textarea')).toHaveLength(1);
+  });
+
+  test('任务条 = 只读的在办任务回显：占位标题 → Agent 回写后的标题（@since v3.11，task_155）', () => {
+    const { panel, harness } = mountPanel();
+    mounted.push(harness.unmount);
+
+    const bar = panel.shadowRoot?.querySelector<HTMLElement>('[data-role="task-bar"]');
+    const title = panel.shadowRoot?.querySelector<HTMLElement>('[data-role="task-bar-title"]');
+    const phase = panel.shadowRoot?.querySelector<HTMLElement>('[data-role="task-bar-phase"]');
+    expect(bar).not.toBeNull();
+
+    // ① 没有在办任务 → 整条收起。
+    harness.emit(makeState());
+    expect(bar?.hidden).toBe(true);
+
+    // ② 发起后：标题是占位「生成中…」。
+    harness.emit(makeState({ missions: [mission('m-1', MISSION_TITLE_PENDING, 'running')] }));
+    expect(bar?.hidden).toBe(false);
+    expect(title?.textContent).toBe(MISSION_TITLE_PENDING);
+    expect(phase?.textContent).toBe('进行中');
+
+    // ③ Agent 首轮回报回写标题 → 任务条跟着变。
+    harness.emit(makeState({ missions: [mission('m-1', '重构总线', 'running')] }));
+    expect(title?.textContent).toBe('重构总线');
   });
 
   test('卸载后 composer 的监听被摘（反复挂卸不累积）', () => {

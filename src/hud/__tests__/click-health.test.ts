@@ -615,19 +615,13 @@ describe('体检 · 控制岛命令面板（6 条）', () => {
 
   test('29. 填了标题 → 「新建任务」解禁，点击打开对话框；再点「单任务」才派发 mission.create', () => {
     const h = mountHud();
-    // @since v3.10（task_154）：底栏双框合一 —— 常驻的「任务标题」框已删，
-    //   标题现在住在**任务条的行内 chip** 上（composer 里写大段提示词时任务条才浮现）。
+    // @since v3.11（task_155）：任务条上的行内标题 chip 已删（发起流程不再有标题编辑环节）——
+    //   标题草稿是 composer 首行的派生值，敲进 composer 即解禁「新建任务」。
     const composer = inShadow<HTMLTextAreaElement>(h.commandPanel(), '[data-role="query"]');
     expect(composer).not.toBeNull();
     if (!composer) return;
-    composer.value = '去侦察\n（测试用第二行：让输入被判为提示词）';
+    composer.value = '去侦察';
     composer.dispatchEvent(new Event('input', { bubbles: true }));
-
-    const chip = inShadow<HTMLInputElement>(h.commandPanel(), '[data-role="task-title"]');
-    expect(chip).not.toBeNull();
-    if (!chip) return;
-    chip.value = '去侦察';
-    chip.dispatchEvent(new Event('input', { bubbles: true }));
 
     const button = commandButton(h, 'mission.create');
     expect(button?.disabled).toBe(false);
@@ -650,8 +644,10 @@ describe('体检 · 控制岛命令面板（6 条）', () => {
     single?.click();
     expect(h.commands).toContainEqual({ type: 'mission.create', title: '去侦察', unitIds: [] });
 
-    // ④ 草稿被清掉（再建一条要用新标题）+ 标题回显在对话框里。
-    expect(chip.value).toBe('');
+    // ④ 草稿被清掉（再建一条要用新标题）+ composer 也回到空态。
+    const panel = h.commandPanel() as unknown as { draftTitle?: string };
+    expect(panel.draftTitle).toBe('');
+    expect(composer.value).toBe('');
     h.unmount();
   });
 });

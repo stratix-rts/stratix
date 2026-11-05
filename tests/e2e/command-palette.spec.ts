@@ -232,7 +232,7 @@ test.describe('⌘K 命令面板（@since v3.9，task_150）', () => {
 
     // 底栏 composer 敲 mission → 打开新建任务对话框（键盘路径，无鼠标）。
     await focusComposer(page);
-    await page.keyboard.type('mission 冒烟任务');
+    await page.keyboard.type('/mission 冒烟任务');
     await page.keyboard.press('Enter');
     await page.waitForSelector('strat-new-task-dialog', { timeout: 10_000 });
     const dialogOpen = async (): Promise<boolean> =>
@@ -261,7 +261,7 @@ test.describe('⌘K 命令面板（@since v3.9，task_150）', () => {
     await boot(page, 'default');
 
     await focusComposer(page);
-    await page.keyboard.type('help');
+    await page.keyboard.type('/help');
     await page.keyboard.press('Enter');
     await page.waitForTimeout(400);
 

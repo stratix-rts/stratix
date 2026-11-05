@@ -1472,6 +1472,15 @@ async function boot(): Promise<void> {
         if (record.status === 'completed') missionManager.completeMission(record.missionId);
         else if (record.status === 'failed') missionManager.cancelMission(record.missionId);
       },
+      // task_155：标题回写 —— worker 首轮回报给出标题 → 写回任务单（占位「生成中…」→ 生成值）。
+      //   读口判"是不是标题待生成"，写口落进 core/mission（占位才改，别人给的标题不动）。
+      //   ★ 远程模式下任务是在 **service 进程**里跑的 —— 那侧的同名接线在
+      //   src/stratix-gateway/service/stratix-service.ts（真相唯一：谁跑任务谁回写）。
+      missionTitle: (missionId) =>
+        worldStore.getState().missions.find((item) => item.id === missionId)?.title ?? null,
+      onMissionTitle: (missionId, title) => {
+        missionManager.applyGeneratedTitle(missionId, title);
+      },
       pushNotice: (notice) => worldStore.pushNotice(notice),
       // task_093：会话域 LITE 接线（task_run / mission_run）—— 任务收尾时建会话并收尾（两事件）。
       //   远程模式不接（见上方 sessionManager 注释：本地不能再造一份真相）。

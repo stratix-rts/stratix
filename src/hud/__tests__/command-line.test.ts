@@ -3,8 +3,12 @@
  *
  * 覆盖两条线：
  *   1. 注册表（纯逻辑）：命令名 / 别名 / 参数 / 白名单 / 未命中的近似候选；
- *   2. 命令面板：搜索框回车 → 真的执行（mission 开对话框、theme 切皮肤、
+ *   2. 命令面板：**`/` 开头的输入**回车 → 真的执行（mission 开对话框、theme 切皮肤、
  *      settings 开设置页、replay 放回放、help 列命令），未匹配 → 回可用命令清单。
+ *
+ * @since v3.11（task_155）输入语义定稿：**非 `/` 开头一律是提示词**（回车直接派活），
+ *   所以这里的命令输入一律带 `/` 前缀 —— 「既有命令行为不受影响」验证的是**命令本身**，
+ *   触发方式改成了主流 Agent 聊天框的惯例。
  *
  * 面板是真组件（真 Shadow DOM、真事件链），替身只有 adapter 两个方法与回放读取口 ——
  *   也就是 HUD 与总线之间的全部边界。断言打在"派发出了什么命令 / 面板说了什么"上。
@@ -199,7 +203,7 @@ describe('命令面板：回车即执行', () => {
     };
     document.addEventListener(NEW_TASK_OPEN_EVENT, onOpen);
     try {
-      await harness.run('mission 走查验收任务');
+      await harness.run('/mission 走查验收任务');
 
       expect(opened).toEqual(['走查验收任务']);
       // 派单逻辑不重复实现：命令行只负责把标题带过去。
@@ -218,7 +222,7 @@ describe('命令面板：回车即执行', () => {
     const harness = mountPanel();
     mounted.push(harness.unmount);
 
-    await harness.run('settings');
+    await harness.run('/settings');
 
     expect(harness.commands).toEqual([{ type: 'ui.navigate', screen: 'settings' }]);
     expect(harness.output()).toContain('设置');
@@ -228,7 +232,7 @@ describe('命令面板：回车即执行', () => {
     const harness = mountPanel();
     mounted.push(harness.unmount);
 
-    await harness.run('theme');
+    await harness.run('/theme');
 
     expect(harness.commands).toEqual([{ type: 'theme.set', themeId: 'pixel' }]);
     expect(harness.output()).toContain('像素风');
@@ -238,7 +242,7 @@ describe('命令面板：回车即执行', () => {
     const harness = mountPanel();
     mounted.push(harness.unmount);
 
-    await harness.run('theme default');
+    await harness.run('/theme default');
 
     expect(harness.commands).toEqual([{ type: 'theme.set', themeId: 'default' }]);
   });
@@ -252,7 +256,7 @@ describe('命令面板：回车即执行', () => {
     const harness = mountPanel();
     mounted.push(harness.unmount);
 
-    await harness.run('theme');
+    await harness.run('/theme');
 
     expect(harness.commands).toEqual([{ type: 'theme.set', themeId: 'pixel' }]);
     expect(harness.output()).toContain('皮肤系统接入中');
@@ -263,7 +267,7 @@ describe('命令面板：回车即执行', () => {
     const harness = mountPanel(replay);
     mounted.push(harness.unmount);
 
-    await harness.run('replay');
+    await harness.run('/replay');
 
     expect(replay.state.playing).toBe(true);
     expect(harness.output()).toContain('正在回放今天');
@@ -276,7 +280,7 @@ describe('命令面板：回车即执行', () => {
     const harness = mountPanel(replay);
     mounted.push(harness.unmount);
 
-    await harness.run('replay');
+    await harness.run('/replay');
 
     expect(harness.output()).toContain('回放失败');
     expect(harness.output()).toContain('重试');
@@ -288,7 +292,7 @@ describe('命令面板：回车即执行', () => {
     const harness = mountPanel(replay);
     mounted.push(harness.unmount);
 
-    await harness.run('replay');
+    await harness.run('/replay');
 
     expect(harness.output()).toContain('今天还没有任务记录');
     expect(replay.state.playing).toBe(false);
@@ -298,7 +302,7 @@ describe('命令面板：回车即执行', () => {
     const harness = mountPanel(null);
     mounted.push(harness.unmount);
 
-    await harness.run('replay');
+    await harness.run('/replay');
 
     expect(harness.output()).toContain('没接线');
     expect(harness.commands).toEqual([]);
@@ -308,7 +312,7 @@ describe('命令面板：回车即执行', () => {
     const harness = mountPanel();
     mounted.push(harness.unmount);
 
-    await harness.run('help');
+    await harness.run('/help');
 
     const text = harness.output();
     for (const spec of CLI_COMMANDS) {
@@ -322,10 +326,10 @@ describe('命令面板：回车即执行', () => {
 
     const output = harness.panel.shadowRoot?.querySelector('[data-role="output"]');
 
-    await harness.run('help');
+    await harness.run('/help');
     expect(output?.getAttribute('data-multiline')).toBe('true');
 
-    await harness.run('theme');
+    await harness.run('/theme');
     expect(output?.getAttribute('data-multiline')).toBe('false');
   });
 
@@ -333,7 +337,7 @@ describe('命令面板：回车即执行', () => {
     const harness = mountPanel();
     mounted.push(harness.unmount);
 
-    await harness.run('瞎敲的');
+    await harness.run('/瞎敲的');
 
     expect(harness.output()).toContain('没有匹配的命令');
     expect(harness.output()).toContain('mission <标题>');
@@ -345,24 +349,47 @@ describe('命令面板：回车即执行', () => {
     const harness = mountPanel();
     mounted.push(harness.unmount);
 
-    await harness.run('mission');
+    await harness.run('/mission');
 
     expect(harness.output()).toContain('用法：mission <标题>');
     expect(harness.commands).toEqual([]);
   });
 
-  test('过滤空时给出引导（命令输入框不再是死路）', () => {
+  test('命令模式下引导语说清回车会发生什么（不再是死路）', () => {
     const harness = mountPanel();
     mounted.push(harness.unmount);
 
     const input = harness.panel.shadowRoot?.querySelector<HTMLInputElement>('[data-role="query"]');
     if (!input) throw new Error('命令输入框未渲染');
-    input.value = 'mission 走查';
+    input.value = '/mission 走查';
     input.dispatchEvent(new Event('input', { bubbles: true }));
 
-    const empty = harness.panel.shadowRoot?.querySelector('[data-role="empty"]');
-    expect(empty?.textContent).toContain('回车执行');
-    const hint = harness.panel.shadowRoot?.querySelector('[data-role="empty-hint"]');
-    expect(hint?.textContent).toContain('replay');
+    const hint = harness.panel.shadowRoot?.querySelector('[data-role="composer-hint"]');
+    expect(hint?.textContent).toContain('回车执行');
+    expect(hint?.textContent).toContain('mission');
+  });
+
+  test('提示词模式的引导语说「回车直接发起任务」（@since v3.11，task_155）', () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+
+    const input = harness.panel.shadowRoot?.querySelector<HTMLInputElement>('[data-role="query"]');
+    if (!input) throw new Error('命令输入框未渲染');
+    input.value = '把总线重构一遍';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const hint = harness.panel.shadowRoot?.querySelector('[data-role="composer-hint"]');
+    expect(hint?.textContent).toContain('回车直接发起任务');
+  });
+
+  test('非 / 开头的输入 → 当提示词派活，绝不判为命令（@since v3.11，task_155）', async () => {
+    const harness = mountPanel();
+    mounted.push(harness.unmount);
+
+    await harness.run('settings');
+
+    // 「settings」不是命令（没有 / 前缀）→ 走提示词通路：派任务，不派 ui.navigate。
+    expect(harness.commands.some((c) => c.type === 'ui.navigate')).toBe(false);
+    expect(harness.output()).not.toContain('已打开设置页');
   });
 });

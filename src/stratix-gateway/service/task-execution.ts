@@ -143,6 +143,10 @@ export function createServiceTaskExecution(deps: ServiceTaskExecutionDeps): Task
     // 编组任务存在性读口（@since v3.8 / task_143）：任务收尾时标出"回报落空"，
     //   让 mission_run 会话的收尾原因如实写明（回报去向可追踪）。
     missionExists: deps.missionExists,
+    // 标题回写（@since v3.11，task_155）：worker 首轮回报给出标题 → 写回任务单
+    //   （占位「生成中…」→ 生成值）。端口在组合根接（stratix-service.ts）。
+    missionTitle: deps.missionTitle,
+    onMissionTitle: deps.onMissionTitle,
     pushNotice: deps.pushNotice,
     onTaskChunk: deps.onTaskChunk,
     expWeight: deps.expWeight,

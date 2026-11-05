@@ -136,7 +136,7 @@ import type {
   WorldEvent,
   WorldState,
 } from '../../core/types';
-import { NOTICE_TTL_MS, TASK_PLAN_WAIT_MARKER } from '../../core/types';
+import { MISSION_TITLE_PENDING, NOTICE_TTL_MS, TASK_PLAN_WAIT_MARKER } from '../../core/types';
 import type { TaskManager } from '../../core/task';
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
 import { defaultExpWeight } from './exp-config';
@@ -262,17 +262,21 @@ export function guardTaskCharacter(
  * @since v3.49（task_107）可选第四参 referenceBlock：@会话引用的注入块
  * （【引用会话 <title>(<id>) 摘要/时间线】…）。插在 persona 之后、战场现状块之前 ——
  * 引用是"这次任务要接着的那段历史"，属于**上下文**（不是指令），位置与战场现状块同层。
+ * @since v3.11（task_155）可选第五参 options.askTitle：**向 worker 要一个任务标题**。
+ *   只有「标题待生成」的任务才要（发起时标题是占位「生成中…」，由 Agent 首轮回报生成）。
+ *   指令插在【任务指令】之后、plan-first 尾部指令之前（尾部指令恒在最后）。
  */
 export function buildTaskPrompt(
   character: CharacterView,
   taskPrompt: string,
   contextBlock?: string,
-  referenceBlock?: string
+  referenceBlock?: string,
+  options?: { readonly askTitle?: boolean }
 ): string {
   const persona = character.persona.trim();
   const hasContext = contextBlock !== undefined && contextBlock.length > 0;
   const hasReference = referenceBlock !== undefined && referenceBlock.length > 0;
-  if (persona.length === 0 && !hasContext && !hasReference) return taskPrompt;
+  if (persona.length === 0 && !hasContext && !hasReference && !options?.askTitle) return taskPrompt;
   const parts: string[] = [
     `你将扮演「${character.name}」这个角色执行任务，请全程保持角色设定一致。`,
   ];
@@ -280,8 +284,51 @@ export function buildTaskPrompt(
   if (hasReference) parts.push(referenceBlock as string);
   if (hasContext) parts.push(contextBlock as string);
   parts.push(`【任务指令】\n${taskPrompt}`);
+  // @since v3.11（task_155）：标题待生成时向 worker 要一个标题（它在第一轮回报里给）。
+  if (options?.askTitle === true) parts.push(TASK_TITLE_INSTRUCTION);
   const base = parts.join('\n\n');
   return personaPlanFirst(persona) ? `${base}\n\n【工作方式】\n${TASK_PLAN_INSTRUCTION}` : base;
+}
+
+/**
+ * 标题回写指令（@since v3.11，task_155）—— 让 worker 在**第一轮回报**里给出任务标题。
+ *
+ * why 要显式要：标题不再由用户提供（发起时是占位「生成中…」），
+ *   而任务标题是**给人认这条任务**用的（任务列表 / 顶栏 / 跑马灯都显示它）——
+ *   worker 是唯一知道这条任务在干什么的一方（它读了指令、知道上下文）。
+ * why 说死"第一行"：回报是流式的，首行先到 → 标题能**早**回写（用户不用等任务跑完）。
+ */
+export const TASK_TITLE_INSTRUCTION =
+  '请在回复的第一行写出本次任务标题，格式：「标题：<不超过 20 字的任务标题>」；写完这一行再写正文。';
+
+/** 生成标题的长度上限（@since v3.11，task_155）：一行标题栏放不下更长的 —— 口径先裁，两边一致。 */
+export const MAX_GENERATED_TASK_TITLE = 30;
+
+/**
+ * 从 worker 的回报里取任务标题（@since v3.11，task_155）—— **首行**口径。
+ *
+ * 口径：
+ *   - 取第一行非空文本；剥掉 markdown 前缀（# / * / -）与「标题：」标记；
+ *   - 有标记 → 取标记后的内容；没标记 → 整行就是标题（兜底：worker 没听话时的首行截断）；
+ *   - 超长截断到 MAX_GENERATED_TASK_TITLE（末尾补省略号）。
+ *
+ * why 兜底取首行而不是"取不到就不写"：标题是**必填展示项**（占位「生成中…」不能一直挂着），
+ *   worker 的第一句几乎总是"这条任务在干什么" —— 首行截断出来的标题八九不离十。
+ * why 不取第二行/第三行：那些多半是寒暄或过程说明，不是标题。
+ */
+export function extractGeneratedTaskTitle(output: string): string | null {
+  const firstLine = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  if (!firstLine) return null;
+  const plain = firstLine.replace(/^[#>*\-\s]+/, '').trim();
+  const marked = /^(?:任务)?标题\s*[:：]\s*(.+)$/.exec(plain);
+  const raw = (marked ? (marked[1] as string) : plain).trim();
+  if (raw.length === 0) return null;
+  return raw.length <= MAX_GENERATED_TASK_TITLE
+    ? raw
+    : `${raw.slice(0, MAX_GENERATED_TASK_TITLE - 1)}…`;
 }
 
 /**
@@ -425,6 +472,25 @@ export interface TaskServiceDeps {
    * 缺省 = 不问（行为与旧版一致）；接线方给的是"名册里有没有这条"。
    */
   readonly missionExists?: (missionId: string) => boolean;
+  /**
+   * 关联任务单的**标题读口**（@since v3.11，task_155；缺省 = 读不到 → 不当标题待生成）。
+   *
+   * why 需要它：只有「标题还是占位『生成中…』」的任务才需要向 worker 要标题 ——
+   *   别的任务单（外部 agent 用 MCP 建的、标题是人给的）标题早就有值，
+   *   向 worker 要标题会白改一条已有标题的任务单。
+   * 缺省 = 读不到（此时一律不写回标题 —— 宁可标题一直占位，也不乱改别人的标题）。
+   */
+  readonly missionTitle?: (missionId: string) => string | null;
+  /**
+   * **标题回写口**（@since v3.11，task_155；缺省不回写）。
+   *
+   * 口径：worker 第一轮回报给出标题后回调一次（missionId + 生成的标题）。
+   * 组合根接 core/mission 的写入面（把占位标题换成生成的标题）——
+   *   这是**既有 worker 回报通道**上的一环（与终态回报 onMissionSettled 同一族端口），
+   *   不新建通道、不新建总线命令。
+   * 同步签名、fire-and-forget：抛错只记日志，绝不绑架任务执行回路。
+   */
+  readonly onMissionTitle?: (missionId: string, title: string) => void;
   /** mission 回报 Notice 写入口（source / missionId 由本服务补齐）；缺省不发 Notice。 */
   readonly pushNotice?: (notice: Notice) => void;
   /**
@@ -596,6 +662,25 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
       deps.onTaskChunk(characterId, chunk);
     } catch (error) {
       logger(`[task-service] 流式输出转发抛错（${characterId}）：${describe(error)}`);
+    }
+  };
+
+  /**
+   * 标题回写（@since v3.11，task_155）—— worker 的首轮回报给出标题 → 写回任务单。
+   *
+   * 三道闸（缺一不可）：
+   *   ① 任务单标题还是**占位**「生成中…」才写（别人给的标题不改）；
+   *   ② **只写一次**（首轮回报说了算 —— 后面的回合不再翻案）；
+   *   ③ 流式期要等首行**完整**（出现换行）才取 —— 半行是残句，取出来是错标题；
+   *      收尾（final=true）时不再等换行（输出已定稿）。
+   * 写回失败/抛错只记日志（旁路纪律：绝不绑架任务执行回路）。
+   */
+  const writeGeneratedTitle = (missionId: string, title: string): void => {
+    if (!deps.onMissionTitle) return;
+    try {
+      deps.onMissionTitle(missionId, title);
+    } catch (error) {
+      logger(`[task-service] 标题回写抛错（${missionId}）：${describe(error)}`);
     }
   };
 
@@ -905,6 +990,21 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
       recorder.reference(task.id, targetSessionId);
     }
     const planFirst = personaPlanFirst(character.persona.trim());
+    // @since v3.11（task_155）标题待生成？—— 任务单标题还是占位「生成中…」时，
+    //   向 worker 要一个标题（它在第一轮回报里给），拿到后写回任务单。
+    const missionId = task.missionId ?? null;
+    const titlePending = missionId !== null && deps.missionTitle?.(missionId) === MISSION_TITLE_PENDING;
+    let titleApplied = false;
+    /** 标题回写（@since v3.11，task_155）：首轮回报给出标题 → 写回任务单（只写一次）。 */
+    const applyGeneratedTitle = (text: string, final = false): void => {
+      if (titleApplied || !titlePending || missionId === null) return;
+      // 流式期要等首行完整（出现换行）；收尾时输出已定稿，不再等。
+      if (!final && !text.includes('\n')) return;
+      const title = extractGeneratedTaskTitle(text);
+      if (!title) return;
+      titleApplied = true;
+      writeGeneratedTitle(missionId, title);
+    };
     // persona 每次内嵌（常规任务会话隔离 → 无续发，每条任务都是首发）；plan-first 追加计划指令
     //（见文件头）。task_053：首发语义 → 同样附战场现状块（每任务一次；快照取件异常吞掉不绑架任务）。
     // task_107：@会话引用块插在 persona 之后、战场现状块之前（上下文头部）。
@@ -912,7 +1012,8 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
       character,
       task.prompt,
       resolveStratixContextBlock(deps.provideContext, character.id, logger) || undefined,
-      references.block.length > 0 ? references.block : undefined
+      references.block.length > 0 ? references.block : undefined,
+      { askTitle: titlePending }
     );
     let output = '';
     // task_049：计划轮要记 session id（批准后同 session 续发）；常规任务恒 null。
@@ -927,6 +1028,7 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
         if (event.type === 'message') {
           output += event.text;
           emitChunk(task.characterId, event.text); // 实时 tail 视图（task_046）：原序转发，不拦流
+          applyGeneratedTitle(output); // 标题回写（task_155）：首行一完整就写回，不必等任务跑完
           continue;
         }
         if (event.type === 'session') {
@@ -936,6 +1038,9 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
         }
         if (event.type === 'done') {
           if (planFirst) sessionId = event.sessionId ?? sessionId;
+          // 标题回写（@since v3.11，task_155）：收尾前把生成标题落上去 ——
+          //   任务一收尾，任务单就进终态，终态不再改写（core/mission 的铁律）。
+          applyGeneratedTitle(output, true);
           // task_049：挂起检测 —— 只对被指示过「先出计划」的任务生效（没指令就没有协议
           // 义务，普通任务碰巧输出标记行也只是文本）。命中 → 挂起占位，return 'awaiting'
           //（不释放 busy、不 settle —— 门等的是用户裁决，不是时钟）。

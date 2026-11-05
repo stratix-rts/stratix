@@ -269,6 +269,28 @@ export function appendMissionCheckpoint(
 }
 
 /**
+ * 改标题（@since v3.11，task_155）—— **不改相位**的写入面（与 checkpoint 同一纪律）。
+ *
+ * 用途：任务发起时标题是占位「生成中…」（用户不再提供标题），
+ *   Agent 第一轮工作回报生成标题后经 app 层 task-service 的回报通道回写到这里。
+ *
+ * 规则：
+ *   - 任意非终态相位都可改（在办任务正在被命名）；
+ *   - 终态（done / cancelled）拒绝：收尾后的任务不再改写历史（同 appendMissionCheckpoint 的铁律）；
+ *   - 标题 trim 后为空 → 拒绝（不改出一个空标题 —— 那等于把占位擦掉又没东西可填）；
+ *   - 标题与现值相同 → changed=false（不产生无谓广播）。
+ *
+ * 相位裁决放在本文件而不是 manager：manager.ts 的铁律是"不在写入面判相位合法性"。
+ */
+export function renameMission(current: MissionView, title: string): MissionTransition {
+  if (isTerminalPhase(current.phase)) return reject(current);
+  const next = title.trim();
+  if (next.length === 0) return reject(current);
+  if (next === current.title) return { next: current, changed: false };
+  return { next: { ...current, title: next }, changed: true };
+}
+
+/**
  * 依赖判定（@since v3.38，task_077）：这条任务的前置条件是否都已满足。
  *
  * 规则：

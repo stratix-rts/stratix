@@ -9,6 +9,7 @@
 import { emitCommand, emitWorldEvent, onState, onWorldEvent, resetBus, type Unsubscribe } from '../bus';
 import { createCoreRuntime, type CoreRuntime, type UnhandledChannel } from '../runtime';
 import { createStore, type CoreStore } from '../store';
+import { MISSION_TITLE_PENDING } from '../types';
 import type { UnitView, WorldEvent, WorldState } from '../types';
 
 const NO_MODS = { shift: false, ctrl: false, meta: false, alt: false };
@@ -916,5 +917,66 @@ describe('world 事件：camera.shake 回环接地（task_080）', () => {
     emitWorldEvent({ type: 'camera.shake', durationMs: 100, intensity: 0.005 });
 
     expect(unhandled).toHaveLength(0);
+  });
+});
+
+// ============================================================================
+// 提示词直发：task.assign + createMission → 立单并开工（@since v3.11，task_155）
+// ============================================================================
+
+describe('HudCommand task.assign + createMission', () => {
+  const CHARACTER = {
+    id: 'ch-1',
+    name: '阿尔法',
+    persona: '冷静的分析师。',
+    level: 1,
+    experience: 0,
+    agentKind: 'claude-code' as const,
+  };
+
+  function harnessWithCharacter(): Harness {
+    const store = createStore({ units: UNITS, characters: [CHARACTER] });
+    const states: WorldState[] = [];
+    const unhandled: { channel: UnhandledChannel; type: string }[] = [];
+    const offState: Unsubscribe = onState((state) => states.push(state));
+    const runtime = createCoreRuntime({
+      store,
+      onUnhandled: (channel, payload) => unhandled.push({ channel, type: payload.type }),
+    });
+    const stop = runtime.start();
+    return { runtime, store, states, unhandled, stop: () => { stop(); offState(); } };
+  }
+
+  test('带 createMission → 立一条占位标题的任务单，落 running，任务挂在这条单上', () => {
+    const { store, stop } = harnessWithCharacter();
+    cleanups.push(stop);
+
+    emitCommand({
+      type: 'task.assign',
+      characterId: 'ch-1',
+      prompt: '重构总线',
+      createMission: { unitId: 'u1', brief: { requirements: '重构总线' } },
+    });
+
+    const missions = store.getState().missions;
+    expect(missions).toHaveLength(1);
+    // 标题是占位（用户不再提供标题）→ 由 Agent 首轮回报生成。
+    expect(missions[0].title).toBe(MISSION_TITLE_PENDING);
+    expect(missions[0].phase).toBe('running');
+    expect(missions[0].unitIds).toEqual(['u1']);
+    // 任务挂着这条任务单 —— 回报链的钥匙就是它。
+    const task = store.getState().tasks?.find((t) => t.characterId === 'ch-1');
+    expect(task?.missionId).toBe(missions[0].id);
+  });
+
+  test('createMission 缺省 → 不立单（既有派工路径一字未改）', () => {
+    const { store, stop } = harnessWithCharacter();
+    cleanups.push(stop);
+
+    emitCommand({ type: 'task.assign', characterId: 'ch-1', prompt: '重构总线' });
+
+    expect(store.getState().missions).toHaveLength(0);
+    const task = store.getState().tasks?.find((t) => t.characterId === 'ch-1');
+    expect(task?.missionId ?? null).toBeNull();
   });
 });

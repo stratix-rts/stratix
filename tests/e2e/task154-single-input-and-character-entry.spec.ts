@@ -1,11 +1,17 @@
 /**
  * e2e：底部双框合一 + 新建角色一级入口（@since v3.10，task_154）。
  *
+ * ★ @since v3.11（task_155）输入语义定稿后的口径变更：
+ *   · 底部仍只有**一个**输入面，但**行内标题 chip 与「发起」按钮已删** ——
+ *     发起流程里不再有标题编辑环节（标题由 Agent 首轮回报生成）；
+ *   · 命令一律带 `/` 前缀（`/help` / `/mission` / `/theme`）——
+ *     非 `/` 开头一律是提示词（回车直接发起任务）。
+ *   提示词直发的全流程断言在 tests/e2e/task155-input-semantics.spec.ts。
+ *
  * 覆盖验收口径：
- *   ① 底部只有**一个**输入框（常驻的「任务标题」框已删；任务条里的行内标题 chip 只有
- *      判定为大段提示词时才浮现 —— 平时不占位）；
- *   ② 大段提示词 → 任务条浮现 → 行内改标题 → 点「发起」→ 新建任务对话框带着改过的标题；
- *   ③ 短命令零回归（help / mission / theme 照旧能执行）；
+ *   ① 底部只有**一个**输入框（常驻的「任务标题」框已删）；
+ *   ② 发起流程里没有标题编辑环节（行内 chip / 「发起」按钮都不存在）；
+ *   ③ 短命令零回归（/help / /mission / /theme 照旧能执行）；
  *   ④ 顶栏「+ 角色」可见 → 直达**建档表单**（首启向导，不落到角色中心那种死路）；
  *   ⑤ 全流程「点按钮 → 填表 → 保存 → 上场 → toast」：单位 ≤5s 上战场 + toast「已上场」
  *      （测完把测试角色删掉，别留垃圾档案）。
@@ -40,11 +46,9 @@ async function boot(page: Page): Promise<void> {
   }
 }
 
-/** 面板里的输入面（composer + 任务条里的行内标题 chip）。 */
+/** 面板里的输入面（@since v3.11，task_155：只有 composer —— 行内标题 chip 已删）。 */
 function inputs(page: Page) {
-  return page
-    .locator('strat-command-panel')
-    .locator('textarea[data-role="query"], input[data-role="task-title"]');
+  return page.locator('strat-command-panel').locator('textarea[data-role="query"]');
 }
 
 /** 当前**可见**的输入框个数（隐藏的不算）。 */
@@ -111,98 +115,55 @@ test.describe('底部双框合一（task_154）', () => {
     });
   });
 
-  test('大段提示词 → 任务条浮现 → 行内改标题 → 「发起」带着改过的标题开对话框', async ({ page }) => {
+  test('发起流程里不再有标题编辑环节（@since v3.11，task_155 收编）', async ({ page }) => {
     await boot(page);
 
-    const composer = page.locator('strat-command-panel').locator('textarea[data-role="query"]');
+    const panel = page.locator('strat-command-panel');
+    const composer = panel.locator('textarea[data-role="query"]');
     await composer.click();
+    await page.keyboard.insertText(
+      '请把事件总线的重构做完，拆成采集层、归一化层与分发层三层。\n采集层只负责拉取原始事件。'
+    );
 
-    const prompt = [
-      '请把事件总线的重构做完，拆成采集层、归一化层与分发层三层。',
-      '采集层只负责从适配器拉取原始事件，不做任何业务判断。',
-      '归一化层负责把七种来源的字段统一成同一个内部模型，命名以领域为准。',
-    ].join('\n');
-    await page.keyboard.insertText(prompt);
+    // ① 行内标题 chip 与「发起」按钮都不在了（154 建的，155 收编删除）。
+    expect(await panel.locator('[data-role="task-title"]').count()).toBe(0);
+    expect(await panel.locator('[data-role="task-submit"]').count()).toBe(0);
 
-    // ① 任务条浮现（它是提示词态才出现的，平时不占位）。
-    const bar = page.locator('strat-command-panel').locator('[data-role="task-bar"]');
-    await expect(bar).toBeVisible({ timeout: 3000 });
-
-    // ② 标题自动取首行。
-    const chip = page.locator('strat-command-panel').locator('input[data-role="task-title"]');
-    await expect(chip).toBeVisible();
-    expect(await chip.inputValue()).toBe('请把事件总线的重构做完，拆成采集层、归一化层与分发层三层。');
-
-    // ③ 行内可改（这一个 chip 就是第二个输入面的替代品，不是常驻框）。
-    const newTitle = '总线重构三层拆分';
-    await chip.fill(newTitle);
-    expect(await chip.inputValue()).toBe(newTitle);
-
-    // ④ 草稿同步（两个面板说同一句话 —— draft-store 语义不因双框合一而变）。
+    // ② 标题草稿改成**首行派生**（⌘K 面板与命令清单读的是同一句）。
     const draft = await page.evaluate(() => {
-      const panel = document.querySelector('strat-command-panel') as
+      const el = document.querySelector('strat-command-panel') as
         | (HTMLElement & { draftTitle?: string })
         | null;
-      return panel?.draftTitle ?? '';
+      return el?.draftTitle ?? '';
     });
-    expect(draft).toBe(newTitle);
+    expect(draft).toBe('请把事件总线的重构做完，拆成采集层、归一化层与分发层三层。');
 
     await page.locator('.hud-bottom-bar').screenshot({
       path: `${SHOTS}/task154-r11-bottom-taskbar-ck154.png`,
     });
-
-    // ⑤ 点「发起」→ 新建任务对话框带着改过的标题。
-    await page.locator('strat-command-panel').locator('[data-role="task-submit"]').click();
-    const dialog = page.locator(DIALOG);
-    await expect(dialog).toBeVisible({ timeout: 3000 });
-    await expect(dialog).toContainText(newTitle);
-    expect(await outputText(page)).toContain('新建任务');
-
-    // ⑥ 标题为空 → 「发起」禁用并给原因（不是死按钮）。
-    await page.locator(`${DIALOG} button.option[data-action="cancel"]`).click();
-    await expect(dialog).toBeHidden();
   });
 
-  test('标题为空 → 「发起」禁用并给出原因', async ({ page }) => {
-    await boot(page);
-
-    const composer = page.locator('strat-command-panel').locator('textarea[data-role="query"]');
-    await composer.click();
-    await page.keyboard.insertText(
-      '这是一段很长很长的提示词，长到超过八十个字，足够触发任务条浮现出来。\n' +
-        '再补一句让它真的超过八十个字，这样提示词判定才会走大段提示词那条路。'
-    );
-
-    const chip = page.locator('strat-command-panel').locator('input[data-role="task-title"]');
-    await expect(chip).toBeVisible();
-    await chip.fill('   ');
-
-    const submit = page.locator('strat-command-panel').locator('[data-role="task-submit"]');
-    await expect(submit).toBeDisabled();
-    await expect(page.locator('strat-command-panel').locator('[data-role="task-reason"]')).toBeVisible();
-  });
-
-  test('短命令零回归：help / mission / theme 照旧能执行', async ({ page }) => {
+  test('短命令零回归：/help / /mission / /theme 照旧能执行', async ({ page }) => {
     await boot(page);
 
     const composer = page.locator('strat-command-panel').locator('textarea[data-role="query"]');
     await composer.click();
 
-    // help → 命令清单照旧。
-    await composer.fill('help');
+    // /help → 命令清单照旧。
+    await composer.fill('/help');
     await composer.press('Enter');
     await expect.poll(() => outputText(page)).toContain('可用命令');
 
-    // mission <标题> → 照旧开新建任务对话框（短命令路径没被提示词判定吞掉）。
-    await composer.fill('mission 走查验收任务');
+    // /mission <标题> → 照旧开新建任务对话框（命令路径没被提示词语义吞掉）。
+    await composer.fill('/mission 走查验收任务');
     await composer.press('Enter');
     const dialog = page.locator(DIALOG);
     await expect(dialog).toBeVisible({ timeout: 3000 });
     await expect(dialog).toContainText('走查验收任务');
     await page.locator(`${DIALOG} button.option[data-action="cancel"]`).click();
 
-    // theme → 照旧切皮肤。
-    await composer.fill('theme');
+    // /theme → 照旧切皮肤。
+    await composer.fill('/theme');
     await composer.press('Enter');
     await expect.poll(() => outputText(page)).toContain('像素风');
   });

@@ -35,6 +35,7 @@ import { worldStore, type CoreStore } from '../store';
 import {
   MAX_MISSIONS,
   MAX_SELECTION_SIZE,
+  MISSION_TITLE_PENDING,
   NOTICE_TTL_MS,
   type ConfirmDecision,
   type MissionBrief,
@@ -52,6 +53,7 @@ import {
   dropSettledMissions,
   findMissingDependencies,
   isTerminalPhase,
+  renameMission,
   shortMissionId,
   type MissionAction,
 } from './machine';
@@ -135,6 +137,19 @@ export interface MissionManager {
    * 返回 null = 没记上（任务不存在 / 已终态 / note 为空）。
    */
   checkpointMission(missionId: string, note: string): MissionView | null;
+  /**
+   * **标题回写**（@since v3.11，task_155）—— 把占位标题「生成中…」换成 Agent 生成的标题。
+   *
+   * 用途：任务发起时标题是占位（用户不再提供标题），
+   *   Agent 第一轮工作回报生成标题后经 app 层 task-service 的回报通道回写到这里。
+   * why 走**程序化调用**而不是新增一条 HudCommand：写回发生在**跑任务的那个进程**里
+   *   （渲染进程 / service 进程），那里本来就持有 mission 写入面 —— 直接调它最省事，
+   *   也不会让「谁有权改标题」这件事多出一条总线通道（总线铁律：真相唯一）。
+   * **静默**（不发 Notice，与 checkpoint 同一纪律）：标题变了状态里就看得见，
+   *   再弹一条通知只会盖掉真正该让人看见的消息。
+   * 返回 null = 没改（任务不存在 / 已终态 / 标题为空 / **标题已经不是占位**）。
+   */
+  applyGeneratedTitle(missionId: string, title: string): MissionView | null;
 }
 
 /**
@@ -338,6 +353,33 @@ class Manager implements MissionManager {
       if (index < 0) return state; // 任务不存在：静默（不打扰）
       const step = appendMissionCheckpoint(state.missions[index], trimmed, this.now());
       if (step.error || !step.changed) return state; // 终态：静默拒绝
+      const missions = state.missions.slice();
+      missions[index] = step.next;
+      outcome.mission = step.next;
+      return { ...state, missions };
+    });
+    return outcome.mission ?? null;
+  }
+
+  /**
+   * 标题回写（@since v3.11，task_155）—— 与 checkpoint 同款：**单独一条写入路径**，
+   * 不走 commit(actions)（改标题不是相位迁移，硬塞成一种 MissionAction 会把两件事搅成一锅）。
+   *
+   * 只改 missions，不碰 units：相位没变 → 单位占用关系不变（syncUnitMissions 无事可做）。
+   * 终态拒绝与空标题拒绝都在 machine.ts 的 renameMission 里判（相位裁决只有一份）。
+   *
+   * ★ 只改**占位**标题：标题已经是人给的那条（如外部 agent 用 MCP 建的任务单），
+   *   不许被 worker 的首行覆盖 —— 回写是"补上缺的标题"，不是"改标题"。
+   */
+  applyGeneratedTitle(missionId: string, title: string): MissionView | null {
+    const outcome: { mission?: MissionView } = {};
+    this.store.setState((state) => {
+      const index = state.missions.findIndex((mission) => mission.id === missionId);
+      if (index < 0) return state; // 任务不存在：静默（不打扰）
+      const current = state.missions[index];
+      if (current.title !== MISSION_TITLE_PENDING) return state; // 标题不是占位：不许覆盖
+      const step = renameMission(current, title);
+      if (step.error || !step.changed) return state; // 终态 / 空标题 / 同值：静默拒绝
       const missions = state.missions.slice();
       missions[index] = step.next;
       outcome.mission = step.next;

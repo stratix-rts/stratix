@@ -11,9 +11,10 @@
 
 import { emitCommand, onState, resetBus, type Unsubscribe } from '../bus';
 import { createMissionManager, reconcileAssignedUnits, syncUnitMissions } from '../mission';
-import { applyMissionAction, createMission, dropSettledMissions, isTerminalPhase, type MissionAction } from '../mission/machine';
+import { applyMissionAction, createMission, dropSettledMissions, isTerminalPhase, renameMission, type MissionAction } from '../mission/machine';
 import { createCoreRuntime } from '../runtime';
 import { createStore, type CoreStore } from '../store';
+import { MISSION_TITLE_PENDING } from '../types';
 import type { MissionPhase, MissionView, UnitView, WorldState } from '../types';
 
 // ============================================================================
@@ -538,5 +539,74 @@ describe('闭环：mission.* 命令 → 状态机 → WorldState 广播', () => 
     emitCommand({ type: 'mission.cancel', missionId });
 
     expect(unhandled).toEqual([]);
+  });
+});
+// ============================================================================
+// 标题回写（@since v3.11，task_155）—— 标题不再由用户提供，由 Agent 首轮回报生成
+// ============================================================================
+
+describe('renameMission：改标题不改相位', () => {
+  test('非终态 → 改标题（相位原样）', () => {
+    const step = renameMission(missionAt('running'), '重构总线');
+    expect(step.error).toBeUndefined();
+    expect(step.changed).toBe(true);
+    expect(step.next?.title).toBe('重构总线');
+    expect(step.next?.phase).toBe('running');
+  });
+
+  test('标题 trim 后为空 → 拒（不擦掉占位又没东西可填）', () => {
+    const step = renameMission(missionAt('running'), '   ');
+    expect(step.error).toBeTruthy();
+    expect(step.next?.title).toBe('侦察北门');
+  });
+
+  test('终态 → 拒（收尾后的任务不改写历史）', () => {
+    expect(renameMission(missionAt('done'), '重构总线').error).toBeTruthy();
+    expect(renameMission(missionAt('cancelled'), '重构总线').error).toBeTruthy();
+  });
+
+  test('与现标题相同 → changed=false（不制造无谓广播）', () => {
+    const step = renameMission(missionAt('running'), '侦察北门');
+    expect(step.error).toBeUndefined();
+    expect(step.changed).toBe(false);
+  });
+});
+
+describe('manager.applyGeneratedTitle：只补占位标题', () => {
+  test('占位标题 → 换成生成的标题（静默，不发 Notice）', () => {
+    const { store, manager } = setup();
+    manager.createMission({ title: MISSION_TITLE_PENDING, unitIds: ['u1'] });
+    manager.decideMission('mission-1', 'accept');
+    const noticesBefore = store.getState().notices.length;
+
+    const updated = manager.applyGeneratedTitle('mission-1', '重构总线');
+
+    expect(updated?.title).toBe('重构总线');
+    expect(store.getState().missions[0].title).toBe('重构总线');
+    // 静默：状态里就看得见，不必再弹一条通知盖掉别的消息。
+    expect(store.getState().notices).toHaveLength(noticesBefore);
+  });
+
+  test('标题不是占位 → 不覆盖（别人的标题不许被 worker 顶掉）', () => {
+    const { store, manager } = setup();
+    manager.createMission({ title: '人工起的标题', unitIds: ['u1'] });
+
+    expect(manager.applyGeneratedTitle('mission-1', 'worker 给的')).toBeNull();
+    expect(store.getState().missions[0].title).toBe('人工起的标题');
+  });
+
+  test('终态任务 → 不改（终态机只认 running 之后的流转）', () => {
+    const { store, manager } = setup();
+    manager.createMission({ title: MISSION_TITLE_PENDING, unitIds: ['u1'] });
+    manager.decideMission('mission-1', 'accept');
+    manager.completeMission('mission-1');
+
+    expect(manager.applyGeneratedTitle('mission-1', '重构总线')).toBeNull();
+    expect(store.getState().missions[0].title).toBe(MISSION_TITLE_PENDING);
+  });
+
+  test('任务不存在 / 空标题 → 静默拒绝', () => {
+    const { manager } = setup();
+    expect(manager.applyGeneratedTitle('mission-none', '重构总线')).toBeNull();
   });
 });

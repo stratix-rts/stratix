@@ -26,6 +26,7 @@ import type {
   WorldEvent,
   WorldState,
 } from '../../core/types';
+import { MISSION_TITLE_PENDING } from '../../core/types';
 import type { SpawnOptions, TransportEvent } from '../services/cli-transport/transport';
 import { DEFAULT_EXP_WEIGHTS } from '../services/exp-config';
 import {
@@ -33,7 +34,9 @@ import {
   buildTaskPrompt,
   createTaskService,
   DEFAULT_TASK_TIMEOUT_MS,
+  extractGeneratedTaskTitle,
   extractPlanDraft,
+  MAX_GENERATED_TASK_TITLE,
   guardTaskCharacter,
   TASK_APPROVAL_RESUME_PROMPT,
   TASK_MSG_NOT_INSTALLED,
@@ -149,6 +152,13 @@ interface HarnessOptions {
   readonly onTransportError?: (kind: AgentKind, code: import('../services/cli-transport/transport').TransportErrorCode) => void;
   /** 入口拦截轻提示口（@since v3.30，task_054）。 */
   readonly notify?: (text: string) => void;
+  /**
+   * 任务单标题读取口（@since v3.11，task_155）：worker 侧据此判断「标题还待生成」。
+   * 缺省 = 没有任务单（标题回写整条通路不启用）。
+   */
+  readonly missionTitle?: (missionId: string) => string | null;
+  /** 标题回写口（@since v3.11，task_155）：把 worker 生成的标题写回任务单。 */
+  readonly onMissionTitle?: (missionId: string, title: string) => void;
 }
 
 interface Harness {
@@ -209,6 +219,8 @@ function makeHarness(options: HarnessOptions = {}): Harness {
     timeoutMs: options.timeoutMs,
     onTransportError: options.onTransportError,
     notify: options.notify,
+    missionTitle: options.missionTitle,
+    onMissionTitle: options.onMissionTitle,
   });
   const stop = service.start();
   harnessStops.push(stop);
@@ -1461,5 +1473,98 @@ describe('transport 异常上报：error 事件旁路上报健康监测（task_0
     assign(h, '干活');
     await flush();
     expect(h.store.getState().tasks?.find((t) => t.characterId === 'ch-1')?.status).toBe('failed');
+  });
+});
+
+// ============================================================================
+// 标题回写（@since v3.11，task_155）—— 标题不再由用户提供，由 worker 首轮回报生成
+// ============================================================================
+
+describe('extractGeneratedTaskTitle：首行口径', () => {
+  test('带「标题：」标记 → 取标记后的内容', () => {
+    expect(extractGeneratedTaskTitle('标题：重构总线\n正文…')).toBe('重构总线');
+    expect(extractGeneratedTaskTitle('任务标题: 侦察北门')).toBe('侦察北门');
+  });
+
+  test('没标记 → 首行整行就是标题（兜底口径）', () => {
+    expect(extractGeneratedTaskTitle('重构总线\n正文…')).toBe('重构总线');
+  });
+
+  test('markdown 前缀被剥掉（worker 常给标题加 # 或 -）', () => {
+    expect(extractGeneratedTaskTitle('## 重构总线')).toBe('重构总线');
+    expect(extractGeneratedTaskTitle('- 重构总线')).toBe('重构总线');
+  });
+
+  test('空输出 → null（没有标题就不写回）', () => {
+    expect(extractGeneratedTaskTitle('')).toBeNull();
+    expect(extractGeneratedTaskTitle('   \n  \n')).toBeNull();
+  });
+
+  test('超长截断到上限（末尾补省略号）', () => {
+    const long = '标'.repeat(50);
+    const title = extractGeneratedTaskTitle(long);
+    expect(title).not.toBeNull();
+    expect((title as string).length).toBe(MAX_GENERATED_TASK_TITLE);
+    expect(title?.endsWith('…')).toBe(true);
+  });
+});
+
+describe('标题回写：worker 首轮回报 → 任务单标题（@since v3.11，task_155）', () => {
+  /** 一个带单位的夹具（任务单要有单位才能进 running 相位）。 */
+  const withUnit = [{ id: 'u-1', name: '阿尔法', status: 'idle' as const, missionId: null, power: 3, characterId: 'ch-1' }];
+
+  test('标题待生成 → 向 worker 要标题，首轮回报的标题写回任务单', async () => {
+    let h!: Harness;
+    h = makeHarness({
+      units: withUnit,
+      scripts: [
+        scripted(
+          { type: 'message', text: '标题：重构总线\n正在动手…' },
+          { type: 'done', exitCode: 0, text: '标题：重构总线\n干完了', sessionId: 's-1' },
+        ),
+      ],
+      missionTitle: (id) => h.store.getState().missions.find((m) => m.id === id)?.title ?? null,
+      onMissionTitle: (id, title) => { h.missionManager.applyGeneratedTitle(id, title); },
+    });
+
+    // 立一条占位标题的任务单（标题由 Agent 生成）。
+    const mission = h.missionManager.createMission({ title: MISSION_TITLE_PENDING, unitIds: ['u-1'] });
+    expect(mission).not.toBeNull();
+    h.missionManager.decideMission((mission as { id: string }).id, 'accept');
+
+    h.manager.assignTask({ characterId: 'ch-1', prompt: '重构总线', missionId: (mission as { id: string }).id });
+    await flush();
+
+    // ① 发给 worker 的 prompt 里带「要标题」的指令。
+    expect(h.calls[0]?.prompt).toContain('标题');
+    // ② 任务单标题从占位变成生成的标题。
+    const mission2 = h.store.getState().missions.find((m) => m.id === (mission as { id: string }).id);
+    expect(mission2?.title).toBe('重构总线');
+  });
+
+  test('标题不是占位 → 不向 worker 要标题，也不覆盖别人的标题', async () => {
+    let h!: Harness;
+    const written: string[] = [];
+    h = makeHarness({
+      units: withUnit,
+      scripts: [
+        scripted(
+          { type: 'message', text: '标题：worker 给的\n正文…' },
+          { type: 'done', exitCode: 0, text: '标题：worker 给的\n正文…', sessionId: 's-1' },
+        ),
+      ],
+      missionTitle: (id) => h.store.getState().missions.find((m) => m.id === id)?.title ?? null,
+      onMissionTitle: (id, title) => { written.push(title); h.missionManager.applyGeneratedTitle(id, title); },
+    });
+
+    const mission = h.missionManager.createMission({ title: '人工起的标题', unitIds: ['u-1'] });
+    h.missionManager.decideMission((mission as { id: string }).id, 'accept');
+
+    h.manager.assignTask({ characterId: 'ch-1', prompt: '干活', missionId: (mission as { id: string }).id });
+    await flush();
+
+    expect(written).toEqual([]);
+    const mission2 = h.store.getState().missions.find((m) => m.id === (mission as { id: string }).id);
+    expect(mission2?.title).toBe('人工起的标题');
   });
 });

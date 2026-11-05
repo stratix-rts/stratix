@@ -17,6 +17,7 @@ import {
   buildTaskApproveCommand,
   buildTaskAssignCommand,
   buildTaskCancelCommand,
+  buildLaunchTaskCommand,
   buildTaskRejectCommand,
   MAX_VISIBLE_GROUP_ROWS,
   resolveAgentPanel,
@@ -649,5 +650,37 @@ describe('在线位读数：units.online → 模型（task_054）', () => {
     const plain = agentPanelSignature(stateOf(undefined));
     expect(agentPanelSignature(stateOf(false))).not.toBe(plain); // 掉线灰显
     expect(agentPanelSignature(stateOf(true))).not.toBe(agentPanelSignature(stateOf(false))); // 恢复亮起
+  });
+});
+
+describe('提示词直发命令构造：buildLaunchTaskCommand（@since v3.11，task_155）', () => {
+  /** 一个绑了 agent、有单位的角色（推荐算法要的人才）。 */
+  const agentState = makeState({
+    units: [unit({ id: 'u-neo', characterId: 'c-neo' })],
+    characters: [{ ...CHARACTER, agentKind: 'claude-code' }],
+  });
+
+  test('提示词 → task.assign + 顺带立任务单（标题由 Agent 生成，命令里不带标题）', () => {
+    const command = buildLaunchTaskCommand('  重构总线  ', agentState);
+
+    expect(command).toEqual({
+      type: 'task.assign',
+      characterId: 'c-neo',
+      prompt: '重构总线',
+      createMission: { unitId: 'u-neo', brief: { requirements: '重构总线' } },
+    });
+  });
+
+  test('角色没有单位 → 只派任务，不立任务单（无指派对象的任务单会永远停在草稿相位）', () => {
+    const state = makeState({ characters: [{ ...CHARACTER, agentKind: 'claude-code' }] });
+    const command = buildLaunchTaskCommand('重构总线', state);
+
+    expect(command).toEqual({ type: 'task.assign', characterId: 'c-neo', prompt: '重构总线' });
+  });
+
+  test('空白提示词 / 没有承接角色 / 没有状态 → null（不发半截命令）', () => {
+    expect(buildLaunchTaskCommand('   ', agentState)).toBeNull();
+    expect(buildLaunchTaskCommand('重构总线', makeState())).toBeNull();
+    expect(buildLaunchTaskCommand('重构总线', null)).toBeNull();
   });
 });
