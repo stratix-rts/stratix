@@ -1270,6 +1270,121 @@ export interface ProjectInstanceView {
 export const DEFAULT_INSTANCE_ID = 'wsp_sandbox';
 
 // ============================================================================
+// ★ core 端口契约（@since v3.3 / task_176 / M1-02 —— 切副本的 IO 接缝）
+//   来源：docs/DESIGN-project-map.md §1.2.5（端口注入方案，R1-02 裁决）+ §7.1 M1-02 行。
+//   本文件只冻结**形状与失败语义**：
+//   **实现由 app 层在 service 进程内注入**（唯一有 IO 的一侧），**core 不碰 IO** ——
+//   core 只依赖端口形状，不依赖实现；core 目录的 fs / sqlite / persistence 实际 import 数恒为 0。
+//   端口实现方**不得反向调用 core 的命令通道**（避免裁决重入）。
+// ============================================================================
+
+/**
+ * @since v3.3（task_176 / M1-02）端口失败的分类。
+ *
+ * why 失败要**分类**而不是一句 message：失败一律表现为**裁决拒绝**（不抛异常到 core 之外），
+ *   HUD 需要据失败种类弹不同 toast（§1.2.5 失败语义表）：
+ *   「实例不存在」/「实例已归档」/「路径不可达」/「载入失败」/「归档失败，已留在副本内」。
+ *   把这层分类冻结在契约里 ⇒ core 裁决、HUD 文案、app 端口实现三处共用同一套词表，不各抄一份。
+ */
+export type PortFailureReason =
+  /** 实例在注册表里查不到（`inspect` 口径：exists = false）。 */
+  | 'instance-missing'
+  /** 实例已被用户归档，不可进入。 */
+  | 'instance-archived'
+  /** 实例路径不可达（被移动 / 重命名；默认沙盒实例恒不走这条，见 §2.4）。 */
+  | 'path-unreachable'
+  /** 装载失败（app 侧读库 / 装载出错）。 */
+  | 'load-failed'
+  /** 卸载失败（app 侧清理 store 实体出错）。 */
+  | 'unload-failed'
+  /** 归档失败（app 侧写 `.stratix/history/*.jsonl` 出错）⇒ 拒绝退出，用户留在副本内。 */
+  | 'archive-failed';
+
+/**
+ * @since v3.3（task_176 / M1-02）端口操作结果（**失败不用异常表达**）。
+ *
+ * why 不用异常：core 的失败语义是**裁决拒绝**（状态不变 + 广播失败事件），
+ *   异常一旦跨出端口边界就变成「谁捕获它」的责任漂移 —— 这里用可穷尽的结果类型把失败摆到数据面，
+ *   core 裁决时必须显式处理 `ok: false` 分支，漏处理在编译期就暴露。
+ *   （实现方若仍抛错，core 侧**兜底捕获并按拒绝处理** —— 异常不得逃出 core，§1.2.5 失败语义表。）
+ */
+export type PortResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: PortFailureReason };
+
+/**
+ * @since v3.3（task_176 / M1-02）实例勘察结果（`InstanceLoaderPort.inspect` 的返回类型）。
+ *
+ * why 是**纯查询快照**而不是布尔：进入副本前的裁决需要三件独立的事实
+ *   （存在？已归档？路径可达？），合成一个布尔就把三者的组合语义压扁了。
+ *   默认沙盒实例（`DEFAULT_INSTANCE_ID`）的 `pathOk` 恒为 true（特例，见 §2.4）。
+ */
+export interface InstanceInspection {
+  /** 该实例是否存在（注册表里查得到）。 */
+  readonly exists: boolean;
+  /** 该实例是否已被用户归档（归档 ⇒ 拒绝进入）。 */
+  readonly archived: boolean;
+  /** 路径可达性；默认沙盒实例恒为 true（特例，见 §2.4）。 */
+  readonly pathOk: boolean;
+  /** 该实例的展示信息（路径 / 标题 / 最近打开时间）—— 大厅卡片的数据源。 */
+  readonly view?: ProjectInstanceView;
+}
+
+/**
+ * @since v3.3（task_176 / M1-02）归档结果（`ProjectArchivePort.archive` 的返回类型）。
+ *
+ * why 与 PortResult 分开而不是合并：归档有**成功载荷**（归档了几条、落到哪个文件），
+ *   而 load / unload 的成功无载荷可报 —— 合并会让成功分支背上一堆恒空的字段。
+ */
+export type ArchiveResult =
+  | {
+      readonly ok: true;
+      /** 本次归档写入的条数（信息性字段，供 HUD / 日志引用）。 */
+      readonly archivedCount?: number;
+      /** 归档落盘路径（`.stratix/history/missions-YYYYMM.jsonl`），信息性字段。 */
+      readonly archivePath?: string;
+    }
+  | { readonly ok: false; readonly reason: PortFailureReason };
+
+/**
+ * @since v3.3（task_176 / M1-02）实例装载端口 —— **core 零 IO 的唯一合法出口**。
+ *
+ * ⚠️ **实现由 app 层注入**（service 进程内），core 只依赖形状、不依赖实现；
+ *   本接口所在文件不得出现任何 fs / sqlite / persistence 的 import（core 零 IO 铁律）。
+ * ⚠️ 端口实现方**不得反向调用 core 的命令通道**（避免裁决重入）。
+ * ⚠️ 失败一律**返回失败结果**（`PortResult.ok === false`），**不向 core 之外抛异常**；
+ *   core 据此**拒绝**裁决（`activeInstanceId` 保持不变 + 广播 `project.enter.failed`）。
+ *
+ * why 方法形状照 DESIGN-project-map.md §1.2.5：方法名 / 参数 / 同步性（inspect 同步、load·unload 异步）
+ *   与草图一致；**load / unload 的返回类型按 §7.1 M1-02 验收②收敛为可表达失败的 `PortResult`**
+ *   （草图写 `Promise<void>`，那形状表达不了失败，与「失败不用异常」冲突）。
+ */
+export interface InstanceLoaderPort {
+  /** 该实例是否存在、是否归档、路径是否可达（纯查询，实现方读注册表 / 库）。 */
+  inspect(instanceId: ProjectInstanceId): InstanceInspection;
+  /** 载入该实例的实体行并交给 store（实现方负责读库 + 装载，全量替换不增量合并，见 §2.2）。 */
+  load(instanceId: ProjectInstanceId): Promise<PortResult>;
+  /** 卸载当前实例的行（切走时清理 store 里的实体）。 */
+  unload(instanceId: ProjectInstanceId): Promise<PortResult>;
+}
+
+/**
+ * @since v3.3（task_176 / M1-02）项目归档端口 —— 离开副本前的**数据落盘**出口。
+ *
+ * ⚠️ **实现由 app 层注入**（service 进程内），core 不碰 IO。
+ * ⚠️ 失败**返回 `ArchiveResult` 的失败分支**（`ok: false`），**不抛异常**；
+ *   core 据此**拒绝退出**（`activeInstanceId` 保持不变、不广播 `project.changed`，
+ *   用户留在副本内 —— 不静默丢弃、不半归档，见 §2.2）。
+ */
+export interface ProjectArchivePort {
+  /**
+   * 归档该实例的未归档数据（写 `.stratix/history/*.jsonl`，append-only）。
+   * 失败语义：**拒绝切换**（不是抛异常到 core 之外）。
+   */
+  archive(instanceId: ProjectInstanceId): Promise<ArchiveResult>;
+}
+
+// ============================================================================
 // ★ 总线契约：core → 两层广播的完整世界快照
 // ============================================================================
 
