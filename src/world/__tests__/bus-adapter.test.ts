@@ -921,4 +921,21 @@ describe('bridge 按 instanceId 过滤（task_184 / M1-10）', () => {
 
     expect(taskEventIds).toEqual(['t-b']);
   });
+
+  // scope() 的用途（@since v3.3，task_185 / M1-11）：站位种子**按副本分区** ⇒
+  //   场景取站位种子时必须知道「自己这一副本」的 id —— 取错 = 拿别的副本的站位。
+  test('scope() 报告当前副本：缺省默认沙盒，随 state 的 activeInstanceId 变', () => {
+    const { port } = createScopePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    // 还没进任何副本 ⇒ 默认沙盒（老数据全在它名下）
+    expect(bridge.scope()).toBe(DEFAULT_INSTANCE_ID);
+
+    emitState(stateWith({ activeInstanceId: INSTANCE_B }));
+    expect(bridge.scope()).toBe(INSTANCE_B);
+
+    emitState(stateWith({ activeInstanceId: null }));
+    expect(bridge.scope()).toBe(DEFAULT_INSTANCE_ID);
+  });
 });

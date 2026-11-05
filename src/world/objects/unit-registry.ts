@@ -11,9 +11,11 @@
  *   3. 缓存 UnitView 快照再自行 diff —— 对账只看本次广播的数组，历史状态由 Map 自身承载；
  *   4. 引入无限增长的结构 —— 每次 sync 都按本次 UnitView[] 全量对账，
  *      Map 条目数恒等于当前单位数，不会随时间膨胀（perf：数据不许无限增长）。
+ *   5. 让站位种子回到**全局键** —— 键必须按副本分区（task_185 / M1-11），
+ *      旧全局键只许出现在一次性迁移里，迁完即删。
  */
 
-import type { Bounds, Point, UnitView } from '../../core/types';
+import { DEFAULT_INSTANCE_ID, type Bounds, type Point, type ProjectInstanceId, type UnitView } from '../../core/types';
 import { DEFAULT_WORLD_BOUNDS } from '../camera/camera-math';
 
 import { UNIT_HIT_RADIUS, UnitObject } from './unit-object';
@@ -25,12 +27,154 @@ const SPAWN_GAP = 96;
 const SPAWN_MARGIN = 96;
 
 /**
- * game.registry 里「恢复站位种子」的键（@since v3.12，task_033）。
- * why 走 registry（Phaser game.registry）而不是场景构造器：场景由 Phaser 实例化，
- *   构造器拿不到注入 —— 与 UNIT_SPRITE_SOURCE_KEY 同一模式：组合根在 preBoot 里塞，场景 create 时取。
+ * 站位种子键的**前缀**（@since v3.3，task_185 / M1-11）—— 完整键 = 前缀 + 副本 id。
+ *
+ * why 按副本分区：站位是「**按 instance 归属**的事实」（design §7.1 M1-11 行）。
+ *   旧实现把整份站位塞进**一个全局键**（`stratix:unit-position-seed`）⇒ A 副本的位置会漏到 B 副本
+ *   （design §2.5 #6 / #18 / #22）。dsh 侧是同一条纪律：workspace 唯一性按 realpath、
+ *   session 归属按 `header.cwd` —— 归属是硬事实，不是显示偏好。
+ *
  * 值形状：ReadonlyMap<unitId, Point>，来自 app 层持久化快照（unit_positions 表）。
  */
-export const UNIT_POSITION_SEED_KEY = 'stratix:unit-position-seed';
+export const UNIT_POSITION_SEED_KEY_PREFIX = 'stratix:unit-position-seed:';
+
+/**
+ * 站位种子的**旧全局键**（@since v3.12，task_033；@since v3.3 task_185 / M1-11 降级为「迁移专用」）。
+ *
+ * ⚠️ 这个键**只**允许出现在一次性迁移里（migrateLegacyPositionSeed）：它是全局单份，
+ *   留着就等于留着「A 的位置迟早漏进 B」的口子。迁移完成即删除，全仓不再有第二个读取点。
+ * why 键本身住在 registry（Phaser game.registry）而不是场景构造器：场景由 Phaser 实例化，
+ *   构造器拿不到注入 —— 与 UNIT_SPRITE_SOURCE_KEY 同一模式：组合根在 preBoot 里塞，场景 create 时取。
+ */
+export const LEGACY_UNIT_POSITION_SEED_KEY = 'stratix:unit-position-seed';
+
+/**
+ * 新键（按副本分区）：`stratix:unit-position-seed:<instanceId>`。
+ * why 单独一个函数而不是各处拼字符串：键名是**契约**（app 层写、world 层读），只有一处定义。
+ */
+export function unitPositionSeedKey(instanceId: ProjectInstanceId): string {
+  return `${UNIT_POSITION_SEED_KEY_PREFIX}${instanceId}`;
+}
+
+/**
+ * 站位种子的键仓（Phaser `game.registry` 的最小形状）。
+ * why 抽象成接口：迁移与读取都是纯逻辑，不该被 Phaser 绑死（world 层零 Phaser 依赖 ⇒ 可单测）。
+ */
+export interface PositionSeedStore {
+  get(key: string): unknown;
+  set(key: string, value: unknown): unknown;
+  remove(key: string): void;
+}
+
+/** 判断某个值是不是站位种子（Map<unitId, Point>）。 */
+function isSeedMap(value: unknown): value is ReadonlyMap<string, Point> {
+  return value instanceof Map;
+}
+
+/** 一次性迁移的输入（归属信息由 app 层给 —— world 层不知道「谁属于哪个副本」）。 */
+export interface PositionSeedMigrationOptions {
+  /**
+   * 单位 → 所属副本的裁决（app 层提供：角色的 instanceId，缺省归默认沙盒）。
+   * why 需要它：旧键是**全局单份**，里面混着各副本的站位 —— 不按归属拆开就等于把 A 的位置塞进 B。
+   */
+  readonly ownerOf?: (unitId: string) => ProjectInstanceId | undefined;
+  /**
+   * 归属查不到时的落点（两侧都取**默认沙盒**：老存档没有副本维度 ⇒ 归默认沙盒，
+   * 不是「无归属」—— 与 core 侧 scopeOf 的 COALESCE 口径同一条纪律）。
+   * why 不落给「正在读的那个副本」：那正是把旧数据塞给先读到它的副本 = 漏口。
+   */
+  readonly fallbackInstanceId: ProjectInstanceId;
+}
+
+/** 一次性迁移的结果。 */
+export interface PositionSeedMigrationResult {
+  /** 实际迁进新键的条目数。 */
+  readonly migrated: number;
+  /** 迁移前旧键是否存在（false = 本来就是新格式，无需迁移）。 */
+  readonly legacyPresent: boolean;
+}
+
+/**
+ * **一次性迁移**：旧全局键 → 各副本的新键，迁完**删掉旧键**。
+ *
+ * ⚠️ 这是「搬走」，**不是**「回落」：旧键的内容被**拆进各副本的键**（按归属），
+ *   然后旧键当场删除 ⇒ 此后全仓再没有一个地方能从旧键读到站位
+ *   ⇒ A 副本的位置不会漏进 B 副本（design §7.1 M1-11 行①②③）。
+ *
+ * why 迁移点在 app 层（组合根启动时）而不是战场读取时：归属（谁的站位）只有读档那一侧知道
+ *   （角色档案上的 instanceId）；战场侧只知道「我现在是哪个副本」，不知道「这个单位属于谁」。
+ *   在读取点迁移只能把整份旧数据塞给「先读到的那一个副本」—— 那正是设计点名禁止的漏法。
+ *
+ * @param store 键仓（Phaser game.registry）。
+ * @param options 归属裁决 + 归属查不到时的落点。
+ */
+export function migrateLegacyPositionSeed(
+  store: PositionSeedStore,
+  options: PositionSeedMigrationOptions
+): PositionSeedMigrationResult {
+  const legacy = store.get(LEGACY_UNIT_POSITION_SEED_KEY);
+  // 旧键不存在 ⇒ 已是新格式（没有可迁的东西，也就没有残留）。
+  if (!isSeedMap(legacy)) return { migrated: 0, legacyPresent: false };
+
+  // 逐条按归属拆进各副本的新键；新键已有条目不覆盖（新数据优先于老存档）。
+  let migrated = 0;
+  for (const [unitId, point] of legacy) {
+    const owner = options.ownerOf?.(unitId) ?? options.fallbackInstanceId;
+    const key = unitPositionSeedKey(owner);
+    const existing = store.get(key);
+    const target: Map<string, Point> = isSeedMap(existing)
+      ? (existing as Map<string, Point>)
+      : new Map<string, Point>();
+    if (target.has(unitId)) continue;
+    target.set(unitId, point);
+    store.set(key, target);
+    migrated += 1;
+  }
+
+  // 迁完即删旧键：**不留回落口**（旧键是全局单份，留着迟早漏进别的副本）。
+  store.remove(LEGACY_UNIT_POSITION_SEED_KEY);
+  return { migrated, legacyPresent: true };
+}
+
+/**
+ * 读当前副本的站位种子。
+ *
+ * ⚠️ **只读新键**（`stratix:unit-position-seed:<instanceId>`）：读不到时最多做**一次**迁移
+ *   （旧全局键 → 新键，旧键当场删除），**绝不**「读不到新键就回落旧键」——
+ *   旧键是全局单份，回落之后 A 副本的位置仍然会漏进 B 副本（只是不报错），
+ *   这正是 design §7.1 M1-11 行③ 点名禁止的写法。
+ *
+ * 迁移时归属查不到的条目归**默认沙盒**（COALESCE 口径：老存档没有副本维度）
+ *   ⇒ 读 B 副本时旧数据也不会落到 B 头上（安全网不许变成漏口）。
+ *
+ * @param store 键仓（Phaser game.registry）。
+ * @param instanceId 当前副本 id。
+ * @param options 迁移时的归属裁决（省略 ⇒ 全部归默认沙盒）。
+ */
+export function resolvePositionSeed(
+  store: PositionSeedStore,
+  instanceId: ProjectInstanceId,
+  options?: { readonly ownerOf?: (unitId: string) => ProjectInstanceId | undefined }
+): ReadonlyMap<string, Point> | undefined {
+  const key = unitPositionSeedKey(instanceId);
+  const existing = store.get(key);
+  if (isSeedMap(existing)) {
+    // 新键已有数据 ⇒ 旧键（若还在）只可能是**残留**（老版本留下 / 上一次迁移漏网）：
+    //   旧键是全局单份、无法归属 ⇒ 当场删掉，不留任何回落口。
+    if (store.get(LEGACY_UNIT_POSITION_SEED_KEY) !== undefined) {
+      store.remove(LEGACY_UNIT_POSITION_SEED_KEY);
+    }
+    return existing;
+  }
+
+  // 读不到新键 ⇒ 一次性迁移（搬走旧键，不是回落）；迁完旧键即消失，此后不可能再回落。
+  migrateLegacyPositionSeed(store, {
+    ownerOf: options?.ownerOf,
+    fallbackInstanceId: DEFAULT_INSTANCE_ID,
+  });
+  const migrated = store.get(key);
+  return isSeedMap(migrated) ? migrated : undefined;
+}
 
 export interface UnitRegistryOptions {
   readonly worldBounds?: Bounds;

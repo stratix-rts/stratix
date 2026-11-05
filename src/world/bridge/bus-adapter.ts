@@ -228,6 +228,13 @@ export interface WorldEventSink {
 }
 
 export interface WorldBridge extends WorldEventSink {
+  /**
+   * 当前活跃副本（scope）—— @since v3.3，task_185 / M1-11。
+   * why 暴露出来：站位种子**按副本分区**（§7.1 M1-11 行）⇒ 场景得知道「自己这一副本」的 id
+   *   才能取对种子（取错 = 拿别的副本的站位）。真相来源 = state 通道的 `activeInstanceId`，
+   *   与 scope 过滤同一口径（见 createWorldBridge 内部注释）。
+   */
+  scope(): ProjectInstanceId;
   /** 退订总线。场景 shutdown 时必须调用。 */
   destroy(): void;
 }
@@ -437,6 +444,12 @@ export function createWorldBridge(
     flushCamera(): void {
       if (destroyed || pendingCamera === null) return;
       emitCamera(pendingCamera.center, pendingCamera.zoom);
+    },
+
+    // 当前活跃副本（@since v3.3，task_185 / M1-11）：与 scope 过滤共用同一个 currentScope
+    // （真相来源 = state 通道的 activeInstanceId）⇒ 场景取站位种子与转发实体用同一口径。
+    scope(): ProjectInstanceId {
+      return currentScope;
     },
 
     destroy(): void {

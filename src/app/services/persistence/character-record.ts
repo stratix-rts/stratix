@@ -23,12 +23,14 @@
 import { CHARACTER_UNIT_ID_PREFIX, toCharacterUnit } from '../../../core/character';
 import {
   APPEARANCE_BODY_TYPES,
+  DEFAULT_INSTANCE_ID,
   MAX_CHARACTERS,
   isBindableAgentKind,
   type AppearanceBodyType,
   type CharacterAppearance,
   type CharacterView,
   type Point,
+  type ProjectInstanceId,
   type UnitView,
 } from '../../../core/types';
 
@@ -158,4 +160,25 @@ export function characterIdFromUnitId(unitId: string): string | null {
   return unitId.startsWith(CHARACTER_UNIT_ID_PREFIX)
     ? unitId.slice(CHARACTER_UNIT_ID_PREFIX.length)
     : null;
+}
+
+/**
+ * 站位种子的**归属裁决**（@since v3.3，task_185 / M1-11）：unitId → 所属副本 id。
+ *
+ * why 在翻译层判：站位是「按 instance 归属」的事实，归属写在**角色档案**上
+ *   （character.instanceId）—— 读档这一侧是唯一知道「谁属于谁」的地方
+ *   （world 层只知道「我现在是哪个副本」，不知道「这个单位属于谁」）。
+ * 口径与 core 侧一致（bridge 的 scopeOf / design §1.2.1 R1-03）：
+ *   缺省 / null ⇒ **默认沙盒**（老存档没有副本维度 ⇒ 归默认沙盒，不是「无归属」）。
+ */
+export function positionSeedOwner(injection: RestoreInjection): (unitId: string) => ProjectInstanceId {
+  const ownerByCharacterId = new Map<string, ProjectInstanceId>();
+  for (const character of injection.characters) {
+    ownerByCharacterId.set(character.id, character.instanceId ?? DEFAULT_INSTANCE_ID);
+  }
+  return (unitId: string): ProjectInstanceId => {
+    const characterId = characterIdFromUnitId(unitId);
+    if (characterId === null) return DEFAULT_INSTANCE_ID;
+    return ownerByCharacterId.get(characterId) ?? DEFAULT_INSTANCE_ID;
+  };
 }

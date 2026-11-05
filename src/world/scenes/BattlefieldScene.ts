@@ -108,7 +108,7 @@ import { MapBoard, BUILDING_SIZE, type MapSyncResult } from '../objects/task-bui
 import { INTERACTION_BUBBLE_TEXT, TaskFxBoard, applyTaskFxEvent, fxKindForTaskPhase } from '../objects/task-fx';
 import { TaskFxLayer } from '../objects/task-fx-layer';
 import { UnitLayer } from '../objects/unit-layer';
-import { UnitRegistry, UNIT_POSITION_SEED_KEY } from '../objects/unit-registry';
+import { UnitRegistry, resolvePositionSeed } from '../objects/unit-registry';
 import { UNIT_SPRITE_SOURCE_KEY, type UnitSpriteSource } from '../objects/unit-sprite-source';
 import type { SpeechKind } from '../speech-templates';
 import { CAMERA_METRICS, REPLAY_METRICS, WORLD_PALETTE } from '../theme';
@@ -342,9 +342,12 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       callback: () => this.applyAmbientWarmth(),
     });
 
-    // 恢复站位种子（@since v3.12，task_033）：组合根启动读档后放在 game.registry 里。
+    // 恢复站位种子（@since v3.12，task_033；@since v3.3 task_185 / M1-11 **按副本分区**）：
+    //   组合根启动读档后，把**当前副本**的站位放在 game.registry 的分区键
+    //   （`stratix:unit-position-seed:<instanceId>`）里；场景只取自己这一副本的那份
+    //   ⇒ A 副本的位置不会漏进 B 副本（旧实现是全局单键，design §2.5 #6/#18/#22）。
     // 没接上（纯 vite dev / 读档失败）→ undefined，注册表全部按网格落位，行为与从前一致。
-    const restoredPositions = this.registry.get(UNIT_POSITION_SEED_KEY) as ReadonlyMap<string, Point> | undefined;
+    const restoredPositions = resolvePositionSeed(this.registry, this.bridge.scope());
     this.units.applyRestoredPositions(restoredPositions);
 
     this.view = new CameraController(this.cameras.main, {

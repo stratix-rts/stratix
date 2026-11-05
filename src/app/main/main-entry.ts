@@ -101,7 +101,7 @@ import { createCoreRuntime, type UnhandledChannel } from '../../core/runtime';
 import { createSessionManager } from '../../core/session';
 import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
-import type { DetectedAgent, HudCommand, Point, WorldEvent } from '../../core/types';
+import { DEFAULT_INSTANCE_ID, type DetectedAgent, type HudCommand, type Point, type WorldEvent } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
 // ⌘K 命令面板（@since v3.9，task_150）：全应用键盘可达 —— 命令定义在共享注册表
 //   （hud/lib/command-registry.ts），底栏 composer 与本面板共用一份事实源。
@@ -175,7 +175,11 @@ import { PartRegistry } from '../../world/appearance/part-registry';
 // 动效降级标志（@since v3.8，task_140）：reduced-motion 时入场直接落位（world 零 DOM，判在 app 层）。
 import { REDUCED_MOTION_KEY } from '../../world/motion';
 import { UNIT_SPRITE_SOURCE_KEY } from '../../world/objects/unit-sprite-source';
-import { UNIT_POSITION_SEED_KEY } from '../../world/objects/unit-registry';
+// 站位种子键（@since v3.3，task_185 / M1-11）：**按副本分区** —— 旧全局键只用于一次性迁移，迁完即删。
+import {
+  LEGACY_UNIT_POSITION_SEED_KEY,
+  migrateLegacyPositionSeed,
+} from '../../world/objects/unit-registry';
 import { BattlefieldScene } from '../../world/scenes/BattlefieldScene';
 // 特效素材加载场景（@since v3.3，task_161）：独立预载 sheet，战场 create() 不等素材（见该文件头注释）。
 import { FxAssetScene } from '../../world/scenes/fx-asset-scene';
@@ -183,6 +187,8 @@ import { FxAssetScene } from '../../world/scenes/fx-asset-scene';
 import { ENTRY_PATH_DEPTH } from '../entry-paths';
 // 当日回放读取口（@since v3.3，task_082）：读 service 的只读 REST（当天 task_run 事件流）。
 import { createDayReplayPort } from '../services/day-replay';
+// 站位种子的归属裁决（@since v3.3，task_185 / M1-11）：单位 → 所属副本（纯翻译，读档侧独有）。
+import { positionSeedOwner } from '../services/persistence/character-record';
 import {
   createGameSaveCoordinator,
   gameSaveApi,
@@ -1382,8 +1388,16 @@ async function boot(): Promise<void> {
     callbacks: {
       preBoot: (booting) => {
         booting.registry.set(UNIT_SPRITE_SOURCE_KEY, unitSpriteSource);
-        // 恢复站位种子（task_033）：场景 create 时取走；没记录的单位按网格落位。
-        booting.registry.set(UNIT_POSITION_SEED_KEY, injection.positionsByUnitId);
+        // 恢复站位种子（task_033；@since v3.3 task_185 / M1-11 **按副本分区**）：
+        //   ① 读档给的是**旧格式**（全局一份、无法归属副本）⇒ 先照旧落进旧全局键；
+        //   ② 一次性迁移：按「单位归属」拆进各副本的新键（stratix:unit-position-seed:<instanceId>），
+        //      迁完**删掉旧键** ⇒ 全仓再没有能读到旧键的地方 ⇒ A 副本的位置不会漏进 B 副本。
+        //   场景 create 时按**自己那一副本**的键取走；没记录的单位按网格落位。
+        booting.registry.set(LEGACY_UNIT_POSITION_SEED_KEY, injection.positionsByUnitId);
+        migrateLegacyPositionSeed(booting.registry, {
+          ownerOf: positionSeedOwner(injection),
+          fallbackInstanceId: DEFAULT_INSTANCE_ID,
+        });
         // 动效降级（task_140）：reduced-motion 时入场直接落位 / 下场直接移除。
         // why 在 app 层判：world 零 DOM —— matchMedia 只有组合根能碰（见 world/motion.ts）。
         booting.registry.set(REDUCED_MOTION_KEY, prefersReducedMotion());
