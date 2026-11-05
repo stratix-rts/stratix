@@ -11,6 +11,9 @@
  *     驱动地图上的任务建筑三态与区域点亮（objects/task-building*）；
  *     @since v3.25（task_049）追加转发 task.awaiting_approval（挂起画 ?）与 task.approved
  *     （折算 started —— 批准后回工作环）；
+ *   - state 通道 → 场景（@since v3.3，task_184 / M1-10）：转发**前**按当前 instanceId 过滤 ——
+ *     转发给场景的 units / missions / tasks **全部**属于当前副本（scope 感知转发）；
+ *     当前副本的真相来源 = state 通道的 `activeInstanceId`（随 store 同步广播，见下）；
  *   - world 通道 → 场景（@since v3.21，task_045）：同一条订阅还转发 unit.position ——
  *     右击移动时 runtime 把编队终值广播出来，场景据此更新 UnitObject（立即）并 tween（表现）；
  *     @since v3.33（task_057）：再转发 camera.center（HudCommand 同名命令经 core 钳制后的
@@ -27,23 +30,27 @@
  * 禁止事项：
  *   1. import phaser 或任何 hud / vue / legacy(stratix-rts) 文件 —— 铁律：world 只认识 core/types 与 core/bus；
  *   2. 缓存 WorldState 或做业务判断 —— 状态真相在 core，本文件只转发，不解释"选择意味着什么"；
+ *     ★ 唯一例外 = **scope 过滤**（task_184 / M1-10）：按 instanceId 裁剪转发范围**不是**业务判断，
+ *       是「转发前归拢」—— 不做它，切副本后场景里还留着上一个副本的实体；
  *   3. 泄漏监听器 —— destroy() 必须退订（state 与 task 两条订阅），否则场景每次重启都会多挂一个订阅（perf：资源必须可清理）；
  *   4. 逐帧无节制广播 camera.moved —— 拖拽与滚轮每帧都在动相机，必须合并上报。
  */
 
 import { emitWorldEvent, onState, onWorldEvent } from '../../core/bus';
-import type {
-  Bounds,
-  CharacterTask,
-  ClickMods,
-  MissionView,
-  Point,
-  ReplayBeat,
-  SelectionState,
-  SoundCue,
-  UnitView,
-  WorldEvent,
-  WorldState,
+import {
+  DEFAULT_INSTANCE_ID,
+  type Bounds,
+  type CharacterTask,
+  type ClickMods,
+  type MissionView,
+  type Point,
+  type ProjectInstanceId,
+  type ReplayBeat,
+  type SelectionState,
+  type SoundCue,
+  type UnitView,
+  type WorldEvent,
+  type WorldState,
 } from '../../core/types';
 import type { DirectorEventKind } from '../camera/director-policy';
 import type { TaskFxPhase } from '../objects/task-fx';
@@ -53,6 +60,21 @@ export type { TaskFxPhase } from '../objects/task-fx';
 
 /** 相机事件的最小上报间隔（ms）。窗口内只保留最后一个位姿，等 flush 或下一次放行再发。 */
 export const CAMERA_EVENT_INTERVAL_MS = 120;
+
+/**
+ * 实体的**有效归属**（副本 scope）—— COALESCE 口径（design §1.2.1 / R1-03）。
+ *
+ * why 缺省 / null 归默认沙盒而不是「无归属」：旧数据（`instance_id IS NULL` 的行）
+ *   在**查询时**按 `COALESCE(instance_id, 'wsp_sandbox')` 命中默认沙盒（落库不改写）——
+ *   本文件与 app 侧的实例装载 / 归档用**同一条**口径（见 instance-loader.ts / project-archive.ts），
+ *   两边口径不一致 = 「HUD 看得到、战场看不到」的老毛病。
+ *
+ * @param instanceId 实体上的归属声明（缺省 / null = 未归属）。
+ * @returns 该实体实际所属的物理副本 id。
+ */
+function scopeOf(instanceId?: ProjectInstanceId | null): ProjectInstanceId {
+  return instanceId ?? DEFAULT_INSTANCE_ID;
+}
 
 /** 场景侧需要被 state 驱动的接口（由 BattlefieldScene 实现）。 */
 export interface WorldScenePort {
@@ -232,13 +254,32 @@ export function createWorldBridge(
   let lastCameraEmitAt: number | null = null;
   let pendingCamera: { center: Point; zoom: number } | null = null;
 
+  // 当前活跃副本（scope）—— 桥接层**内部持有**（design §7.1 M1-10 行：端口签名零改动）。
+  // 真相来源 = state 通道的 `activeInstanceId`：它是状态字段 ⇒ 随 store 变更走 state 通道
+  // （store.subscribe(emitState) 同步广播 ⇒ **state 先于 world 到达**，见 core/types.ts 的
+  // `project.changed` 注释）。world 通道的 `project.changed` 只管「切场景」，桥接层不自行切
+  // （铁律：数据同步 ≠ 场景路由；两处都切会切两次）。
+  // 缺省 = 默认沙盒：还没进入任何副本时，战场看的仍是默认沙盒（老数据全在它名下）。
+  let currentScope: ProjectInstanceId = DEFAULT_INSTANCE_ID;
+
+  /** 某个实体是否属于当前副本（scope 感知过滤的统一判据）。 */
+  const inScope = (instanceId?: ProjectInstanceId | null): boolean =>
+    scopeOf(instanceId) === currentScope;
+
   const unsubscribeState = onState((state: WorldState) => {
     if (destroyed) return;
-    port.syncUnits(state.units);
+    currentScope = scopeOf(state.activeInstanceId);
+    // scope 过滤（task_184 / M1-10）：转发给场景的实体必须**全部**属于当前副本 ——
+    // 否则切副本后场景里还留着上一个副本的单位 / 任务建筑（§2.3「副本间单位互不可见」）。
+    // why 过滤在桥接层：WorldScenePort 签名零改动 ⇒ HUD / world 的测试夹具不破（design §7.1 M1-10 行）。
+    port.syncUnits(state.units.filter((unit) => inScope(unit.instanceId)));
     port.syncSelection(state.selection);
     // 任务全景（task_078）：建筑三态与区域点亮要的是**当前快照**（每条任务的相位），
     // 故随 state 一起转发，而不是等 world 通道的事件增量自己拼状态。
-    port.syncTasks?.(state.missions ?? [], state.tasks ?? []);
+    port.syncTasks?.(
+      (state.missions ?? []).filter((mission) => inScope(mission.instanceId)),
+      (state.tasks ?? []).filter((task) => inScope(task.instanceId)),
+    );
   });
 
   // world 通道 → 场景（@since v3.17，task_038；@since v3.21，task_045 补 unit.position）：
@@ -251,6 +292,9 @@ export function createWorldBridge(
     if (destroyed) return;
     switch (event.type) {
       case 'task.started':
+        // scope 过滤（task_184 / M1-10）：任务事件也只转发**当前副本**的 ——
+        // 切副本后，上一个副本的任务事件不该再驱动当前场景的表现（工作环 / 气泡 / 镜头）。
+        if (!inScope(event.task.instanceId)) break;
         port.syncTaskEvent?.(event.task, 'started');
         // 开工气泡（task_076）：任务落到谁头上，谁说一句开工话。
         port.syncTaskSpeech?.(event.task, 'start');
@@ -258,6 +302,7 @@ export function createWorldBridge(
         port.syncDirectorEvent?.(event.task, 'started');
         break;
       case 'task.completed':
+        if (!inScope(event.task.instanceId)) break;
         port.syncTaskEvent?.(event.task, 'completed');
         // 完成气泡（task_076）。
         port.syncTaskSpeech?.(event.task, 'complete');
@@ -265,6 +310,7 @@ export function createWorldBridge(
         port.syncDirectorEvent?.(event.task, 'completed');
         break;
       case 'task.failed':
+        if (!inScope(event.task.instanceId)) break;
         port.syncTaskEvent?.(event.task, 'failed');
         // 报错气泡（task_076）。
         port.syncTaskSpeech?.(event.task, 'error');
@@ -274,14 +320,17 @@ export function createWorldBridge(
       // 派活气泡（task_076）：任务入队 = 派到人手上 → 「收到新任务」。
       // why task.queued 不进 syncTaskEvent：它还不是「在干活」，不该挂工作环。
       case 'task.queued':
+        if (!inScope(event.task.instanceId)) break;
         port.syncTaskSpeech?.(event.task, 'assigned');
         break;
       // 审批门（task_049）：挂起画 ?（黄色问号，驻留到裁决）；批准折算成 started 相位 ——
       // 批准是同一段执行的续段，表现上回到工作环（场景不需要新的相位词）。
       case 'task.awaiting_approval':
+        if (!inScope(event.task.instanceId)) break;
         port.syncTaskEvent?.(event.task, 'awaiting_approval');
         break;
       case 'task.approved':
+        if (!inScope(event.task.instanceId)) break;
         port.syncTaskEvent?.(event.task, 'started');
         break;
       case 'unit.position':

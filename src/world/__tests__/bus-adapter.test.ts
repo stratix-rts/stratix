@@ -13,7 +13,15 @@ import {
   resetBus,
   type Unsubscribe,
 } from '../../core/bus';
-import type { ClickMods, UnitView, WorldEvent, WorldState } from '../../core/types';
+import {
+  DEFAULT_INSTANCE_ID,
+  type CharacterTask,
+  type ClickMods,
+  type MissionView,
+  type UnitView,
+  type WorldEvent,
+  type WorldState,
+} from '../../core/types';
 import {
   CAMERA_EVENT_INTERVAL_MS,
   createWorldBridge,
@@ -733,5 +741,184 @@ describe('导演模式接线（task_081）', () => {
       emitWorldEvent({ type: 'task.started', task: task('t1', 'running') });
       emitWorldEvent({ type: 'camera.director', enabled: true });
     }).not.toThrow();
+  });
+});
+
+// ============================================================================
+// scope 感知转发：bridge 按 instanceId 过滤（@since v3.3，task_184 / M1-10）
+//   验收（design §7.1 M1-10 行）：
+//     ① 转发给场景的 units / missions / tasks **全部**属于当前 instance；
+//     ② WorldScenePort 接口签名**未变**（HUD / world 的测试夹具不破）；
+//     ③ 切副本后下一次同步不再带旧 instance 的实体。
+// ============================================================================
+
+describe('bridge 按 instanceId 过滤（task_184 / M1-10）', () => {
+  const INSTANCE_A = 'wsp_a';
+  const INSTANCE_B = 'wsp_b';
+
+  interface ScopeSync {
+    readonly missions: MissionView[];
+    readonly tasks: CharacterTask[];
+  }
+
+  function createScopePort() {
+    const unitSyncs: UnitView[][] = [];
+    const taskSyncs: ScopeSync[] = [];
+    const taskEventIds: string[] = [];
+    const port: WorldScenePort = {
+      syncUnits: (units) => void unitSyncs.push([...units]),
+      syncSelection: () => {},
+      syncTasks: (missions, tasks) => void taskSyncs.push({ missions: [...missions], tasks: [...tasks] }),
+      syncTaskEvent: (task) => void taskEventIds.push(task.id),
+    };
+    return { port, unitSyncs, taskSyncs, taskEventIds };
+  }
+
+  const unit = (id: string, instanceId?: string | null): UnitView => ({
+    id,
+    name: id,
+    status: 'idle',
+    missionId: null,
+    power: 0,
+    instanceId,
+  });
+
+  const mission = (id: string, instanceId?: string | null): MissionView => ({
+    id,
+    title: id,
+    phase: 'running',
+    unitIds: [],
+    createdAt: 1,
+    instanceId,
+  });
+
+  const task = (id: string, instanceId?: string | null): CharacterTask => ({
+    id,
+    characterId: 'ch-a',
+    prompt: '干活',
+    status: 'running',
+    createdAt: 1,
+    startedAt: 1,
+    endedAt: null,
+    output: '',
+    instanceId,
+  });
+
+  test('① 转发给场景的单位只含当前 instance 的', () => {
+    const { port, unitSyncs } = createScopePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitState(
+      stateWith({
+        activeInstanceId: INSTANCE_B,
+        units: [unit('u-a', INSTANCE_A), unit('u-b', INSTANCE_B)],
+      })
+    );
+
+    expect(unitSyncs).toHaveLength(1);
+    expect(unitSyncs[0].map((u) => u.id)).toEqual(['u-b']);
+  });
+
+  test('① missions / tasks 同样按当前 instance 过滤', () => {
+    const { port, taskSyncs } = createScopePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitState(
+      stateWith({
+        activeInstanceId: INSTANCE_A,
+        missions: [mission('m-a', INSTANCE_A), mission('m-b', INSTANCE_B)],
+        tasks: [task('t-a', INSTANCE_A), task('t-b', INSTANCE_B)],
+      })
+    );
+
+    expect(taskSyncs).toHaveLength(1);
+    expect(taskSyncs[0].missions.map((m) => m.id)).toEqual(['m-a']);
+    expect(taskSyncs[0].tasks.map((t) => t.id)).toEqual(['t-a']);
+  });
+
+  test('③ 切副本后下一次同步不再带旧 instance 的实体', () => {
+    const { port, unitSyncs, taskSyncs } = createScopePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitState(
+      stateWith({
+        activeInstanceId: INSTANCE_A,
+        units: [unit('u-a', INSTANCE_A)],
+        missions: [mission('m-a', INSTANCE_A)],
+        tasks: [task('t-a', INSTANCE_A)],
+      })
+    );
+    emitState(
+      stateWith({
+        activeInstanceId: INSTANCE_B,
+        units: [unit('u-a', INSTANCE_A), unit('u-b', INSTANCE_B)],
+        missions: [mission('m-a', INSTANCE_A), mission('m-b', INSTANCE_B)],
+        tasks: [task('t-a', INSTANCE_A), task('t-b', INSTANCE_B)],
+      })
+    );
+
+    expect(unitSyncs).toHaveLength(2);
+    expect(unitSyncs[1].map((u) => u.id)).toEqual(['u-b']);
+    expect(taskSyncs[1].missions.map((m) => m.id)).toEqual(['m-b']);
+    expect(taskSyncs[1].tasks.map((t) => t.id)).toEqual(['t-b']);
+  });
+
+  test('未打标的实体归默认沙盒（COALESCE 口径）：还没进副本时老数据照常可见', () => {
+    const { port, unitSyncs } = createScopePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitState(stateWith({ units: [unit('u-old')] }));
+
+    expect(unitSyncs[0].map((u) => u.id)).toEqual(['u-old']);
+  });
+
+  test('显式属于别的副本的实体在默认沙盒视角下不可见（不会被顺手带进来）', () => {
+    const { port, unitSyncs } = createScopePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitState(
+      stateWith({
+        activeInstanceId: DEFAULT_INSTANCE_ID,
+        units: [unit('u-old'), unit('u-b', INSTANCE_B)],
+      })
+    );
+
+    expect(unitSyncs[0].map((u) => u.id)).toEqual(['u-old']);
+  });
+
+  test('② 端口签名未变：只实现 syncUnits / syncSelection 的最小夹具照常工作', () => {
+    const unitSyncs: UnitView[][] = [];
+    const minimalPort: WorldScenePort = {
+      syncUnits: (units) => void unitSyncs.push([...units]),
+      syncSelection: () => {},
+    };
+    const bridge = createWorldBridge(minimalPort, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitState(
+      stateWith({
+        activeInstanceId: INSTANCE_B,
+        units: [unit('u-a', INSTANCE_A), unit('u-b', INSTANCE_B)],
+      })
+    );
+
+    expect(unitSyncs[0].map((u) => u.id)).toEqual(['u-b']);
+  });
+
+  test('任务事件也按 scope 过滤：切副本后旧副本的任务事件不再驱动场景', () => {
+    const { port, taskEventIds } = createScopePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitState(stateWith({ activeInstanceId: INSTANCE_B }));
+    emitWorldEvent({ type: 'task.started', task: task('t-a', INSTANCE_A) });
+    emitWorldEvent({ type: 'task.started', task: task('t-b', INSTANCE_B) });
+
+    expect(taskEventIds).toEqual(['t-b']);
   });
 });
