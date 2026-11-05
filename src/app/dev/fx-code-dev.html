@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stratix 代码路由特效 PoC（task_162）</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0d1126;
+        color: #cbd5e1;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+      #battlefield {
+        position: absolute;
+        inset: 0;
+      }
+      #controls {
+        position: absolute;
+        left: 12px;
+        top: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        padding: 8px 10px;
+        background: rgba(13, 17, 38, 0.86);
+        border: 1px solid #1a2140;
+        line-height: 1.6;
+        max-width: 780px;
+      }
+      #controls .title {
+        color: #8a6bff;
+        margin-right: 6px;
+      }
+      #controls button {
+        background: #16203c;
+        color: #cbd5e1;
+        border: 1px solid #2b3a63;
+        border-radius: 4px;
+        padding: 3px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #controls button:hover {
+        background: #22305a;
+        border-color: #4fc3f7;
+      }
+      #status {
+        margin-left: 8px;
+        color: #f0a020;
+      }
+      #legend {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        padding: 8px 10px;
+        background: rgba(13, 17, 38, 0.86);
+        border: 1px solid #1a2140;
+        line-height: 1.7;
+        white-space: pre;
+        pointer-events: none;
+      }
+      #bench-out {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        width: 460px;
+        max-height: 60vh;
+        overflow: auto;
+        padding: 8px 10px;
+        background: rgba(13, 17, 38, 0.9);
+        border: 1px solid #1a2140;
+        line-height: 1.6;
+        white-space: pre;
+        pointer-events: none;
+      }
+      #palette-out {
+        position: absolute;
+        right: 12px;
+        bottom: 12px;
+        width: 260px;
+        padding: 8px 10px;
+        background: rgba(13, 17, 38, 0.9);
+        border: 1px solid #1a2140;
+        line-height: 1.6;
+        white-space: pre;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      代码路由特效的 dev 验收入口（@since v3.3，task_162）。
+      这里扮演**组合根**的角色 —— 唯一同时认识 hud（皮肤切换）与 world（特效层）的地方：
+        hud 侧：真主题控制器（切皮肤 = 翻 <style> 的 disabled）→ 读 CSS 变量 → 塞进 game.registry；
+        world 侧：代码路由特效层从 registry 读调色板 → 算像素 → 贴到世界坐标上。
+      生产产物里没有这个页面（正式入口只打 index.html）。
+    -->
+    <div id="battlefield"></div>
+
+    <div id="controls">
+      <span class="title">代码路由 PoC · task_162</span>
+      <button data-act="hit">命中火花（镜像向）</button>
+      <button data-act="hit-flip">命中火花（翻转）</button>
+      <button data-act="heal">治疗光环（皮肤联动）</button>
+      <button data-act="burst">并发压力（8 条）</button>
+      <button data-act="skin">切皮肤（default ⇄ pixel）</button>
+      <button data-act="pan">相机平移（证明世界锚定）</button>
+      <button data-act="bench">跑基准</button>
+      <span id="status">实例 0 · 渲染 30Hz · 上一帧 0.00ms</span>
+    </div>
+
+    <div id="bench-out">（基准结果会打在这里）</div>
+
+    <div id="palette-out">（当前皮肤的 token 色值会打在这里）</div>
+
+    <div id="legend">世界锚定：特效挂在世界坐标（scrollFactor=1）→ 相机一动，特效跟着走
+调色板热读：切皮肤 → HUD 读 CSS 变量 → registry → 下一个特效立刻用新色
+护栏：并发 2 · 画布面积 ≤ 40960px · 渲染 30Hz · 每帧 ≤ 4ms（超了降频，降到底挤实例）
+拖动画面可平移相机</div>
+
+    <script type="module" src="./fx-code-dev-main.ts"></script>
+  </body>
+</html>

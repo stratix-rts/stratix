@@ -548,6 +548,39 @@ export const SPRITE_FX_METRICS = Object.freeze({
 });
 
 /**
+ * 代码路由特效（运行时逐像素算）的度量（@since v3.3，task_162）。
+ *
+ * why 与 SPRITE_FX_METRICS 分开：两条路由的成本形状根本不同 ——
+ *   一期 sheet 路由：成本在 GPU 合成，CPU 侧只是换纹理帧 → 护栏旋钮是「并发实例数」；
+ *   二期代码路由：成本在**主线程逐像素计算**（实测见 docs/research/pixelfx-runtime-poc.md），
+ *   120Hz 粒子步进几乎免费（≈0.001ms/帧），合成一帧画布才是大头（≈5ns/px），
+ *   于是旋钮变成「并发数 × 画布面积」，并且必须带降级动作。
+ *
+ * 数值口径（实测与推导见评审文档 §3）：
+ *   - maxConcurrent：并发实例上限 —— 比 sheet 路由更紧（2 vs 4），因为每实例每帧要算一遍画布；
+ *   - maxCanvasAreaPx：单个效果的画布面积上限（px）—— 面积是成本主旋钮，超了直接不播；
+ *   - renderHz / minRenderHz：渲染频率的目标档与降级下限 —— **仿真仍是 120Hz**
+ *     （效果自己的 update 内部把 dt 切成 120Hz 子步），降的只是画面帧率；
+ *   - frameBudgetMs：每帧允许占用的主线程时间 —— 超了就降频，降到底还超就挤掉最老的实例。
+ */
+export const CODE_FX_METRICS = Object.freeze({
+  /** 同时最多播放的代码路由实例数（个）。 */
+  maxConcurrent: 2,
+  /** 单个效果的画布面积上限（px）—— 256×160 以内。 */
+  maxCanvasAreaPx: 40_960,
+  /** 目标渲染频率（Hz）。 */
+  renderHz: 30,
+  /** 降级后的最低渲染频率（Hz）—— 再低就只剩抽帧感，宁可挤实例。 */
+  minRenderHz: 10,
+  /** 每帧允许占用的主线程时间（ms）—— 超过就降频。 */
+  frameBudgetMs: 4,
+  /** 离屏判定留边（世界 px）。 */
+  offscreenMarginPx: 96,
+  /** 渲染深度（与 sheet 路由同层，避免两条路由互相盖住）。 */
+  depth: 3,
+});
+
+/**
  * 摄像机 + 小地图 + 氛围彩蛋的度量（DEMO-PLAN §5 后半：任务 v3.3-06）。
  *
  * why 也落在唯一事实源：缩放区间 / 橡皮筋阻力 / 回弹时长 / 小地图尺寸 / 云的间隔与速度

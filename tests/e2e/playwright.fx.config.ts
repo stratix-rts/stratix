@@ -13,7 +13,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: '.',
-  testMatch: ['**/fx-touchpoints.spec.ts'],
+  testMatch: ['**/fx-touchpoints.spec.ts', '**/fx-code-route.spec.ts'],
   // 单文件、单 worker —— e2e 起浏览器是 CPU 大户，别并发（见 PERFORMANCE_GUIDELINES）。
   fullyParallel: false,
   workers: 1,

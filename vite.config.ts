@@ -164,6 +164,15 @@ export default defineConfig(async () => {
         '@stratix-gateway': resolve(__dirname, 'src/stratix-gateway'),
         '@stratix-data-store': resolve(__dirname, 'src/stratix-data-store'),
         '@stratix-openclaw-adapter': resolve(__dirname, 'src/stratix-openclaw-adapter'),
+        // pixelfx 运行时别名（@since v3.3，task_162）：代码路由特效的 PoC 入口需要直接 import
+        //   仓外的 pixelfx 库（兄弟目录 ../pixelfx，MIT、零依赖）。
+        // why 是别名而不是 file: 依赖：`file:` 会进 package.json 的 dependencies →
+        //   别的机器 clone 下来 npm ci 就炸（没有那个兄弟目录）；别名只影响 dev 入口。
+        // why 生产产物不受影响：正式入口（index.html）的模块图里没有 pixelfx —— 构建只打入口图。
+        // ★ 顺序要紧：字符串别名是「前缀匹配」，'pixelfx' 会连 'pixelfx/fx/…' 一起吃掉 ——
+        //   所以更长的那个必须排在前面。
+        'pixelfx/fx': resolve(__dirname, '..', 'pixelfx', 'src', 'fx'),
+        pixelfx: resolve(__dirname, '..', 'pixelfx', 'src', 'core', 'index.js'),
       },
     },
 
@@ -172,6 +181,16 @@ export default defineConfig(async () => {
     server: {
       host: '127.0.0.1',
       port: 7523,
+      /**
+       * 文件服务白名单（@since v3.3，task_162）：代码路由特效的 dev PoC 入口要 import
+       *   仓外的 pixelfx 库（兄弟目录 ../pixelfx）—— vite 默认只服务项目根内的文件，
+       *   兄弟目录会被 fs.allow 拦掉（dev server 报 "outside of Vite serving allow list"）。
+       * why 放行父目录而不是整个盘：只多放行一个层级，dev server 本来就只绑 127.0.0.1。
+       * why 不影响生产：fs.allow 只在 dev server 生效，构建走的是模块图，不读磁盘白名单。
+       */
+      fs: {
+        allow: [resolve(__dirname, '..')],
+      },
       proxy: {
         '/api': {
           target: 'http://127.0.0.1:7524',

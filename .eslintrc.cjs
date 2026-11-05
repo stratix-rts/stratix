@@ -20,6 +20,26 @@ module.exports = {
         project: './tsconfig.json',
       },
     },
+    /**
+     * pixelfx 是**仓外**的库（兄弟目录 ../pixelfx，MIT、零依赖）。
+     * why 声明成 core module 而不是配 resolver 路径：
+     *   ① tsconfig 的 paths 一旦指向仓外目录，别的机器 clone 下来 tsc 直接报错
+     *      （那个目录不存在）—— 类型声明走 ambient module（src/app/dev/pixelfx.d.ts），
+     *      编译期零外部依赖；
+     *   ② eslint 的 import 解析器（typescript resolver）只认 tsconfig 的 paths，
+     *      拿不到别名 → import/no-unresolved 误报。
+     *   core-modules 是**纯 lint 侧**的声明：不碰构建、不碰类型、不影响产物。
+     *   why 把 5 个效果模块逐个列出来而不是写通配：eslint-plugin-import 的
+     *   core-modules 不吃 glob —— 写 'pixelfx/fx/*' 会漏掉一半（只匹到主模块）。
+     */
+    'import/core-modules': [
+      'pixelfx',
+      'pixelfx/fx/holy/heal-aoe',
+      'pixelfx/fx/impacts/hit-spark',
+      'pixelfx/fx/scifi/emp-blast',
+      'pixelfx/fx/spawn/poof',
+      'pixelfx/fx/ui/confetti',
+    ],
   },
   env: {
     node: true,
