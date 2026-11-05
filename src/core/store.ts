@@ -11,18 +11,50 @@
 
 import { resolveInfoLayer } from './info-layer';
 import {
+  MAX_CHARACTERS,
+  MAX_MISSIONS,
   MAX_NOTICES,
+  MAX_SESSIONS,
+  MAX_TASKS,
+  type CharacterTask,
+  type CharacterView,
   type DetectedAgent,
   type InfoLayer,
   type LayerTrigger,
+  type MissionView,
   type Notice,
   type ScreenId,
   type SelectionState,
+  type SessionRecord,
+  type UnitView,
   type WorldState,
 } from './types';
+import { applySelectionAction } from './unit/selection';
 
 export type StateListener = (state: WorldState) => void;
 export type StateUpdater = (state: WorldState) => WorldState;
+
+/**
+ * 实体集合快照（@since v3.3，task_179 / M1-05）—— **副本里的全部业务实体**。
+ *
+ * why 是这五个而不是「WorldState 的全部字段」：切副本换的是**业务实体**
+ *   （missions / tasks / sessions / characters / units），
+ *   而选择集 / 编组槽位 / 提示 / 当前屏是**表现态与交互态**（换实例时随实体一起清，不换）。
+ * why 放在 store.ts 而不是 core/types.ts：它是** store 认得的形状**（写入口的入参），
+ *   不是总线契约（WorldState 才是）；app 侧的端口实现直接 import 这个类型即可。
+ */
+export interface EntitySnapshot {
+  /** 战场编组任务（mission）。 */
+  readonly missions: readonly MissionView[];
+  /** 角色任务队列（character task）。 */
+  readonly tasks: readonly CharacterTask[];
+  /** 会话摘要（session 记录；事件本体不在这）。 */
+  readonly sessions: readonly SessionRecord[];
+  /** 角色档案（定义 + 养成运行态）。 */
+  readonly characters: readonly CharacterView[];
+  /** 单位投影（战场单位）。 */
+  readonly units: readonly UnitView[];
+}
 
 export interface CoreStore {
   getState(): WorldState;
@@ -70,6 +102,21 @@ export interface CoreStore {
    *   重复扫描出同样结果时不该把两侧无谓地重渲染一遍）。
    */
   setDetectedAgents(agents: readonly DetectedAgent[]): WorldState;
+  /**
+   * @since v3.3（task_179 / M1-05）实体集合**整份替换** —— 切副本的落点。
+   *
+   * 语义（design §7.1 M1-05 行 / §2.2「切副本 = 全量重载，不是增量合并」）：
+   *   - 传入的五类实体**整份**写进 store：旧实例的实体**一个不剩**（不做增量合并）；
+   *   - 选择集与编组槽位一并清空：它们存的是**单位 id**，换实例后指向的是旧实例的单位
+   *     —— 留着就是悬空引用（「旧实例的实体一个不剩」的自然延伸）；
+   *   - 其余字段（提示 / 当前屏 / 导演开关 / 信息层级 / activeInstanceId 等）**原样保留**：
+   *     它们不属于「这个副本有什么」，换副本不该顺手改用户的界面状态；
+   *   - 一次写入 = 一次广播（读取方不会看到「单位换了但角色还没换」的中间态）。
+   *
+   * why 单独开一个入口而不是让调用方自己 setState：全量替换有**固定的三条附带语义**
+   *   （清选择 / 清编组 / 一次广播），散在调用方就会各写一份、慢慢漂移。
+   */
+  replaceEntities(entities: EntitySnapshot): WorldState;
 }
 
 /** 初始状态：空世界。字段名与契约一一对应，便于 bridge 直接整体替换。 */
@@ -301,6 +348,24 @@ export function createStore(initial?: Partial<WorldState>): CoreStore {
       const current = state.detectedAgents ?? [];
       if (sameDetectedAgents(current, agents)) return state;
       return notify({ ...state, detectedAgents: [...agents] });
+    },
+
+    // @since v3.3（task_179 / M1-05）实体集合整份替换（切副本）：五类实体全换 + 清选择/编组。
+    // 一次写入 = 一次广播（与 core/runtime 的「一次用户操作一次广播」同一纪律）。
+    replaceEntities: (entities) => {
+      // 截断到契约上限：这些集合随 WorldState 全量广播，体积必须有界（perf 铁律）。
+      // why 在写入口截而不是在读口截：读口截会让「存了什么」与「看见什么」不一致。
+      const selection = applySelectionAction(state.selection, { type: 'clear' });
+      return notify({
+        ...state,
+        missions: entities.missions.slice(0, MAX_MISSIONS),
+        tasks: entities.tasks.slice(0, MAX_TASKS),
+        sessions: entities.sessions.slice(0, MAX_SESSIONS),
+        characters: entities.characters.slice(0, MAX_CHARACTERS),
+        units: [...entities.units],
+        selection: selection.next,
+        selectionGroups: new Map<number, readonly string[]>(),
+      });
     },
   };
 

@@ -7,6 +7,7 @@ import { emitCommand, emitState, emitWorldEvent, onCommand, onState, onWorldEven
 import { createStore } from '../store';
 import {
   MAX_NOTICES,
+  MAX_TASKS,
   NOTICE_TTL_MS,
   type DetectedAgent,
   type HudCommand,
@@ -201,6 +202,90 @@ describe('createStore', () => {
 
       expect(broadcasts).toBe(1);
     });
+  });
+});
+
+describe('replaceEntities（切副本的全量替换，task_179 / M1-05）', () => {
+  const character = (id: string) => ({ id, name: id, persona: '', level: 1, experience: 0 });
+
+  test('整份替换：旧实体一个不剩（不做增量合并）', () => {
+    const store = createStore();
+    store.replaceEntities({
+      missions: [],
+      tasks: [],
+      sessions: [],
+      characters: [character('old')],
+      units: [{ id: 'char_old', name: 'old', status: 'idle', missionId: null, power: 0 }],
+    });
+
+    store.replaceEntities({
+      missions: [],
+      tasks: [],
+      sessions: [],
+      characters: [character('new')],
+      units: [{ id: 'char_new', name: 'new', status: 'idle', missionId: null, power: 0 }],
+    });
+
+    const state = store.getState();
+    expect(state.characters.map((c) => c.id)).toEqual(['new']);
+    expect(state.units.map((u) => u.id)).toEqual(['char_new']);
+  });
+
+  test('选择集与编组槽位一并清空（它们存的是旧实例的单位 id —— 留着就是悬空引用）', () => {
+    const store = createStore();
+    store.patch({
+      selection: { unitIds: ['char_old'], previewUnitIds: [], revision: 3 },
+      selectionGroups: new Map([[1, ['char_old']]]),
+    });
+
+    store.replaceEntities({
+      missions: [],
+      tasks: [],
+      sessions: [],
+      characters: [],
+      units: [],
+    });
+
+    expect(store.getState().selection.unitIds).toEqual([]);
+    expect(store.getState().selectionGroups?.size).toBe(0);
+  });
+
+  test('一次写入 = 一次广播（读取方不会看到「单位换了但角色还没换」的中间态）', () => {
+    const store = createStore();
+    let broadcasts = 0;
+    store.subscribe(() => { broadcasts += 1; });
+
+    store.replaceEntities({
+      missions: [],
+      tasks: [],
+      sessions: [],
+      characters: [character('c1')],
+      units: [],
+    });
+
+    expect(broadcasts).toBe(1);
+  });
+
+  test('超出契约上限的集合被截断（随 WorldState 全量广播，体积必须有界）', () => {
+    const store = createStore();
+    store.replaceEntities({
+      missions: [],
+      tasks: Array.from({ length: MAX_TASKS + 5 }, (_, i) => ({
+        id: `t${i}`,
+        characterId: 'c1',
+        prompt: 'p',
+        status: 'queued' as const,
+        createdAt: 0,
+        startedAt: null,
+        endedAt: null,
+        output: '',
+      })),
+      sessions: [],
+      characters: [],
+      units: [],
+    });
+
+    expect(store.getState().tasks).toHaveLength(MAX_TASKS);
   });
 });
 
