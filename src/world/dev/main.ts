@@ -16,7 +16,13 @@ import Phaser from 'phaser';
 import { emitState, onWorldEvent } from '../../core/bus';
 import { worldStore } from '../../core/store';
 import type { WorldEvent } from '../../core/types';
+import { FX_ASSET_BASE_URL_KEY, fxBaseUrl } from '../appearance/fx-asset-path';
 import { BATTLEFIELD_SCENE_KEY, BattlefieldScene } from '../scenes/BattlefieldScene';
+// 特效素材加载场景（@since v3.3，task_161）：与生产入口同款 —— 素材并行加载，战场不等。
+import { FxAssetScene } from '../scenes/fx-asset-scene';
+
+/** 本页相对站点根的层数（'/src/world/dev/world-dev.html' → src/world/dev 三层）。 */
+const ENTRY_DEPTH = 3;
 
 const game = new Phaser.Game({
   type: Phaser.AUTO,
@@ -24,7 +30,13 @@ const game = new Phaser.Game({
   backgroundColor: '#0f131b',
   // 视口随窗口变化：相机边界钳制依赖实时视口尺寸，固定尺寸会让 resize 后钳制失准
   scale: { mode: Phaser.Scale.RESIZE },
-  scene: [BattlefieldScene],
+  scene: [BattlefieldScene, FxAssetScene],
+  callbacks: {
+    preBoot: (booting) => {
+      // 精灵特效素材根（task_161）：world 零 DOM —— document.baseURI 只有组合根能碰。
+      booting.registry.set(FX_ASSET_BASE_URL_KEY, fxBaseUrl(document.baseURI, ENTRY_DEPTH));
+    },
+  },
 });
 
 /**

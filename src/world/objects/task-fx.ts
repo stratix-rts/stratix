@@ -36,6 +36,7 @@
  */
 
 import type { CharacterTask, Point, UnitStatus } from '../../core/types';
+import type { SpriteFxKind } from '../appearance/fx-atlas';
 import { INTERACTION_FX_METRICS, WORLD_PALETTE } from '../theme';
 
 // ============================================================================
@@ -269,6 +270,33 @@ export function applyTaskFxEvent(
     else board.setFailed(unit.id);
   }
   return hitUnitIds;
+}
+
+// ============================================================================
+// 精灵特效的触点映射（@since v3.3，task_161）
+// ============================================================================
+
+/**
+ * 任务相位 → 精灵特效 kind（**触点映射的唯一裁决处**）。
+ *
+ * why 映射要单独裁决：触点散在场景各处（任务事件 / 单位上下场 / 指令 / 升级），
+ *   若各处各自写死"完成就 celebrate"，改一次演出要改 N 处 —— 抽成一张表，
+ *   单测也能对着这张表逐条断言（task_161 requirement 6）。
+ *
+ * @param phase 任务生命周期相位。
+ * @returns 该相位该播的特效；不该播特效时返回 null。
+ */
+export function fxKindForTaskPhase(phase: TaskFxPhase): SpriteFxKind | null {
+  switch (phase) {
+    // 完成 = 庆祝（彩带）；失败 = 报错冲击；开工 / 挂起不上特效（头顶浮标已经在说这件事）。
+    case 'completed':
+      return 'celebrate';
+    case 'failed':
+      return 'error';
+    case 'started':
+    case 'awaiting_approval':
+      return null;
+  }
 }
 
 // ============================================================================

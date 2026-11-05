@@ -25,14 +25,23 @@
  *   本任务按规格只**发事件**（unit.bubble，见 bridge/bus-adapter）不自己渲染 ——
  *   接线注释见下方 bubble 钩子。
  *
- * @since v3.17（task_038）；v3.3（task_077）追加交互特效绘制。
+ * ============ 精灵特效（@since v3.3，task_161）============
+ * 本层同时是「sheet 动画特效」（sprite FX）的播放口 —— 只走 Phaser 纹理帧动画，
+ *   运行时零新增依赖（task_161 requirement 4）：
+ *   - 播什么：调用方给**语义 kind**（celebrate / levelUp / error / spawn / despawn / command）；
+ *   - 播多久 / 何时收：objects/sprite-fx-layer.ts 的实例池裁决（并发上限 ≤4、到期回收、离屏即停）；
+ *   - 何时推进回收：搭本层已有的**全场一个 tick**（不给每条特效各开定时器，perf 硬约束）。
+ *
+ * @since v3.17（task_038）；v3.3（task_077）追加交互特效绘制；v3.3（task_161）追加精灵特效播放口。
  */
 
 import Phaser from 'phaser';
 
 import type { Point } from '../../core/types';
+import type { SpriteFxKind, SpriteFxSource } from '../appearance/fx-atlas';
 import { INTERACTION_FX_METRICS } from '../theme';
 
+import { SpriteFxLayer } from './sprite-fx-layer';
 import {
   INTERACTION_FX_STYLE,
   MOVE_RIPPLE_STYLE,
@@ -67,6 +76,11 @@ export interface TaskFxLayerOptions {
   readonly style?: TaskFxStyle;
   /** 交互特效样式（task_077）；缺省 INTERACTION_FX_STYLE。 */
   readonly interactionStyle?: InteractionFxStyle;
+  /**
+   * 精灵特效源（@since v3.3，task_161）：sheet 动画的运行时参数表。
+   * 缺省 = 不播精灵特效（素材没加载 / 老调用方零影响）。
+   */
+  readonly spriteFxSources?: readonly SpriteFxSource[];
 }
 
 interface TaskFxNode {
@@ -105,6 +119,12 @@ export class TaskFxLayer {
   private readonly interactionStyle: InteractionFxStyle;
   /** 已插下的旗子（task_077）：key → 显示节点（插过的旗不重复插，场景 shutdown 时一并回收）。 */
   private readonly flags = new Map<string, FlagNode>();
+  /**
+   * 精灵特效层（@since v3.3，task_161）：sheet 动画（庆祝 / 报错 / 上场 / 下场 / 指令 / 升级）。
+   * why 挂在本层而不是另起一个层：战场表现都归这一层管（不另起炉灶，task_161 requirement 2），
+   *   而且回收能搭本层已有的**全场一个 tick**（不给每条特效各开定时器，perf 硬约束）。
+   */
+  private readonly spriteFx: SpriteFxLayer;
   private timer: Phaser.Time.TimerEvent | null = null;
   private destroyed = false;
 
@@ -114,6 +134,7 @@ export class TaskFxLayer {
     this.board = board;
     this.style = options.style ?? TASK_FX_STYLE;
     this.interactionStyle = options.interactionStyle ?? INTERACTION_FX_STYLE;
+    this.spriteFx = new SpriteFxLayer(scene, options.spriteFxSources ?? []);
     this.ensureTimer();
   }
 
@@ -162,6 +183,30 @@ export class TaskFxLayer {
       flag.container.destroy();
     }
     this.flags.clear();
+    // 精灵特效（task_161）：显示对象与实例账本一并回收（资源必须可清理）。
+    this.spriteFx.destroy();
+  }
+
+  // ==========================================================================
+  // 精灵特效（@since v3.3，task_161）
+  // ==========================================================================
+
+  /**
+   * 播一条精灵特效（sheet 动画）。
+   *
+   * @param kind 语义 kind（celebrate / levelUp / error / spawn / despawn / command）。
+   * @param x 挂载点 x（世界坐标）。
+   * @param y 挂载点 y（世界坐标）。
+   * @returns 是否真的播了（素材没加载 / 种类未知 → false）。
+   */
+  playFx(kind: SpriteFxKind, x: number, y: number): boolean {
+    if (this.destroyed) return false;
+    return this.spriteFx.play(kind, x, y);
+  }
+
+  /** 当前在播的精灵特效实例数（dev 观测用）。 */
+  get activeFxCount(): number {
+    return this.spriteFx.activeCount;
   }
 
   // ==========================================================================
@@ -553,6 +598,10 @@ export class TaskFxLayer {
         this.drawFlag(node, sceneNow);
       }
     }
+
+    // 精灵特效回收（task_161）：到期（播完）与离屏的实例就地销毁。
+    // why 搭本层的 tick：全场一个定时器的纪律 —— 特效再热闹也不各开一个（perf 硬约束）。
+    this.spriteFx.tick(this.scene.time.now);
 
     if (needsSync) this.sync();
   }

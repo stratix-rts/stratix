@@ -20,7 +20,9 @@
  *     @since v3.37（task_062）：再转发 unit.speaking（app 层 chat-service 流式期间的说话
  *     标志位广播）→ syncUnitSpeaking，场景驱动头顶「···」气泡起止；
  *     @since v3.4（task_092）：再转发 focus.unit（HUD 事件轨条目点击经 core 转发的同名事件）
- *     → syncFocusUnit，场景驱动被点单位的描边高亮与引导弧线。
+ *     → syncFocusUnit，场景驱动被点单位的描边高亮与引导弧线；
+ *   - world 通道 → 场景（@since v3.3，task_161）：level.up（app 层 progression-service 广播的
+ *     角色升级事件）→ syncLevelUp，场景在该角色所在单位脚下播升级光环（sheet 动画特效）。
  * 输出：端口回调（渲染侧）+ bus 的 world 通道（业务侧）。
  * 禁止事项：
  *   1. import phaser 或任何 hud / vue / legacy(stratix-rts) 文件 —— 铁律：world 只认识 core/types 与 core/bus；
@@ -148,6 +150,15 @@ export interface WorldScenePort {
    * payload 只携单位 id（弧线的屏幕坐标由 world 按自己的相机状态换算）。
    */
   syncFocusUnit?(unitId: string): void;
+  /**
+   * 角色升级钩子（@since v3.3，task_161）：world 通道上的 level.up 转发进场景 ——
+   * 升级时在**该角色所在的单位**脚下播一条治疗光环（sheet 动画）。
+   * 可选成员：不实现不破编译（同 syncFocusUnit 惯例）。
+   * why 走 world 通道：升级是**瞬态表现**（等级真相在 WorldState.characters，
+   *   不因演出而变）—— 与 camera.shake 同一口径（命令 hud → core，事件 core → world）。
+   * 载荷只携 characterId：战场认单位的方式与任务事件一致（按 characterId 反查单位）。
+   */
+  syncLevelUp?(characterId: string, toLevel: number): void;
 }
 
 /** 场景侧的交互出口：场景调这些方法，桥接层负责转成 WorldEvent 发给 core。 */
@@ -305,6 +316,10 @@ export function createWorldBridge(
       // 单位联动（task_092）：HUD 事件轨条目点击 → core 转发 → 战场描边 + 引导弧线。
       case 'focus.unit':
         port.syncFocusUnit?.(event.unitId);
+        break;
+      // 角色升级（task_161）：app 层 progression-service 广播 → 战场在该角色脚下播升级光环。
+      case 'level.up':
+        port.syncLevelUp?.(event.characterId, event.toLevel);
         break;
       default:
         break;

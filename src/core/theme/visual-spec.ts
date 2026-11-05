@@ -527,6 +527,27 @@ export const INTERACTION_FX_METRICS = Object.freeze({
 });
 
 /**
+ * 精灵特效（sprite sheet 动画）的度量（@since v3.3，task_161）。
+ *
+ * why 也落在唯一事实源：「同时最多 4 个特效实例」是**CPU 硬约束**（一期特效走
+ *   Phaser 纹理帧动画，每实例一条动画 + 一个显示对象），战场侧（objects/sprite-fx-layer.ts）
+ *   与单测按它断言 —— 抄成两份必然对不上，而"上限是多少"这件事只有一个事实源才靠得住。
+ *
+ * 数值口径：
+ *   - maxConcurrent：并发实例上限（个）—— 超出的最老实例被挤掉（先来的先让位）；
+ *   - offscreenMarginPx：离屏判定的留边（世界 px）—— 特效中心超出视口这么多即停并回收；
+ *   - depth：渲染深度 —— 压在单位（0）之上、指令流线（2）之上、任务浮标（5）之下。
+ */
+export const SPRITE_FX_METRICS = Object.freeze({
+  /** 同时最多播放的特效实例数（个）—— 一期上限 4（task_161 requirement 5）。 */
+  maxConcurrent: 4,
+  /** 离屏判定留边（世界 px）—— 特效中心超出视口这么多即停（不再逐帧播放）。 */
+  offscreenMarginPx: 96,
+  /** 渲染深度（压在单位之上、任务浮标之下）。 */
+  depth: 3,
+});
+
+/**
  * 摄像机 + 小地图 + 氛围彩蛋的度量（DEMO-PLAN §5 后半：任务 v3.3-06）。
  *
  * why 也落在唯一事实源：缩放区间 / 橡皮筋阻力 / 回弹时长 / 小地图尺寸 / 云的间隔与速度

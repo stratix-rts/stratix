@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stratix 特效触点 dev（task_161）</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0d1126;
+        color: #cbd5e1;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+      #battlefield {
+        position: absolute;
+        inset: 0;
+      }
+      #controls {
+        position: absolute;
+        left: 12px;
+        top: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        padding: 8px 10px;
+        background: rgba(13, 17, 38, 0.86);
+        border: 1px solid #1a2140;
+        line-height: 1.6;
+        max-width: 760px;
+      }
+      #controls .title {
+        color: #8a6bff;
+        margin-right: 6px;
+      }
+      #controls button {
+        background: #16203c;
+        color: #cbd5e1;
+        border: 1px solid #2b3a63;
+        border-radius: 4px;
+        padding: 3px 10px;
+        font: inherit;
+        cursor: pointer;
+      }
+      #controls button:hover {
+        background: #22305a;
+        border-color: #4fc3f7;
+      }
+      #status {
+        margin-left: 8px;
+        color: #f0a020;
+      }
+      #legend {
+        position: absolute;
+        left: 12px;
+        bottom: 12px;
+        padding: 8px 10px;
+        background: rgba(13, 17, 38, 0.86);
+        border: 1px solid #1a2140;
+        line-height: 1.7;
+        white-space: pre;
+        pointer-events: none;
+      }
+      #event-log {
+        position: absolute;
+        right: 12px;
+        top: 12px;
+        width: 260px;
+        padding: 8px 10px;
+        background: rgba(13, 17, 38, 0.86);
+        border: 1px solid #1a2140;
+        line-height: 1.7;
+        white-space: pre;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 战场容器：挂的是**生产场景**（BattlefieldScene）—— 触点接线与主应用完全同一条路。 -->
+    <div id="battlefield"></div>
+
+    <!--
+      以下是 **dev 验收面板**（不属于 world 层）。
+      每个按钮走的是生产路径：任务 / 升级事件经总线 → 桥接层 → 场景钩子；
+      上下场经 state 通道的单位对账；指令经场景的 issueMoveCommandAt（与右键同一条路）。
+      样例单位只存在于这个 dev 沙盒（主战场一个都不加）。
+    -->
+    <div id="controls">
+      <span class="title">特效触点 · task_161</span>
+      <button data-act="spawn">单位上场</button>
+      <button data-act="despawn">单位退场</button>
+      <button data-act="complete">任务完成</button>
+      <button data-act="fail">任务报错</button>
+      <button data-act="levelup">角色升级</button>
+      <button data-act="command">指令下达</button>
+      <button data-act="burst">并发压力（8 条）</button>
+      <span id="status">在播特效实例：0</span>
+    </div>
+
+    <div id="event-log">（等待交互）</div>
+
+    <div id="legend">上场 → spawn（传送门）　退场 → despawn（消散）
+完成 → celebrate（彩带）　报错 → error（冲击爆闪）
+升级 → levelUp（治疗光环）　指令 → command（信号弹）
+并发压力 → 一次触发 8 条（上限 4 条：最老的先让位）
+
+并发上限 4（唯一事实源 core/theme/visual-spec.ts 的 SPRITE_FX_METRICS）
+离屏即停：镜头拉走 → 该实例立刻停并回收</div>
+
+    <script type="module" src="./fx-dev-main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,118 @@
+/**
+ * 文件职责：**生成物** —— pixelfx 特效 sheet 的运行时索引（task_161）。
+ *   由 scripts/generate-pixelfx-sheets.ts 生成，**不要手改**：改特效清单请改脚本后重跑
+ *   （npm run fx:generate）。产物（assets/fx/ 下的 PNG/JSON）与本文件一起入库。
+ * 生成参数：皮肤 = default
+ *
+ * why 索引是代码而不是运行时读 JSON：运行时只认这张表（帧名 / 帧率 / 枢轴 / 缩放），
+ *   少一次网络往返，也少一处「JSON 改了但索引没改」的漂移。
+ * why 索引里存**相对素材根**的路径（pngPath / jsonPath）而不是绝对 URL：
+ *   素材根的绝对 URL 由运行环境决定（dev 是 http 站点根、electron 是 file:// 下的 dist/frontend），
+ *   运行时按 world/appearance/fx-asset-path.ts 的相对规则解析 —— 同一份索引三种环境通用。
+ */
+
+/** pixelfx sheet 的运行时索引（按语义 kind 排布）。 */
+export const SPRITE_FX_SOURCES = [
+  {
+    kind: 'celebrate',
+    atlasKey: 'fx:celebrate',
+    animKey: 'fx-anim:celebrate',
+    pngPath: 'default/celebrate.png',
+    jsonPath: 'default/celebrate.json',
+    framePrefix: 'confetti',
+    frames: 69,
+    fps: 20,
+    loop: false,
+    frameWidth: 200,
+    frameHeight: 140,
+    pivotX: 100,
+    pivotY: 126,
+    scale: 0.45,
+    durationMs: 3450,
+  },
+  {
+    kind: 'levelUp',
+    atlasKey: 'fx:levelUp',
+    animKey: 'fx-anim:levelUp',
+    pngPath: 'default/levelUp.png',
+    jsonPath: 'default/levelUp.json',
+    framePrefix: 'heal-aoe',
+    frames: 59,
+    fps: 20,
+    loop: false,
+    frameWidth: 256,
+    frameHeight: 136,
+    pivotX: 128,
+    pivotY: 104,
+    scale: 0.4,
+    durationMs: 2950,
+  },
+  {
+    kind: 'error',
+    atlasKey: 'fx:error',
+    animKey: 'fx-anim:error',
+    pngPath: 'default/error.png',
+    jsonPath: 'default/error.json',
+    framePrefix: 'emp-blast',
+    frames: 65,
+    fps: 20,
+    loop: false,
+    frameWidth: 152,
+    frameHeight: 116,
+    pivotX: 76,
+    pivotY: 84,
+    scale: 0.7,
+    durationMs: 3250,
+  },
+  {
+    kind: 'spawn',
+    atlasKey: 'fx:spawn',
+    animKey: 'fx-anim:spawn',
+    pngPath: 'default/spawn.png',
+    jsonPath: 'default/spawn.json',
+    framePrefix: 'spawn-portal',
+    frames: 77,
+    fps: 20,
+    loop: false,
+    frameWidth: 208,
+    frameHeight: 150,
+    pivotX: 104,
+    pivotY: 122,
+    scale: 0.45,
+    durationMs: 3850,
+  },
+  {
+    kind: 'despawn',
+    atlasKey: 'fx:despawn',
+    animKey: 'fx-anim:despawn',
+    pngPath: 'default/despawn.png',
+    jsonPath: 'default/despawn.json',
+    framePrefix: 'poof',
+    frames: 33,
+    fps: 20,
+    loop: false,
+    frameWidth: 112,
+    frameHeight: 92,
+    pivotX: 56,
+    pivotY: 80,
+    scale: 0.6,
+    durationMs: 1650,
+  },
+  {
+    kind: 'command',
+    atlasKey: 'fx:command',
+    animKey: 'fx-anim:command',
+    pngPath: 'default/command.png',
+    jsonPath: 'default/command.json',
+    framePrefix: 'flare',
+    frames: 101,
+    fps: 20,
+    loop: false,
+    frameWidth: 152,
+    frameHeight: 232,
+    pivotX: 76,
+    pivotY: 226,
+    scale: 0.3,
+    durationMs: 5050,
+  },
+] as const;

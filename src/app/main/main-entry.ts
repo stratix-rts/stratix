@@ -170,12 +170,15 @@ import { createSfxService, sfxKeyForEvent } from '../../hud/components/sfx/sfx-s
 import { CharacterComposer } from '../../world/appearance/character-composer';
 // 角色上场的长相裁决（@since v3.8，task_140）：角色没自带外观时按 agent 种类取品牌预设 / 随机合成。
 import { resolveCharacterLook } from '../../world/appearance/character-look';
+import { FX_ASSET_BASE_URL_KEY, fxBaseUrl } from '../../world/appearance/fx-asset-path';
 import { PartRegistry } from '../../world/appearance/part-registry';
 // 动效降级标志（@since v3.8，task_140）：reduced-motion 时入场直接落位（world 零 DOM，判在 app 层）。
 import { REDUCED_MOTION_KEY } from '../../world/motion';
 import { UNIT_SPRITE_SOURCE_KEY } from '../../world/objects/unit-sprite-source';
 import { UNIT_POSITION_SEED_KEY } from '../../world/objects/unit-registry';
 import { BattlefieldScene } from '../../world/scenes/BattlefieldScene';
+// 特效素材加载场景（@since v3.3，task_161）：独立预载 sheet，战场 create() 不等素材（见该文件头注释）。
+import { FxAssetScene } from '../../world/scenes/fx-asset-scene';
 // 入口 HTML 相对站点根的目录层数（音频基址等相对 URL 的事实源，见 app/entry-paths.ts）。
 import { ENTRY_PATH_DEPTH } from '../entry-paths';
 // 当日回放读取口（@since v3.3，task_082）：读 service 的只读 REST（当天 task_run 事件流）。
@@ -1374,7 +1377,7 @@ async function boot(): Promise<void> {
     parent: battlefieldHost,
     backgroundColor: '#0f131b',
     scale: { mode: Phaser.Scale.RESIZE },
-    scene: [BattlefieldScene],
+    scene: [BattlefieldScene, FxAssetScene],
     // 形象精灵源在 boot 前就位（场景自己实例化，构造器拿不到注入 —— 走 game.registry）。
     callbacks: {
       preBoot: (booting) => {
@@ -1384,6 +1387,9 @@ async function boot(): Promise<void> {
         // 动效降级（task_140）：reduced-motion 时入场直接落位 / 下场直接移除。
         // why 在 app 层判：world 零 DOM —— matchMedia 只有组合根能碰（见 world/motion.ts）。
         booting.registry.set(REDUCED_MOTION_KEY, prefersReducedMotion());
+        // 精灵特效素材根的绝对 URL（@since v3.3，task_161）：场景 preload 时据此取 sheet。
+        // why 也在 app 层算：world 零 DOM —— document.baseURI 只有组合根能碰（同上口径）。
+        booting.registry.set(FX_ASSET_BASE_URL_KEY, fxBaseUrl(document.baseURI, ENTRY_PATH_DEPTH));
       },
     },
   });

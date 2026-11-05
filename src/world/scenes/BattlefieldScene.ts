@@ -25,6 +25,8 @@
  *     —— world 层当场指挥的原话气泡（「收到」「来了来了」），按原话冒泡；
  *   - core/bus 的 world 通道上的 replay.beat（@since v3.3，task_082，转发到 syncReplayBeat）
  *     —— 当日回放的重演指令：化身出现 / 干活 / 插旗 / 半频冒泡；
+ *   - core/bus 的 world 通道上的 level.up（@since v3.3，task_161，转发到 syncLevelUp）
+ *     —— 角色升级 → 在该角色所在单位脚下播升级光环；
  *   - 浏览器指针输入（按下 / 移动 / 松开 / 滚轮）+ 键盘 ESC（@since v3.3，task_079：回全景）。
  * 输出：把交互转成 WorldEvent（unit.click / selection.box / unit.move / camera.moved），
  *   经桥接层发回 core。
@@ -37,6 +39,16 @@
  *     事件上（core 无坐标算不出命中）；拖空框 / 点空地 = 清空选择；Shift 拖 = 加选；
  *   - 右击移动：右键短按（位移 < DRAG_THRESHOLD_PX）= 对选中编队发 unit.move（目标点涟漪反馈），
  *     右键拖远仍归平移；无选中 = 纯无操作；中键始终纯平移。
+ * 精灵特效触点（@since v3.3，task_161）：本场景是首批特效的**接线处**，播什么由语义 kind 决定：
+ *   - 任务完成 → celebrate（彩带）；任务报错 → error（冲击爆闪）—— 走 task.* 事件；
+ *   - 单位上场 → spawn（传送门）；单位退场 → despawn（消散）—— 走 state 通道的单位对账；
+ *   - 任务建筑完工 → celebrate（彩带落在楼顶）—— 走 state 通道的任务全景；
+ *   - 指令下达 → command（信号弹）—— 走右键移动指令；
+ *   - 角色升级 → levelUp（治疗光环）—— 走 level.up 事件。
+ *   素材是 pixelfx 导出的 sheet（PNG + JSON），运行时只走 Phaser 纹理帧动画，零新增依赖。
+ *   素材由**独立场景**（scenes/fx-asset-scene.ts）并行预载 —— 本场景不 preload：
+ *   战场是主屏，等素材才出画面等于给启动加延迟，还会错过「首帧补发状态」的手势（见该文件注释）。
+ *
  * 禁止事项：
  *   1. import 任何 hud / vue / legacy(stratix-rts) 代码 —— 铁律：world 只认识 core/types 与 core/bus；
  *   2. 持有业务状态 —— 业务真相在 core；本场景只渲染 UnitView，并只把单位 id 回传上去；
@@ -58,6 +70,7 @@ import type {
   SelectionState,
   UnitView,
 } from '../../core/types';
+import { SPRITE_FX_SOURCES } from '../appearance/fx-sources.generated';
 import { taskPhaseView } from '../appearance/task-animation';
 import type { UnitTaskPhase } from '../appearance/unit-animation';
 import {
@@ -92,7 +105,7 @@ import { SelectionBox } from '../objects/selection-box';
 import { SpeechBubbleBoard } from '../objects/speech-bubble';
 import { SpeechBubbleLayer } from '../objects/speech-bubble-layer';
 import { MapBoard, BUILDING_SIZE, type MapSyncResult } from '../objects/task-building';
-import { INTERACTION_BUBBLE_TEXT, TaskFxBoard, applyTaskFxEvent } from '../objects/task-fx';
+import { INTERACTION_BUBBLE_TEXT, TaskFxBoard, applyTaskFxEvent, fxKindForTaskPhase } from '../objects/task-fx';
 import { TaskFxLayer } from '../objects/task-fx-layer';
 import { UnitLayer } from '../objects/unit-layer';
 import { UnitRegistry, UNIT_POSITION_SEED_KEY } from '../objects/unit-registry';
@@ -232,6 +245,16 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     super(BATTLEFIELD_SCENE_KEY);
   }
 
+  /** 当前在播的精灵特效实例数（@since v3.3，task_161；dev 观测并发上限用）。 */
+  get activeFxCount(): number {
+    return this.taskFxLayer?.activeFxCount ?? 0;
+  }
+
+  /** 场上单位数（@since v3.3，task_161；dev 观测触点落点用 —— 特效落在单位头上，没单位就没落点）。 */
+  get unitCount(): number {
+    return this.units.size;
+  }
+
   create(): void {
     this.cameras.main.setBackgroundColor(BACKGROUND_COLOR);
     this.drawWorldBounds();
@@ -266,7 +289,11 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
     // 任务表现层（@since v3.17，task_038）：单位头顶的 working 环 / ✓ / ! 浮标。
     // 订阅在桥接层（bridge/bus-adapter 的 syncTaskEvent 转发），场景只被驱动。
-    this.taskFxLayer = new TaskFxLayer(this, this.units, this.taskFx);
+    // 精灵特效（task_161）也由这一层播（sheet 动画：庆祝 / 报错 / 上场 / 下场 / 指令 / 升级）——
+    // 战场表现归一处管，不另起炉灶。
+    this.taskFxLayer = new TaskFxLayer(this, this.units, this.taskFx, {
+      spriteFxSources: SPRITE_FX_SOURCES,
+    });
 
     // 气泡层（@since v3.3，task_076）：单位头顶的说话气泡（离线模板句库）。
     // 板子用场景时钟（this.time.now）—— 与渲染层的 tick 同一把钟，不混用墙钟。
@@ -333,6 +360,11 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   // ==========================================================================
 
   syncUnits(units: readonly UnitView[]): void {
+    // 退场特效要用的坐标（@since v3.3，task_161）：单位被删掉后就查不到了 —— 先记下来。
+    const positionsBefore = new Map<string, Point>();
+    for (const object of this.units.list()) {
+      positionsBefore.set(object.id, { x: object.position.x, y: object.position.y });
+    }
     const result = this.units.sync(units);
     this.unitLayer.sync();
     // 单位离场，浮标一并收掉：表现不许悬在已不存在的单位头顶（task_038）。
@@ -340,6 +372,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       this.taskFx.clear(id);
       // 气泡同理（task_076）：单位没了，它的话也该收掉。
       this.speechLayer.clearUnit(id);
+      // 退场特效（task_161）：消散演出，落在单位最后的位置上。
+      const position = positionsBefore.get(id);
+      if (position) this.taskFxLayer.playFx('despawn', position.x, position.y);
     }
     this.taskFxLayer.sync();
     // 失焦（@since v3.4，task_092）：被锁定的单位离场 → 弧线与描边一并收掉
@@ -353,7 +388,10 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 由 app 层持久化订阅者防抖落库。只对新增单位发：位置真相在本层，后续移动由移动链路上报。
     for (const id of result.added) {
       const object = this.units.get(id);
-      if (object) this.bridge.unitPosition(id, object.position.x, object.position.y);
+      if (!object) continue;
+      this.bridge.unitPosition(id, object.position.x, object.position.y);
+      // 上场特效（task_161）：传送门开启，落在单位的落位点上。
+      this.taskFxLayer.playFx('spawn', object.position.x, object.position.y);
     }
   }
 
@@ -394,6 +432,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       if (!building) continue;
       // 旗子插在建筑脚下（旗杆从地面升起）。
       this.taskFxLayer.raiseFlag(id, building.x, building.y + BUILDING_SIZE / 2);
+      // 庆祝特效（task_161）：任务建筑完工 —— 彩带落在楼顶。
+      this.taskFxLayer.playFx('celebrate', building.x, building.y - BUILDING_SIZE);
       this.bridge.soundCue('complete');
     }
   }
@@ -480,6 +520,13 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       if (next === 'completed' && transition !== 'unchanged') {
         this.unitLayer.triggerCompleted(unitId);
       }
+      // 精灵特效（@since v3.3，task_161）：任务完成 → 庆祝；报错 → 冲击爆闪。
+      //   播什么由 fxKindForTaskPhase 裁决（映射只有一处），落在干活的那个单位脚下。
+      const fxKind = fxKindForTaskPhase(phase);
+      if (fxKind) {
+        const unit = this.units.get(unitId);
+        if (unit) this.taskFxLayer.playFx(fxKind, unit.position.x, unit.position.y);
+      }
     }
     this.taskFxLayer.sync();
   }
@@ -544,6 +591,17 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 画面回显「镜头已经不是你的了」（L3 层提示）。关掉导演 → 取景框收掉。
     this.directorFrame.setEnabled(enabled);
     this.directorFrame.sync(this.viewport());
+  }
+
+  /**
+   * 角色升级（@since v3.3，task_161；由桥接层转发 world 通道的 level.up）。
+   * 战场认单位的方式与任务事件一致：按 characterId 反查 → 在该单位脚下播治疗光环。
+   * 角色不在场上（没接单位 / 已退场）→ 没有落点，不播（不凭空造位置）。
+   */
+  syncLevelUp(characterId: string, _toLevel: number): void {
+    const unit = this.units.list().find((item) => item.characterId === characterId);
+    if (!unit) return;
+    this.taskFxLayer.playFx('levelUp', unit.position.x, unit.position.y);
   }
 
   /**
@@ -789,11 +847,23 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    *   ② 目标点**双重涟漪**（两圈先后 300ms 扩散）；
    *   ③ 单位头顶统一冒「收到」类气泡（气泡系统 task_076 未合入 → 这里只发事件）；
    *   ④ 右键落在**卡住**的单位上 = 集火支援：气泡换成「来了来了」+ 脚下位移脉冲一次。
+   *   ⑤ 目标点升起**信号弹**（@since v3.3，task_161：sheet 动画特效）。
    * 指令上报（编队落位在 core 算）与特效同一次动作发出 —— 画面与逻辑同帧，不分先后。
    */
   private issueMoveCommand(pointer: Phaser.Input.Pointer): void {
     if (this.selectedUnitIds.length === 0) return;
-    const target = this.toWorldPoint(pointer);
+    this.issueMoveCommandAt(this.toWorldPoint(pointer));
+  }
+
+  /**
+   * 下达移动指令（世界坐标目标点）—— 右键短按与外部调用共用这一条路径。
+   *
+   * why 拆成两个方法：「目标点从哪来」（指针换算）与「指令怎么发」（选中集 → 流线 / 气泡 /
+   *   涟漪 / 信号弹 / unit.move）是两件事 —— 拆开后 dev 验收页可以按世界坐标发起同一条指令，
+   *   走的仍是生产路径（不另起一条"给特效用"的捷径）。
+   */
+  issueMoveCommandAt(target: Point): void {
+    if (this.selectedUnitIds.length === 0) return;
 
     // 集火判定：右键命中一个**卡住**（error）的单位 = 支援它（不是单纯移动）。
     const hit = this.unitLayer.hitTest(target.x, target.y);
@@ -809,6 +879,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     }
 
     this.taskFxLayer.doubleRipple(target.x, target.y);
+    // 指令特效（@since v3.3，task_161）：信号弹在目标点升起 —— 叠加在流动虚线之上。
+    this.taskFxLayer.playFx('command', target.x, target.y);
     this.bridge.soundCue(focusFire ? 'focus' : 'command');
     this.bridge.unitMove(this.selectedUnitIds, target.x, target.y);
   }
