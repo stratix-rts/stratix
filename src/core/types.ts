@@ -116,6 +116,20 @@ export const MAX_TASK_SUMMARY_LEN = 2_000;
 export const MAX_SESSIONS = 200;
 
 /**
+ * @since v3.3（task_175 / M1-01）逻辑项目数上限（注册表 ≤ 200 条，超出按 lastOpenedAt LRU 淘汰）。
+ * why 冻结在契约层：projects 随 WorldState 全量广播，必须有界（perf：广播数据不许无限增长）。
+ * 数值与 DESIGN-project-map.md §1.2.4 一致（注册表侧同一份口径，不各抄一个数）。
+ */
+export const MAX_PROJECTS = 200;
+
+/**
+ * @since v3.3（task_175 / M1-01）项目实例数上限（物理副本 = 一个目录 = 一张地图）。
+ * 与 MAX_PROJECTS 同理由：projectInstances 随 WorldState 全量广播，必须有界；
+ * 与 DESIGN-workspace.md §5.2「注册表 ≤ 200」对齐。
+ */
+export const MAX_PROJECT_INSTANCES = 200;
+
+/**
  * @since v3.33（task_057）战场世界边界（世界坐标，左上角 + 宽高）。
  * why 冻结在契约层：三处消费方 —— world 相机钳制（camera/camera-math 的 DEFAULT_WORLD_BOUNDS
  * 以它为唯一来源）、core 的 camera.center 命令钳制（core/camera.ts）、hud 小地图的世界↔画布
@@ -261,6 +275,16 @@ export interface UnitView {
    *   的「两侧不漂移」惯例同一条纪律（见 core/character/manager.ts）。
    */
   readonly level?: number | null;
+  /**
+   * @since v3.3（task_175 / M1-01）所属项目实例 id。
+   * ★ **null 语义写死**：缺省 / null = **未归属**（老数据语义：一个没有项目归属的全局战场）。
+   *   默认沙盒**不是** null —— 它有自己的真实 id（`DEFAULT_INSTANCE_ID = 'wsp_sandbox'`）。
+   * 单位 id 已由 instance 化的 character id 派生（DESIGN-project-map.md §1.3.3），
+   *   本字段是**显式归属声明**（声明与派生必须一致，不一致时以归属声明为准）。
+   * 走可选增补（与 characterId / skinId 同款惯例）：契约增补不许破既有构造点
+   *   （core / hud 单测夹具、老快照都不带它）。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }
 
 // ============================================================================
@@ -335,6 +359,15 @@ export interface MissionView {
    * 判定函数 isMissionUnlocked 见 core/mission/machine.ts。
    */
   readonly dependsOn?: readonly string[];
+  /**
+   * @since v3.3（task_175 / M1-01）所属项目实例 id。
+   * ★ **null 语义写死**：缺省 / null = **未归属**（老数据语义：一个没有项目归属的全局战场）。
+   *   默认沙盒有真实 id（`DEFAULT_INSTANCE_ID = 'wsp_sandbox'`），不用 null 表示。
+   * 为什么要它：mission 是纯内存状态机（不落库），但「这张图上有哪些编组任务」必须是副本内的事
+   *   —— 否则切副本时 mission 池会串。
+   * 走可选增补：契约增补不许破既有 MissionView 构造点（MCP / HUD / 单测字面量）的编译。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }
 
 export type ConfirmDecision = 'accept' | 'reject';
@@ -487,6 +520,13 @@ export interface CharacterTask {
    * （core / hud 单测夹具、老快照都不带它）。
    */
   readonly missionId?: string | null;
+  /**
+   * @since v3.3（task_175 / M1-01）所属项目实例 id。
+   * ★ **null 语义写死**：缺省 / null = **未归属**（老数据语义：没有项目归属的散兵任务）。
+   *   默认沙盒有真实 id（`DEFAULT_INSTANCE_ID = 'wsp_sandbox'`），不用 null 表示。
+   * 走可选增补（与 missionId 同款惯例）：契约增补不许破既有 CharacterTask 构造点的编译。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }
 
 // ============================================================================
@@ -859,6 +899,15 @@ export interface CharacterView {
    * core/character/manager.updateContextEnabled（对应 HudCommand character.contextEnabled.update）。
    */
   readonly contextEnabled?: boolean | null;
+  /**
+   * @since v3.3（task_175 / M1-01）所属项目实例 id。
+   * ★ **null 语义写死**：缺省 / null = **未归属**（老角色、或用户手建的散兵）。
+   *   默认沙盒有真实 id（`DEFAULT_INSTANCE_ID = 'wsp_sandbox'`），不用 null 表示。
+   * 本字段是**冗余但权威**的归属声明：行 id 才是「它是 roster 里哪个角色」——
+   *   只有行 id ⇒ 不知道这个角色住在哪个副本；只有 instanceId ⇒ 不知道它是谁。
+   * 走可选增补：契约增补不许破既有 CharacterView 构造点的编译。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }
 
 // ============================================================================
@@ -1073,6 +1122,14 @@ export interface SessionRecord {
   readonly closedAt: number | null;
   /** 事件计数（摘要计数；事件本体在 session_events 表）。 */
   readonly eventCount: number;
+  /**
+   * @since v3.3（task_175 / M1-01）会话所属项目实例 id。
+   * ★ **null 语义写死**：缺省 / null = **未归属**（老会话语义）。
+   *   默认沙盒有真实 id（`DEFAULT_INSTANCE_ID = 'wsp_sandbox'`），不用 null 表示。
+   * 用途：① 切副本时**不跨副本续发**（上下文携带 = 泄漏）；② 会话列表按副本过滤。
+   * 走可选增补：契约增补不许破既有 SessionRecord 构造点的编译。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }
 
 /**
@@ -1101,6 +1158,116 @@ export type InfoLayer = 'L1' | 'L2' | 'L3';
  * 体积天然有界：三个词（不是数组里的自由值），不存在增长问题（perf：广播数据必须有界）。
  */
 export type LayerTrigger = 'milestone' | 'replay' | 'director';
+
+// ============================================================================
+// ★ 项目实体（@since v3.3 / task_175 / M1-01 —— 切副本期起点）
+//   身份分层照 DESIGN-project-map.md §1.2：project（逻辑）/ instance（物理）。
+//   本文件只冻结**形状与取值**，不读文件、不碰 IO（core 零 IO 铁律）。
+//   设计来源：docs/DESIGN-project-map.md §1.2（task_160 设计稿）；本任务只落 M1-01 行。
+// ============================================================================
+
+/**
+ * @since v3.3（task_175 / M1-01）项目实例 id（物理副本）。
+ * = 注册表里的稳定 id（DESIGN-workspace.md §2.4 的 `instanceId`），**路径移动后不变** ——
+ * 它不是路径派生：路径会变，id 不该变。
+ */
+export type ProjectInstanceId = string;
+
+/**
+ * @since v3.3（task_175 / M1-01）逻辑项目 id（= `.stratix/project.json` 的 id，随 git 传播，同源副本相同）。
+ */
+export type ProjectId = string;
+
+/**
+ * @since v3.3（task_175 / M1-01）项目状态（**实例级**运行层投影）。
+ *   - 'active'   有未终结的编组任务（地图上有活儿）；
+ *   - 'idle'     副本存在但没有在办的事；
+ *   - 'archived' 用户归档（大厅里收起，默认不展示）；
+ *   - 'missing'  目录不存在（被移动/重命名）—— 不自动删，给「路径已移动」的修复入口。
+ * why 落在实例级不在 project 级：「目录不存在」是**物理副本**的属性，而逻辑 project
+ *   （随 git 传播的契约）没有目录 ⇒ 对它说 missing 无意义。
+ */
+export type ProjectStatus = 'active' | 'idle' | 'archived' | 'missing';
+
+/**
+ * @since v3.3（task_175 / M1-01）逻辑项目视图（契约面的运行层投影）。
+ *
+ * why 逻辑与物理要分两个类型：**契约随 git 传播**（同仓库各副本相同），
+ *   **运行态是物理的**（各副本独立积累）。合成一个类型就必须选一个真相源，两种事实会互相污染。
+ */
+export interface ProjectView {
+  /** 逻辑项目 id（= `.stratix/project.json.id`）。 */
+  readonly id: ProjectId;
+  /** 项目名（= `project.json.name`；缺失时回落目录名）。 */
+  readonly name: string;
+  /** 一句话说明（= `project.json.description`）。 */
+  readonly description: string;
+  /**
+   * 契约格式版本（= `project.json.formatVersion`）。读方据此走方向性读规则
+   * （照 dsh 的 SESSION_FORMAT_VERSION 纪律，见 DESIGN-workspace.md §1.4）。
+   */
+  readonly formatVersion: number;
+  /**
+   * 源指纹（= **注册表条目**的 `vcs.commonDirFingerprint`；⚠️ 不在 project.json 里 —— 见
+   * DESIGN-workspace.md §1.3）。一致 ⇒ 两个 instance 同源（主仓 / worktree）。
+   * **只用于识别，不自动合并**。缺省 = 注册表未提供该事实。
+   */
+  readonly sourceFingerprint?: string;
+}
+
+/**
+ * @since v3.3（task_175 / M1-01）项目实例视图（物理副本 = 一个目录 = 一张地图）。
+ *
+ * why 与 ProjectView 分开：主仓与 worktree 的 id / 名字 / 契约完全相同，
+ *   但路径、运行态、任务史各不相同 —— 合成一个类型就没有「同源不同物」的表达力。
+ */
+export interface ProjectInstanceView {
+  /** 实例稳定 id（注册表分配，路径移动后不变）。 */
+  readonly instanceId: ProjectInstanceId;
+  /** 所属逻辑项目 id（= ProjectView.id）。 */
+  readonly projectId: ProjectId;
+  /**
+   * 规范化的**绝对路径**（fs.realpath 后的项目根 = 含 `.stratix` 的目录）。
+   * ★ 语义对齐 dsh：dsh 的 `SessionHeader.cwd` 是不可变绝对路径（一个 session = 一个工作目录）
+   *   ⇒ Stratix 的 instance 同样只有**一个** path，一个 instance = 一个 dsh session 的工作目录。
+   */
+  readonly path: string;
+  /** 大厅里的展示标题（缺省 = 项目名）。 */
+  readonly title: string;
+  /** 最后一次进入的时刻（epoch ms；大厅排序用）。 */
+  readonly lastOpenedAt: number;
+  /** 置顶（大厅里排在最前）。 */
+  readonly pinned: boolean;
+  /** 归档（大厅里收起）。 */
+  readonly archived: boolean;
+  /** 当前状态（见 ProjectStatus）。**实例级**字段。 */
+  readonly status: ProjectStatus;
+  /**
+   * 路径不存在（被移动/重命名）。缺省 = 路径正常。
+   * ⚠️ 与 `status === 'missing'` 冗余但保留：`missing` 是**布尔快取**（列表渲染免去枚举判断），
+   *   `status` 是**枚举真值**（可扩展）。两者必须**同时**由同一处产出，不得各算各的。
+   */
+  readonly missing?: boolean;
+  /**
+   * 是否为**默认沙盒实例**（承载全部历史数据的老行）。
+   * 默认沙盒**必须物化**（注册表一条真实记录 + 大厅一张卡）⇒ 否则历史数据不可达。
+   */
+  readonly sandbox?: boolean;
+}
+
+/**
+ * @since v3.3（task_175 / M1-01）默认沙盒实例 id（**常量**，不是 null）。
+ *
+ * why 必须是真实 id 而不是 null：同一个 WorldState 的兄弟字段上，
+ *   `activeInstanceId === null` 读作「我在大厅」，
+ *   而实体上的 `instanceId === null` 曾读作「我在默认沙盒」——
+ *   同一个 null 在兄弟字段上表达两种互斥状态，任何 `if (x.instanceId === null)`
+ *   都得先问一句「我读的是哪个字段」。
+ * ⇒ 采纳「给默认沙盒一个真实 id」：**null 在所有字段上恒义 = 「未归属 / 大厅」**。
+ * 旧行的 `instance_id IS NULL` 在**查询时**按 `COALESCE(instance_id, 'wsp_sandbox')`
+ * 命中默认沙盒（**落库不改写**）。
+ */
+export const DEFAULT_INSTANCE_ID = 'wsp_sandbox';
 
 // ============================================================================
 // ★ 总线契约：core → 两层广播的完整世界快照
@@ -1196,6 +1363,30 @@ export interface WorldState {
    * 体积天然有界：最多三个词（perf：广播数据必须有界）。
    */
   layerHolds?: readonly LayerTrigger[];
+  /**
+   * @since v3.3（task_175 / M1-01）逻辑项目清单。
+   * 刻意可选：契约增补不许打破既有 WorldState 构造点（core / hud 单测夹具）的编译；
+   *   读取方缺省时按「空清单」处理。
+   * 体积有界：上限 MAX_PROJECTS（超限按 lastOpenedAt LRU 淘汰）。
+   */
+  projects?: readonly ProjectView[];
+  /**
+   * @since v3.3（task_175 / M1-01）项目实例清单（物理副本 = 一个目录 = 一张地图）。
+   * 刻意可选：读取方缺省时按「空清单」处理；上限 MAX_PROJECT_INSTANCES。
+   * ⚠️ 缺省 / 为空时读取方**必须渲染「明确空态」**（「没有可用副本 · 添加副本」按钮可点），
+   *   **不是白卡** —— 否则老客户端 / 单测夹具 / remote-store 收到别的进程的快照时会把用户锁死。
+   */
+  projectInstances?: readonly ProjectInstanceView[];
+  /**
+   * @since v3.3（task_175 / M1-01）当前激活的项目实例 id。
+   *   - 非 null = 战场态（世界层渲染这个 instance 的地图）；
+   *   - null / 缺省 = **大厅态**（workspace 总览，战场单位为空）。
+   * ★ **null 语义写死**：本字段上的 null **恒义 = 「大厅 / 未归属」**，没有第二种含义 ——
+   *   默认沙盒有它自己的真实 id（`DEFAULT_INSTANCE_ID = 'wsp_sandbox'`）。
+   * why 用实例 id 而不是 project id：同源副本（主仓 / worktree）是两个 instance，
+   *   各自一张地图 —— 激活的粒度是**物理副本**。
+   */
+  activeInstanceId?: ProjectInstanceId | null;
 }
 
 // ============================================================================
