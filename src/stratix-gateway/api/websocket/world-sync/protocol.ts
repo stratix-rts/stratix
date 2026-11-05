@@ -385,6 +385,9 @@ const HUD_COMMAND_TYPE_FLAGS: Readonly<Record<HudCommand['type'], true>> = {
   //   远程模式下渲染进程不起 core runtime，占用与释放都得经 service 侧的 core 落账 ——
   //   故这条命令同样必须入册（否则远程端的演出不会让 L1 让位）。
   'hud.layer.hold': true,
+  // @since v3.3（task_177 / M1-03）进入副本：远程模式下渲染进程不起 core runtime，
+  //   切换裁决在 service 侧的 core ⇒ 这条命令必须入册（否则远程端进不去副本）。
+  'project.enter': true,
 };
 
 /**

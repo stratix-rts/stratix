@@ -1865,7 +1865,18 @@ export type HudCommand =
    *   与 session.interrupt 同一纪律；core 不需要 app 层引擎参与）。
    * atSeq 缺省 = 全量复制；越界由 core 夹到合法区间（越界不是错误 —— "分叉到末尾"就是全量）。
    */
-  | { type: 'session.fork'; sessionId: string; atSeq?: number };
+  | { type: 'session.fork'; sessionId: string; atSeq?: number }
+  /**
+   * @since v3.3（task_177 / M1-03）进入副本（激活一个项目实例）。
+   * 发出方：HUD 大厅的「进入」按钮（design §7.1 M1-03 行）。
+   * core 裁决（**纯逻辑 + 端口调用**，core 零 IO —— IO 全在 app 侧注入的端口实现里）：
+   *   ① inspect(instanceId) ⇒ 实例存在？未归档？路径在？（默认沙盒走特例，见 §2.4）
+   *   ② load(instanceId) ⇒ app 侧把该实例的实体行**整份**载入 store（全量重载，见 §2.2）
+   *   ③ 写 WorldState.activeInstanceId + 广播 `project.changed`（**唯一权威信号**，R1-08）
+   * 任一步失败 ⇒ **拒绝**：activeInstanceId **保持不变** + 广播 `project.enter.failed`。
+   * why 命令是 fire-and-forget：裁决是异步的（load 是 Promise），失败经事件回报，不靠返回值。
+   */
+  | { type: 'project.enter'; instanceId: ProjectInstanceId };
 
 /**
  * @since v3.18 经验来源词表（`exp.gained` 事件的 source 字段，task_039）。
@@ -2126,4 +2137,26 @@ export type WorldEvent =
    *   why 走 world 通道而不是新开第四条通道：通道即铁律，事件通道是现成的域事件广播面，
    *   与 unit.bubble（同样是纯表现事件）同一先例。
    */
-  | { type: 'replay.beat'; beat: ReplayBeat };
+  | { type: 'replay.beat'; beat: ReplayBeat }
+  /**
+   * @since v3.3（task_177 / M1-03）激活副本变更（core → world）。
+   * 载荷：instanceId（null = 回到大厅态；非 null = 进入/切到该物理副本）。
+   * 消费者：world 层场景路由（大厅 ⇄ 战场 + 载入仪式）。
+   * ⚠️ **r1 修订（R1-08）：这是切换的唯一权威信号。**
+   *   `WorldState.activeInstanceId` 属于状态字段 ⇒ 必然随 store 变更走 **state 通道**
+   *   （store.subscribe(emitState) 同步广播 ⇒ state 先于 world 到达）。
+   *   ⇒ **world 层只监听 `project.changed` 来切换场景**；
+   *     收到 state 通道的 activeInstanceId 变化时**只做数据同步，绝不自行切换**
+   *     （否则会切两次：state 一次 + world 一次）。
+   * ★ **字段形状（instanceId: string | null）在 M1 就定死** —— 它就是将来
+   *   `@Remote({mode:'stream'})` follow 流的**载荷原型**（baseline + increments），
+   *   形状先定 ⇒ M3 不用改协议。
+   */
+  | { type: 'project.changed'; instanceId: ProjectInstanceId | null }
+  /**
+   * @since v3.3（task_177 / M1-03）进入被拒（端口失败 / 勘察不通过）—— HUD 据此提示。
+   * why reason 用**冻结的分类枚举**（PortFailureReason）而不是自由文本：
+   *   分类词表在 M1-02 已定死（core 裁决 / HUD 文案 / app 端口实现三处共用同一套词表，
+   *   不各抄一份）；自由文本会让三处各写各的。
+   */
+  | { type: 'project.enter.failed'; instanceId: ProjectInstanceId; reason: PortFailureReason };

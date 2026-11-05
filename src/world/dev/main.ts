@@ -147,5 +147,10 @@ function describe(event: WorldEvent): string {
     // 回放节拍（@since v3.3，task_082）：当日回放的重演指令，看一眼节拍类型与角色。
     case 'replay.beat':
       return `${event.type.padEnd(15)} ${event.beat.kind} ${event.beat.characterId ?? ''}`;
+    // 副本切换（@since v3.3，task_177 / M1-03）：core 广播的切换信号与拒绝信号，看一眼切到哪 / 为何被拒。
+    case 'project.changed':
+      return `${event.type.padEnd(15)} ${event.instanceId ?? '大厅'}`;
+    case 'project.enter.failed':
+      return `${event.type.padEnd(15)} ${event.instanceId} :: ${event.reason}`;
   }
 }

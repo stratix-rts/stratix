@@ -57,6 +57,11 @@
  * @since v3.4(task_091)追加 focus.unit 命令接线:HUD 事件轨(Z2)条目点击 → 同名 WorldEvent
  *   转发到 world 通道(消费者是世界层:单位描边高亮 + 引导弧线);core 只转发不写 WorldState
  *   (联动是瞬态表现,同 camera.shake 口径);world 通道回环的 focus.unit 显式接地。
+ * @since v3.3(task_177 / M1-03)追加 project.enter 命令接线:**core 一手裁决的纯逻辑**
+ *   (inspect → 存在？未归档？路径在？ → load → 写 activeInstanceId → 广播 project.changed);
+ *   失败 ⇒ 拒绝(activeInstanceId 保持不变)+ 广播 project.enter.failed。
+ *   IO 全在 app 层注入的 InstanceLoaderPort 里(core 零 IO 铁律);裁决经串行链执行
+ *   (load 是异步的 ⇒ 并发进入会让事件交错、状态被后写覆盖)。
  */
 
 import type { AgentLinkManager } from './agent-link';
@@ -78,8 +83,13 @@ import {
   NOTICE_TTL_MS,
   type AgentKind,
   type HudCommand,
+  type InstanceInspection,
+  type InstanceLoaderPort,
   type Notice,
   type NoticeLevel,
+  type PortFailureReason,
+  type PortResult,
+  type ProjectInstanceId,
   type WorldEvent,
   type WorldState,
 } from './types';
@@ -158,6 +168,14 @@ export interface CoreRuntimeOptions {
    * 未注入时命令按未落地处理（onUnhandled）—— **不假装恢复成功**。
    */
   readonly sessionResume?: SessionResumePort;
+  /**
+   * 实例装载端口（@since v3.3，task_177 / M1-03）—— **core 零 IO 的唯一合法出口**。
+   * why 注入:端口实现要读注册表 / 库（真实 IO），core 只认形状、不认实现。
+   *   实现由 app 层在 service 进程内注入（design §1.2.5 端口注入方案）。
+   * 未注入时 `project.enter` 按未落地处理（onUnhandled）—— **不假装进入成功**，
+   *   与 session.resume / pipeline.start 同一口径。
+   */
+  readonly instanceLoader?: InstanceLoaderPort;
   /**
    * 尚未实现的命令 / 事件出口。
    * why 需要它:契约已冻结(§5),Phase 2 之前留了一些尚未接地的命令(chat.send 等);
@@ -356,6 +374,97 @@ function applyAgentConnectivity(store: CoreStore, kind: AgentKind, online: boole
   });
 }
 
+/**
+ * 进入副本的**勘察裁决**（@since v3.3，task_177 / M1-03）。
+ *
+ * 口径照 DESIGN-project-map.md §1.2.5 失败语义表：`inspect` 给出三件**独立**的事实
+ *   （存在？未归档？路径在？），任一不满足即**拒绝**。
+ * why 顺序固定（存在 → 归档 → 路径）：实例不存在时谈「已归档」是废话；
+ *   已归档的实例无论路径在不在都进不去 —— 先到先拒，失败分类才稳定。
+ */
+function inspectRejection(inspection: InstanceInspection): PortFailureReason | null {
+  if (!inspection.exists) return 'instance-missing';
+  if (inspection.archived) return 'instance-archived';
+  if (!inspection.pathOk) return 'path-unreachable';
+  return null;
+}
+
+/**
+ * 端口调用的**兜底**（@since v3.3，task_177 / M1-03）。
+ *
+ * 契约上端口失败用**返回值**表达（`ok: false` + 分类 reason），但实现方若仍抛错，
+ *   异常**不得逃出 core**（types.ts 的 InstanceLoaderPort 注）—— 一律按拒绝处理。
+ * why 落 'load-failed' 这条通用失败档：勘察/装载抛错在语义上就是「进不去」，
+ *   HUD 要的就是「载入失败」这一档文案（§1.2.5 失败语义表）。
+ */
+function safeInspect(
+  loader: InstanceLoaderPort,
+  instanceId: ProjectInstanceId
+): InstanceInspection | null {
+  try {
+    return loader.inspect(instanceId);
+  } catch {
+    return null;
+  }
+}
+
+async function safeLoad(
+  loader: InstanceLoaderPort,
+  instanceId: ProjectInstanceId
+): Promise<PortResult> {
+  try {
+    return await loader.load(instanceId);
+  } catch {
+    return { ok: false, reason: 'load-failed' };
+  }
+}
+
+/**
+ * 拒绝进入（@since v3.3，task_177 / M1-03）：**状态不变** + 广播失败事件。
+ * why 状态不变是硬要求：失败 ⇒ 用户仍站在原处（大厅或原副本），
+ *   半进入（状态改了、实体没载入）比不进更糟。
+ */
+function rejectProjectEnter(instanceId: ProjectInstanceId, reason: PortFailureReason): void {
+  emitWorldEvent({ type: 'project.enter.failed', instanceId, reason });
+}
+
+/**
+ * 进入副本的**纯裁决**（@since v3.3，task_177 / M1-03；design §7.1 M1-03 行）。
+ *
+ * 四拍：inspect（纯查询）→ load（端口 IO，落在 app 侧）→ 写 activeInstanceId → 广播 project.changed。
+ * 任一拍失败 ⇒ 拒绝：`activeInstanceId` **保持不变** + 广播 `project.enter.failed`。
+ *
+ * why 单次切换只产生**一条** project.changed：切换的**意图**只有这一条事件
+ *   （唯一权威信号，R1-08），而 state 通道的 activeInstanceId 变化只做**数据同步** ——
+ *   两处都触发场景切换就会切两次（design #23）。
+ */
+async function adjudicateProjectEnter(
+  loader: InstanceLoaderPort,
+  store: CoreStore,
+  instanceId: ProjectInstanceId
+): Promise<void> {
+  const inspection = safeInspect(loader, instanceId);
+  if (!inspection) {
+    rejectProjectEnter(instanceId, 'load-failed');
+    return;
+  }
+  const rejection = inspectRejection(inspection);
+  if (rejection) {
+    rejectProjectEnter(instanceId, rejection);
+    return;
+  }
+  const loaded = await safeLoad(loader, instanceId);
+  if (!loaded.ok) {
+    rejectProjectEnter(instanceId, loaded.reason);
+    return;
+  }
+  // 落状态（state 通道广播的是**结果**）→ 再广播 project.changed（**意图**，唯一权威信号）。
+  store.setState((state) =>
+    state.activeInstanceId === instanceId ? state : { ...state, activeInstanceId: instanceId }
+  );
+  emitWorldEvent({ type: 'project.changed', instanceId });
+}
+
 export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime {
   const store = options.store ?? worldStore;
   const agentLink = options.agentLink;
@@ -373,6 +482,13 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
   const pipeline = options.pipeline;
   // @since v3.47(task_101 / v3.2b-B2)会话恢复端口:只持引用不构造(见 options.sessionResume 注释)。
   const sessionResume = options.sessionResume;
+  // @since v3.3(task_177 / M1-03)实例装载端口:只持引用不构造(见 options.instanceLoader 注释)。
+  //   core 零 IO:端口实现(读注册表/库)由 app 层注入,core 只调形状。
+  const instanceLoader = options.instanceLoader;
+  // 进入副本的**串行链**(@since v3.3,task_177 / M1-03):load 是异步的 ⇒ 连点两次可能并发,
+  //   并发会让两条 project.changed 交错、activeInstanceId 被后写覆盖(谁赢取决于 IO 完成顺序)。
+  //   串行化 ⇒ 一次切换一条事件、顺序确定(后点的后切)。
+  let enterChain: Promise<void> = Promise.resolve();
   const reportUnhandled = options.onUnhandled ?? ((): void => { /* 默认不打扰;dev 入口与单测会注入 */ });
 
   /**
@@ -616,6 +732,22 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
           reportUnhandled('command', command);
         }
         return;
+      // @since v3.3(task_177 / M1-03)进入副本:core 一手裁决(**纯逻辑 + 端口调用**,core 零 IO)。
+      //   ① inspect ⇒ 存在？未归档？路径在？ ② load ⇒ ③ 写 activeInstanceId + 广播 project.changed。
+      //   任一步失败 ⇒ **拒绝**(activeInstanceId 保持不变)+ 广播 project.enter.failed。
+      //   端口缺席 = 命令没人接管 → 按未落地处理(不假装进入成功;同 session.resume 口径)。
+      //   why 走串行链:裁决是异步的(load 是 Promise),并发进入会让事件交错、状态被后写覆盖。
+      case 'project.enter':
+        if (!instanceLoader) {
+          reportUnhandled('command', command);
+          return;
+        }
+        enterChain = enterChain
+          .then(() => adjudicateProjectEnter(instanceLoader, store, command.instanceId))
+          .catch(() => {
+            // 端口失败已在裁决内兜成「拒绝」;此处只保证**链条不断**(后续进入仍能排队执行)。
+          });
+        return;
       // @since v3.6 屏位路由:
       //   'main' 与 'chat' 都不入 currentScreen:
       //     - 'main' 是"回主屏"语义,与字段为空等价(缺省回落读取方自管);
@@ -764,6 +896,11 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         //   不写 WorldState -- 同 unit.bubble 惯例显式接地,不进 onUnhandled
         //   (否则拖一次时间轴就会报一串「未处理」噪音)。
         if (event.type === 'replay.beat') return;
+        // project.changed / project.enter.failed(@since v3.3,task_177 / M1-03):core 自己在
+        //   world 通道上发出的两条事件(切换信号 / 拒绝信号),会绕回本订阅一次 —— 显式接地
+        //   (同 camera.center 惯例),不进 onUnhandled(否则每次切副本都报一次「未处理」噪音)。
+        if (event.type === 'project.changed') return;
+        if (event.type === 'project.enter.failed') return;
         reportUnhandled('world', event);
     }
   };
