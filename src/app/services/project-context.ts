@@ -43,7 +43,7 @@
  *
  * 禁止事项：
  *   1. import fs / electron / DAO —— 本文件零 IO（读 `.stratix` 的权限在 app 侧注入件
- *      装配方 = 组合根 main-entry；service 只拿纯输入）；
+ *      装配方 = 组合根；读盘半在同目录的 `project-context-loader.ts`，service 只拿纯输入）；
  *   2. 抛错 —— 对外函数全部不抛（build… 内部兜底为 ''；resolve… 吞错记日志）；
  *   3. 改写调用方传入的对象（纯函数：只读输入）。
  *
@@ -51,6 +51,10 @@
  * docs/DESIGN-project-map.md §3.3.3（内容契约 / 体积预算 / 注入特征过滤）。
  * @since v3.3，task_168（M0-04）：补齐三段式的**第二段**（createProjectContextProvider）
  *   —— 第三段（resolveProjectContextBlock）已在 M0-03 落地并保持吞错口径。
+ * @since v3.3，task_169（M0-05）：读 `.stratix` 的**读盘半**落在同目录的
+ *   `project-context-loader.ts`（**本文件仍零 IO** —— 它是渲染层也要引的纯拼串模块，
+ *   而读盘必须 import fs ⇒ 两者分家；loader 只被 Node 侧组合根引用）。
+ *   注入点接线（把块塞进派单 prompt）是 M0-06 的范围。
  */
 
 import { truncateByCodePoints } from './stratix-context';
