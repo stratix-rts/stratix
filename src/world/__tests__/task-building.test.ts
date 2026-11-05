@@ -20,7 +20,25 @@ import {
   buildingFailed,
   buildingStateFor,
   regionCellCenters,
+  type BuildingState,
 } from '../objects/task-building';
+
+/**
+ * 测试窥探：MapBoard 的私有表现态。
+ * why 需要窥探：reset 的验收点是「nextSlot 归零 / regionSlots 清空」——
+ *   这两个状态没有公开读口（表现态对宿主不可见），只能从内部断言。
+ */
+interface MapBoardInternals {
+  nextSlot: number;
+  regionSlots: Map<string, number>;
+  lastStates: Map<string, BuildingState>;
+  clearedRegions: Set<string>;
+  slotFor(regionId: string): number;
+}
+
+function internals(board: MapBoard): MapBoardInternals {
+  return board as unknown as MapBoardInternals;
+}
 
 function makeTask(
   id: string,
@@ -216,5 +234,40 @@ describe('MapBoard：任务被认领的跳变（task_077 翻卡）', () => {
     const done = board.sync([makeMission('m1')], [makeTask('t1', 'completed', 'm1')]);
     expect(done.claimedBuildingIds).toEqual([]);
     expect(done.completedBuildingIds).toEqual(['t1']);
+  });
+});
+
+describe('MapBoard：reset() 析构（M1-08）', () => {
+  test('reset 后 nextSlot 归零、regionSlots 清空；再取槽拿到槽 0', () => {
+    const board = new MapBoard();
+    board.sync(
+      [makeMission('m1'), makeMission('m2')],
+      [makeTask('t1', 'queued', 'm1'), makeTask('t2', 'completed', 'm2')]
+    );
+    const state = internals(board);
+    expect(state.nextSlot).toBe(2);
+    expect(state.regionSlots.size).toBe(2);
+    expect(state.lastStates.size).toBe(2);
+
+    board.reset();
+
+    expect(state.nextSlot).toBe(0);
+    expect(state.regionSlots.size).toBe(0);
+    expect(state.lastStates.size).toBe(0);
+    expect(state.clearedRegions.size).toBe(0);
+    // 再取槽 → 从 0 开始（区域排布从头来过，不接着旧副本的槽位往后排）。
+    expect(state.slotFor('m1')).toBe(0);
+  });
+
+  test('reset 后新区域落回战场中心格（槽位不残留）', () => {
+    const bounds = { x: 0, y: 0, width: 3200, height: 2400 };
+    const board = new MapBoard({ bounds });
+    board.sync([makeMission('m1')], [makeTask('t1', 'queued', 'm1')]);
+    board.reset();
+
+    const result = board.sync([makeMission('m2')], []);
+    const center = regionCellCenters(bounds)[0];
+    expect(result.regions[0].x + result.regions[0].width / 2).toBeCloseTo(center.x, 5);
+    expect(result.regions[0].y + result.regions[0].height / 2).toBeCloseTo(center.y, 5);
   });
 });

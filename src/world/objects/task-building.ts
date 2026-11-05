@@ -296,6 +296,21 @@ export class MapBoard {
     return { regions, buildings, completedBuildingIds, claimedBuildingIds, clearedRegionIds };
   }
 
+  /**
+   * 析构：把四份表现态清回「刚 new 出来」的样子。
+   * why 需要显式析构（对称于 dsh 的 `ctx.effect` / disposer —— 注册即 effect，卸载自动逆序回收）：
+   *   Phaser 的 `scene.start` 不重建场景实例 ⇒ 同一个 board 会跨副本复用。
+   *   残留的后果：槽位不回收 ⇒ 新副本的区域排到旧格子后面；lastStates 残留 ⇒ 本来就完工的
+   *   任务被误判成「刚完工」（多演一次动画）；clearedRegions 残留 ⇒ 点亮过渡被吞掉。
+   *   不靠「场景被重建」侥幸回收 —— 析构必须是对称的、显式的。
+   */
+  reset(): void {
+    this.regionSlots.clear();
+    this.lastStates.clear();
+    this.clearedRegions.clear();
+    this.nextSlot = 0;
+  }
+
   /** 区域占格：已占过的沿用旧格（位置不漂移），新区域取下一个空位。 */
   private slotFor(regionId: string): number {
     const existing = this.regionSlots.get(regionId);
