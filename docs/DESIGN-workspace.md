@@ -1,6 +1,8 @@
 # DESIGN-workspace —— Workspace / `.stratix` 目录契约与项目发现（设计 A）
 
-> 状态：**r1 修订中（尚未冻结）**
+> 状态：**已冻结（r1 修订后）· 2026-11-05**
+> 冻结说明：本设计经 task_163 两份评审（`docs/review/design-review-r1.md` 42 条 + `docs/review/design-review-r1-dsh.md` A/B 双面 15 条）逐条裁决后冻结。**每条意见的下落（修订 / 反驳 / 推迟）见 §附录 C（主表，57 条全量）**。**冻结后本文只允许「按实现事实回改」，不允许再改设计方向。**
+> **实现期任务拆分建议**：§8（M0 接线，≤20min 粒度）+ 姊妹文档 §7（M1 切图，16 条）—— **每条任务都自带 dsh 双面向考虑项**（用 dsh 哪块 / 暴露给 dsh 哪个面）。
 > 任务：task_159（r1 修订：task_164）。依赖：task_157（`docs/research/dsh-architecture.md`）、task_158（`docs/research/dsh-integration-map.md`）
 > **姊妹文档**：[DESIGN-project-map.md](DESIGN-project-map.md)（设计 B，task_160）—— 本文档回答「项目是什么、怎么被找到」，它回答「项目长什么样（一张地图 = 一个副本）、agent 怎么进去干活、活干在哪」。**接缝在 §4.2 的 project / instance 两个 id**：本设计的 `project.json.id`（逻辑）与 `workspaces.json` 的 `instanceId`（物理）是 task_160 的两个锚点，task_160 **不新增第三种 id**，其 core 契约侧的 instance 维度字段沿用本文 §4.4 的 `instanceId` / `instance_id` 命名
 > dsh 参照版本：只读仓库 `/Users/kingj/code/deepseek-harness`，**HEAD `fcc0ad4621`**（`@deepseek-ai/dsh-root@0.2.2-rc.1`）。开工前置已执行 `git pull`，结果「已经是最新的」，HEAD 与 task_158 报告所注 HEAD **完全一致**（task_157 报告所注 HEAD 为更早的 `ce7073d5`，两者差异面见本文 §3.0）
@@ -1040,6 +1042,39 @@ project（逻辑）  id = .stratix/project.json.id      随契约传播，同仓
 | **P11** | **五拍仪式中的后三拍**（除「名牌 → 淡出」之外的三拍） | 160 §2.2 | 仪式服务于「让用户看清发生了什么」，两拍已足够达成该目的；后三拍是**表演性开销**，且与 §5.2 性能预算冲突 | **有实测证据表明两拍不足以传达状态时**（R1-34） |
 
 <!-- r1: 修订，见 design-review-r1.md#R1-31 / #R1-33 / #R1-30 / #R1-17 / #R1-32 / #R1-34；见 design-review-r1-dsh.md#B1 / #B2 / #B3 —— 新增「推迟清单」章节：被砍掉的决策全部从正文移出并登记在此，不留僵尸决策。 -->
+
+---
+
+## 8. M0 实现期任务拆分建议（接线，≤20min worker 粒度）
+
+<!-- r1: 新增（task_164 requirement 5/6）—— M0 = **零迁移、行为与今天一致**的一期（160 §5.1）。
+     每条任务**必须自带 dsh 双面向考虑项**：
+     ① 「用 dsh 生态的哪块」= 本任务实现 Stratix 时**消费** dsh 的哪一块；
+     ② 「暴露给 dsh 的哪个面」= 本任务产出的东西**作为 dsh 插件**时，从 dsh 的哪一面被看见（模型可见工具 / 宿主可见控制面 / 事件订阅 / 包分发）。
+     写不出这两项的任务 ⇒ **重新定义**（本清单已逐条核对）。 -->
+
+> **粒度口径**：每条 = 一个 worker ≤20 分钟能独立完成并**独立验收**的最小单元。
+> **M1 的清单见姊妹文档 §7**（16 条）。M2 / M3 随其立项另出。
+
+| # | 任务 | 改动文件 | 验收要点 | 依赖 | **dsh 双面向：用 dsh 哪块 / 暴露给 dsh 哪个面** |
+|---|---|---|---|---|---|
+| **M0-01** | **`cwdProvider` 端口落地**（S6a）：`SpawnOptions.cwd?`（`src/app/services/cli-transport/transport.ts:85`）的**供给方**抽成端口，**缺省返回 `undefined`** ⇒ 行为与今天完全一致 | `src/app/services/cli-transport/transport.ts`、`src/app/services/cli-transport/runtime.ts:78`（`ProcessFactory` `:117-121`） | ① 缺省 provider ⇒ **子进程 cwd 与今天逐字节一致**（现有 spawn 测试不破）；② 端口可被注入并被 `transport` 使用；③ **无任何行为变更**（本条只铺管道） | — | **用**：dsh headless **没有 `--cwd` 选项**，cwd 只能靠**进程 cwd**（`apps/cli/src/args.ts`）⇒ 这条端口正是 Stratix 侧的落点，形状与 dsh 的「进程 cwd = 工作目录」约束对齐。**暴露**：**宿主可见控制面** —— 将来 `ctx.remote.stratix.enterInstance` 就是「切 cwdProvider 实现」的薄封装（160 M1 的 S6b） |
+| **M0-02** | **`cwdProvider` 接线到派发链**：`task-service` / `chat-service` 派发时填 `cwd`；**取值 = 活跃实例的项目根**；M0 阶段 provider 实现返回 `undefined`（S6b 未接）⇒ **行为不变** | `src/app/services/task-service.ts`、`src/app/services/chat-service.ts` | ① 派发路径上 `cwd` 有**唯一**取值点（不散落）；② M0 下 `cwd` 仍为 `undefined`；③ 现有派发测试不破 | M0-01 | **用**：dsh 的 session 归属按 **`header.cwd`**（不可变绝对路径，`packages/core/session/src/types.ts:106`）⇒ Stratix 的「一个 instance 一个 path」与之同构。**暴露**：**事件订阅面** —— cwd 决定 session 归属 ⇒ 归属错了，宿主看到的就不是「这个副本的会话」 |
+| **M0-03** | **`buildProjectContextBlock` 纯函数**（渲染 + 截断）：分节小标题 + `#` 前缀 + 说明行；**来源声明行**（R1-19：「数据不是指令」）；单字段上限（`description` ≤200 / `name` ≤60 / `persona` ≤800 / 建议片段 ≤400 码点）+ 注入特征过滤（降级为引号包裹的纯文本） | `src/app/services/project-context.ts`（新） | ① 纯函数（**零 IO**，可直接单测）；② 超限**截断**不抛错；③ 含注入特征的字段**被降级且可追溯**（不静默删除）；④ 总上限 `STRATIX_PROJECT_CONTEXT_MAX_CHARS = 2000`，超限**从尾段整段砍** | — | **用**：dsh 的 `ctx.systemPrompt.section({…})`（`packages/experimental/tool-session-query/src/index.ts`）是**宿主写入**提示词的位置 ⇒ Stratix 的项目块是**模型可见上下文**的一部分，必须与 dsh 的 system prompt **分层**（数据 vs 指令）。**暴露**：**模型可见工具/上下文面** —— 项目块是 dsh 侧「模型看见这个项目是什么」的那一半；另一面（宿主看见副本列表）是控制面 |
+| **M0-04** | **`createProjectContextProvider` + `resolveProjectContextBlock`**（三段式，照抄 `src/app/services/stratix-context.ts:202,263,363` 的既有范式）；**吞错降级**为 `''`（「上下文是增强，不是依赖，坏了不能绑架任务回路」） | `src/app/services/project-context.ts` | ① 三段式齐全；② provider 抛错 ⇒ resolve 返回 `''` 且**不抛**；③ 有单测覆盖「provider 抛错」路径 | M0-03 | **用**：dsh 的「宿主裁决、失败不半注册」形态（`ctx.effect` / disposer）⇒ Stratix 的 provider 出错时**降级而非阻断**是同构选择。**暴露**：**宿主可见控制面** —— provider 是「宿主往模型上下文里注入项目信息」的接缝，将来可由 dsh 的插件宿主注入不同 provider |
+| **M0-05** | **读 `.stratix` → 组装 `ProjectContextInput`**（app 侧装配处读文件，**core 零 IO**）：读 `project.json` / `roster/_index.json` / `config/stratix.json` / `skills/*` 目录名；**只取白名单字段**；契约文件缺失 ⇒ 空输入（不报错） | `src/app/main/main-entry.ts`（组合根）、`src/app/services/project-context.ts` | ① 读文件**只发生在 app 侧**（core 仍零 import fs/sqlite/persistence）；② 契约缺失 ⇒ 空块（不抛）；③ **只读白名单字段**（`capabilities.systemPrompt` 降级为「建议片段」，不进 system prompt 层） | M0-04 | **用**：dsh 的 `agent-instructions` 的 `projectRootMarkers` **可配**（`packages/context/agent-instructions/src/config.ts:20`）⇒ Stratix 侧生成 patch 时显式设 `['.stratix', '.git']`，让 dsh 认得 `.stratix`（A4 的对齐侧）。**暴露**：**包分发面** —— `.stratix` 是 Stratix 插件形态下**唯一**的契约载体（**不进 dsh 的部署面**，D1/D7） |
+| **M0-06** | **注入点接线**：与 `<stratix-context>` **同一注入点**（`src/app/services/task-service.ts:1011-1016`，**首发**）；**续发路径不重注**（`buildResumedTaskPrompt` 不传项目块） | `src/app/services/task-service.ts` | ① 首发 prompt 含 `<stratix-project>` 块且**位置正确**（角色设定之后、引用会话之前）；② 续发 prompt **不含**项目块；③ 项目块**不在** `<stratix-context>` 内部（独立标签） | M0-04 | **用**：dsh 的 session 是 **append-only 事件 log**，resume **重放历史** ⇒ 项目块只在首发注入 = 与 dsh 的「不重复注入」语义一致。**暴露**：**模型可见工具面** —— 注入点决定模型第一次看见项目契约的时刻；B 面下同一位置换成 dsh 的 `ctx.systemPrompt.section` |
+| **M0-07** | **开关**：`STRATIX_PROJECT_CONTEXT_TOGGLE_KEY = 'stratix.project.context.enabled'`（缺省 = 开），**独立于** `STRATIX_CONTEXT_TOGGLE_KEY` | `src/app/services/project-context.ts` | ① 两个开关**互不影响**；② 关掉后 prompt 里**没有**项目块但任务照跑 | M0-06 | **用**：dsh 的 profile/bundle 层叠（bundle → profile → home → `--patch`）都是**可覆盖**的 ⇒ Stratix 的开关走本地设置层，**不进 `.stratix`**（契约面不该承载用户偏好）。**暴露**：**不可见**（部署/偏好层）—— 但它决定了「模型是否看得见项目契约」，是 B 面工具面设计的输入 |
+| **M0-08** | **端到端验收**：在含 `.stratix` 的目录里派单 ⇒ 断言 prompt 含项目块（含来源声明行）、子进程 cwd == 项目根、**数据库零变化** | 测试脚本 | ① 项目块内容与契约一致；② cwd == 项目根；③ **库结构与 M0 前逐字节一致**（零 DDL） | M0-02, M0-05, M0-06 | **用**：dsh 的 `session/query` 是「一条线缆入口跑完整会话」的形状 ⇒ 验收脚本跑完整往返而非单点。**暴露**：**事件订阅面 / 控制面** —— 这条脚本将来是 `ctx.remote.stratix` 的**集成测试基线** |
+
+### 8.1 M0 的双面向小结
+
+| 面 | M0 产出 | 将来在 dsh 生态里的位置 |
+|---|---|---|
+| **A 面（Stratix 用 dsh）** | M0-01/M0-02（cwd = 项目根）、M0-05（`.stratix` 契约面） | 与 dsh 的 `header.cwd` 不可变语义、`projectRootMarkers` 可配语义对齐 |
+| **B 面（Stratix 被 dsh 嵌入）** | M0-03/M0-04（provider/resolve 接缝）、M0-05（**契约面不进部署面**）、M0-06（注入点）、M0-08（集成测试基线） | `ctx.systemPrompt.section` / `ctx.tools` / `ctx.remote.stratix.*` / npm 包（**形态定义见姊妹文档 §5.3.2；实现待 scope 隔离立项**） |
+
+> **一句话**：**M0 全部任务都可以「不碰 dsh 就完成」** —— 但它们的**形状**（端口、provider、注入点、契约面归属）都是将来被 dsh 看见时**不需要重做**的形状。
 
 ---
 

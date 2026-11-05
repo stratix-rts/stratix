@@ -1,6 +1,8 @@
 # DESIGN-project-map —— 项目 = 副本：Project 实体 / 多地图实例 / agent 干净上下文进入（设计 B）
 
-> 状态：**r1 修订中（尚未冻结）**
+> 状态：**已冻结（r1 修订后）· 2026-11-05**
+> 冻结说明：本设计经 task_163 两份评审（`docs/review/design-review-r1.md` 42 条 + `docs/review/design-review-r1-dsh.md` A/B 双面 15 条）逐条裁决后冻结。**每条意见的下落（修订 / 反驳 / 推迟）见 §附录 C 与 [DESIGN-workspace.md §附录 C](DESIGN-workspace.md#附录-c评审意见逐条下落表修订--反驳--推迟)**。**冻结后本文只允许「按实现事实回改」，不允许再改设计方向。**
+> **实现期任务拆分建议**：§7（M1，16 条 ≤20min 粒度，每条带验收要点 + **dsh 双面向考虑项**）；M0 的拆分见姊妹文档 §8。
 > 任务：task_160（r1 修订：task_164）。依赖：task_157（`docs/research/dsh-architecture.md`）、task_158（`docs/research/dsh-integration-map.md`）、**task_159（`docs/DESIGN-workspace.md`）**
 > dsh 参照版本：只读仓库 `/Users/kingj/code/deepseek-harness`，**HEAD `fcc0ad462172522aaf5c93a7b2e01f6b9f0b0159`**（`@deepseek-ai/dsh-root@0.2.2-rc.1`）。开工前置已执行 `git pull`，结果「已经是最新的」—— HEAD 与 task_158 报告所注 HEAD **完全一致**，task_157 报告所注 HEAD（`ce7073d5`）更早、差异面见 §3.6
 > 原则出处：`docs/SERVICE-SPLIT-PLAN.md` 七铁律（尤其铁律 1：WorldState 真相源在 Stratix core；铁律 3：总线铁律）；`docs/PERFORMANCE_GUIDELINES.md`
@@ -1464,6 +1466,48 @@ transport 跑完/失败
 > **task_159 冻结「项目是什么、怎么被找到」（`.stratix` 目录契约 + `workspaces.json` 注册表）；task_160 冻结「项目长什么样、agent 怎么进去干活」（Project 实体 + 一图一副本的场景切换 + 干净上下文进入）。**
 > 二者的公共锚点是 **`project.json.id`（逻辑）+ `instanceId`（物理）** 这一对 id；本设计**不新增第三种 id**，也**不修改 task_159 的目录契约**。
 > **开放问题的唯一主表是 task_159 §5.3**（R1-29）；本文 §6.2 只引用编号 + 列出本设计特有的 5 条。**冻结顺序：159 先冻 → 160 引用** ⇒ 两文不存在「各自冻结、条件性依赖」的结构。
+
+---
+
+## 7. M1 实现期任务拆分建议（≤20min worker 粒度）
+
+<!-- r1: 新增（task_164 requirement 5/6）—— 每条任务**必须自带 dsh 双面向考虑项**：
+     ① 「用 dsh 生态的哪块」= 本任务在实现 Stratix 时**消费** dsh 的哪一块（工具/机制）；
+     ② 「暴露给 dsh 的哪个面」= 本任务产出的东西**作为 dsh 插件**时，从 dsh 的哪一面被看见（模型可见工具 / 宿主可见控制面 / 事件订阅 / 包分发）。
+     写不出这两项的任务 ⇒ **重新定义**（本清单已逐条核对，无「写不出」的任务）。 -->
+
+> **粒度口径**：每条 = 一个 worker ≤20 分钟能独立完成并**独立验收**的最小单元。依赖关系用「依赖」列标出；**同一条内的多个验收点必须一起通过**才算完成。
+> **分期**：本清单只覆盖 **M1（切图）**。M0 的拆分见 [DESIGN-workspace.md §8](DESIGN-workspace.md#8-m0-实现期任务拆分建议接线)；M2/M3 随其立项另出。
+
+### 7.1 M1 任务清单
+
+| # | 任务 | 改动文件 | 验收要点 | 依赖 | **dsh 双面向：用 dsh 哪块 / 暴露给 dsh 哪个面** |
+|---|---|---|---|---|---|
+| **M1-01** | **core 契约增补**：加 `ProjectId` / `ProjectInstanceId` / `ProjectStatus` / `ProjectView` / `ProjectInstanceView` / `DEFAULT_INSTANCE_ID = 'wsp_sandbox'`；`WorldState` 加 `projects?` / `projectInstances?` / `activeInstanceId?`；五个实体加 `instanceId?`；上限常量 `MAX_PROJECTS` / `MAX_PROJECT_INSTANCES` | `src/core/types.ts` | ① `tsc --noEmit` 通过；② 全部新增字段为**可选**（既有 `WorldState` 构造点零改动 ⇒ 既有测试不破）；③ `null` 语义在类型注释里写死 = **未归属** | — | **用**：dsh 的 `SessionHeader.cwd` 是**不可变绝对路径**（`packages/core/session/src/types.ts:106`）⇒ Stratix 的 instance 只有一个 `path`，语义上与之对齐（一个 instance = 一个 dsh session 的工作目录）。**暴露**：本层是**纯类型**，对 dsh **不可见**；它的形状决定后面 `ctx.remote.stratix.*` 的入参形状（`instanceId` 是 host 可传的参数） |
+| **M1-02** | **core 端口类型定义**：`InstanceLoaderPort`（`inspect` / `load` / `unload`）、`ProjectArchivePort`（`archive`）、`InstanceInspection`、`ArchiveResult`；写明**失败语义 = 裁决拒绝**（不抛异常到 core 之外） | `src/core/types.ts` | ① 端口形状与 §1.2.5 一致；② 三个方法的返回类型都**能表达失败**（不用异常）；③ 类型注释写明「实现由 app 层注入，core 不碰 IO」 | M1-01 | **用**：dsh 的 `ctx.tools` / `ctx.remote` 都是**依赖注入**风格（`ctx.<serviceName>`）⇒ 端口 = Stratix 侧的 DI 接缝，与 dsh 的插件注册模型同构。**暴露**：这层是**宿主可见控制面**的内部骨架 —— 将来 `ctx.remote.stratix.enterInstance` 的实现就是 `InstanceLoaderPort.load` 的薄封装 |
+| **M1-03** | **core runtime 接地 `project.enter`**：纯裁决（`inspect` → 存在？未归档？路径在？→ `load` → 写 `activeInstanceId` → 广播 `project.changed`）；失败 ⇒ **拒绝 + 广播 `project.enter.failed`**，**`activeInstanceId` 保持不变** | `src/core/runtime.ts` | ① core **零 IO**（`src/core/` 全目录 `fs`/`sqlite`/`persistence` 的实际 import 数仍为 **0** —— 迁移测试断言）；② 端口返回失败时 `activeInstanceId` **不变**且有 `project.enter.failed`；③ **单次切换只产生一条 `project.changed`**（不重复发） | M1-01, M1-02 | **用**：dsh 的 `ctx.tools.register(defineTool(...))` 也是「注册即 effect、失败不半注册」⇒ 与「失败 ⇒ 拒绝 ⇒ 状态不变」同口径。**暴露**：**事件订阅面** —— `project.changed` 就是将来 `@Remote({mode:'stream'})` follow 流的**载荷原型**（baseline + increments），字段形状（`instanceId: string \| null`）在 M1 就定死，避免 M3 改协议 |
+| **M1-04** | **core runtime 接地 `project.exit`**：先 `archive`（归档未终结 mission）→ 再 `unload` → 再 `activeInstanceId = null` + 广播 `project.changed`；**归档失败 ⇒ 拒绝退出**（用户留在副本内） | `src/core/runtime.ts` | ① 归档失败时 `activeInstanceId` **不变**且**无** `project.changed`；② 成功后 `project.changed.instanceId === null`；③ 顺序可断言（archive 在 unload 之前） | M1-02, M1-03 | **用**：dsh 的 session 是 **append-only 事件 log**（`packages/core/session/src/session-format`）⇒ 「归档后再卸载」正是「先落盘再丢弃」的同构语义。**暴露**：**事件订阅面** —— `project.changed`（`null` = 回大厅）是宿主判断「副本已离开」的唯一信号 |
+| **M1-05** | **app 侧 `InstanceLoaderPort` 实现**：`inspect` 读注册表/内存态返回 `exists`/`archived`/`pathOk`（**默认沙盒恒 `pathOk = true`**）；`load` 把该 instance 的 missions / tasks / sessions / characters / units **整份载入 store**（全量替换，不增量）；`unload` 清空 | `src/app/services/persistence/*`、`src/core/store.ts` | ① 载入后 `store.getState()` **只有**该 instance 的实体；② 载入**不做增量合并**（旧实例的实体一个不剩）；③ **默认沙盒**（`DEFAULT_INSTANCE_ID`）在 `inspect` 里返回 `pathOk: true`（即使目录已删） | M1-01 | **用**：dsh 的**全量 snapshot 覆盖**语义（重连 = 全量覆盖，不做增量）—— Stratix 切副本与 dsh 重连**同款**。**暴露**：**宿主可见控制面** —— `load` 的「整份载入 + 全量替换」将来就是 `ctx.remote.stratix.enterInstance` 的服务端实现 |
+| **M1-06** | **app 侧 `ProjectArchivePort` 实现**：把该 instance 的未终结 mission 归档到 `.stratix/history/missions-YYYYMM.jsonl`（**append-only**）；失败 ⇒ 抛错由 core 捕获为拒绝 | `src/app/services/persistence/*` | ① 归档文件**只追加不重写**（同一会话两次退出 ⇒ 两行，不覆盖）；② 归档失败时**不产生半份文件**；③ 归档内容里的 `missionId` 与契约一致 | M1-02 | **用**：dsh 的 session log 同样 **append-only + 冻结**（`ignorable` 标记语义见 `packages/core/session/src/types.ts:82-83`）⇒ Stratix 借形状。**暴露**：**宿主可见控制面** —— 归档是「离开副本」的前置动作，将来由 `ctx.remote.stratix.exitInstance` 触发 |
+| **M1-07** | **默认沙盒物化**：注册表给默认沙盒一条记录（`instanceId = DEFAULT_INSTANCE_ID`，`path` = 进程 cwd 快照）；`WorldState.projectInstances` 里**始终**含它；`sandbox: true` 标记 | `src/app/services/persistence/*`、组合根 | ① 大厅**能看到**默认沙盒卡；② 旧数据（旧 `instance_id = NULL` 的行）**落在**默认沙盒名下（`COALESCE` 命中）；③ `project.enter(DEFAULT_INSTANCE_ID)` **能进**（不被「路径在？」判否） | M1-05 | **用**：dsh 的 workspace 挂载校验是 `realpath(header.cwd) === workspace.path`（`packages/workspace/workspace/src/entity.ts:110-141`）⇒ 默认沙盒必须有**确定 path** 才能挂载。**暴露**：**事件订阅面 / 控制面** —— 默认沙盒是宿主唯一能无条件进入的 instance，是插件的「默认工作区」 |
+| **M1-08** | **`MapBoard.reset()` 新增方法**：清 `regionSlots` / `nextSlot` / `lastStates` / `clearedRegions`（现全是 `private readonly`，**无任何 reset/destroy**） | `src/world/objects/task-building.ts` | ① `reset()` 后 `nextSlot` 归零、`regionSlots` 清空；② 有单测：reset → 再 `slotFor` 拿到槽 0 | — | **用**：dsh 的 `ctx.effect` / disposer 语义（注册即 effect，卸载自动逆序回收）⇒ Stratix 的表现态板应当有**对称的析构**，而不是靠「场景被重建」侥幸回收。**暴露**：**不可见**（world 内部表现态）—— 但它是「切副本不串数据」的前提，**插件化后每个 scope 各自持有自己的 board** |
+| **M1-09** | **`BattlefieldScene.init()` 显式清理四个板**：`init()` 开头对 `units`（调已有的 `destroy()`，它会清 `objects`/`restoredPositions`/`spawnCursor`）、`taskFx`、`replayBoard`、`mapBoard`（调 M1-08 的 `reset()`）各清一次 | `src/world/scenes/BattlefieldScene.ts` | ① **单测**：进 A 副本造出单位与区域 → 切 B 副本 ⇒ B 副本 `units.objects.size === 0`、`mapBoard.nextSlot === 0`；② `speechBoard` **不需清理**（它在 `create()` 里 new，`scene.start` 会重建）；③ `UnitRegistry.destroy()` 现在**确实被调用**了（此前全仓无调用方） | M1-08 | **用**：dsh 的 `session` 是**每次 resume 重建投影**的形状 ⇒ Stratix 的「切副本 = 重新投影表现态」与之一致。**暴露**：**不可见**（表现层）；但**这条是 B 面 scope 级隔离的先决条件** —— 若不显式清理，将来 scope A/B 共用场景实例时必然串 |
+| **M1-10** | **bridge 按 `instanceId` 过滤**：`WorldScenePort` 签名**零改动**（`syncUnits` / `syncTasks?`），由桥接层内部持有当前 `instanceId` 并在转发前过滤 | `src/world/bridge/bus-adapter.ts` | ① 转发给场景的 `units` / `missions` / `tasks` **全部**属于当前 instance；② `WorldScenePort` 接口签名**未变**（HUD / world 测试夹具不破）；③ 切副本后下一次同步不再带旧 instance 的实体 | M1-01 | **用**：dsh 的 `ScopedLayers`（`packages/core/tools/src/index.ts:98-108`）—— **注册表本身是 scope 感知的**，过滤在桥接层做 = Stratix 侧的「scope 感知」。**暴露**：**事件订阅面** —— 宿主看到的 snapshot 必须已经是「当前 scope 的」，否则宿主会拿到别人的副本数据 |
+| **M1-11** | **站位种子键分区 + 老存档一次性迁移**：新键 `stratix:unit-position-seed:<instanceId>`；读新键；**读不到时执行一次性迁移**（旧全局键 → 新键）并**此后不再回退旧键** | `src/world/objects/unit-registry.ts`、`src/app/main/main-entry.ts` | ① 迁移后**旧键被删除**（不残留）；② A 副本的位置**不出现**在 B 副本；③ ⚠️ **不许**写「读不到新键就回落旧键」的逻辑（那会让 A 的位置仍漏进 B，只是不报错） | M1-01 | **用**：dsh 的 **workspace 唯一性按 realpath**、session 归属按 `header.cwd` ⇒ 同理，站位是**按 instance 归属**的事实。**暴露**：**不可见**；但它是「**所有宿主进程级全局键在嵌入形态下都要按 scope 分区**」这条通则的第一个实例（B2） |
+| **M1-12** | **`LobbyScene` 新建 + 组合根场景表**：场景表变成 `[BattlefieldScene, FxAssetScene, LobbyScene]`；**`LobbyScene ⇄ BattlefieldScene` 互斥，`FxAssetScene` 常驻不受影响** | `src/world/scenes/LobbyScene.ts`（新）、`src/app/main/main-entry.ts` | ① `scene.stop('battlefield')` **不影响** `FxAssetScene` 的资源管线（用它的特效管线做一次冒烟）；② `LobbyScene` 只画背景/氛围，**不持任何业务状态**（铁律 1） | M1-11 | **用**：dsh 的场景/Loader 语义（`packages/boot/plugin-manager` 的「installed Host code executes **in-process outside the workspace sandbox**」）⇒ 常驻场景 = 常驻 effect。**暴露**：**宿主可见控制面** —— 大厅是宿主「列出并选择一个副本」的 UI 落点，将来 `ctx.remote.stratix.listInstances` 的可视化就是它 |
+| **M1-13** | **仪式两拍 + 可跳过**：黑场 + 副本名牌（名字/分支/路径尾段/在办任务数）→ 淡出 + 相机回 `overviewPose()`；任意输入 / ESC 立即淡出 | `src/world/scenes/BattlefieldScene.ts` | ① 总时长 ≤ 700 ms；② 任意输入即跳到末态；③ **无**「地块点亮」「单位入场」两拍（已推迟） | M1-12 | **用**：dsh 的 session 启动也是「先建上下文、再干活」的形状 —— 牌子那一拍是 Stratix 的「你现在站在哪个副本」的可视化。**暴露**：**事件订阅面** —— 牌子上那行「在办 N 条任务」就是 `project.changed` 之后的状态投影 |
+| **M1-14** | **HUD 大厅卡片网格 + 默认沙盒卡 + 空态出口**：卡片由 **HUD** 画（数据在 `WorldState`）；`projectInstances` 缺失/为空 ⇒ 渲染**明确空态**（「没有可用副本 · 添加副本」按钮**可点**），**不是白卡** | `src/hud/screens/lobby-panel.ts`（新）或 `main-screen.ts` | ① 卡片含：名字 / 路径尾段 / 分支 / **实例级**状态（active/idle/missing）/ 最近进入时间 / 在办任务数；② **默认沙盒卡存在**且标「默认沙盒」；③ 空态下**派单入口禁用**但**有可点的出口**（不能把用户锁死在空态） | M1-07, M1-12 | **用**：dsh 的 workspace 分组（`packages/workspace/workspace/README.md:8-9`「invisible to models」）⇒ Stratix 的大厅同样**对模型不可见**。**暴露**：**宿主可见控制面** —— 大厅卡片 = `ctx.remote.stratix.listInstances` 的可视化，**两套注册表不合并**（B6） |
+| **M1-15** | **world-sync 不动 + 回归验证**：确认 M1 的 world-sync 语义**完全不变**（单实例下全量广播正确）；**不升协议版本**、**不加 instanceId 字段** | `src/stratix-gateway/api/websocket/world-sync/*` | ① `WORLD_SYNC_PROTOCOL_VERSION` **仍为 2**；② 远端客户端连上后拿到的就是当前活跃 instance 的世界态；③ `remote-store` 收到的快照**缺** `projectInstances` 时**不报错**、**不退化为默认沙盒卡** | M1-05 | **用**：dsh 的 `SessionHeader` 严格等值校验（`packages/core/session/src/index.ts:103-105`）⇒ **能不改协议就不改**（老客户端零改动）。**暴露**：**事件订阅面** —— world-sync 是 A 面（独立进程）下的订阅通道；B 面对应 `@Remote({mode:'stream'})` —— **M1 不改 world-sync 正是为了让 B 面能另起一条原生流** |
+| **M1-16** | **端到端验收脚本**：进默认沙盒 → 造单位/任务 → 切到第二个副本 → 断言**无残留**（单位表空、地图槽归零、种子键分家）→ 切回 → 断言数据**还在** | 测试脚本 | ① 「切副本不串数据」三条断言全过；② 切回后旧数据完整（**不是**被清空）；③ **零 DDL 改动**（M1 不加 `instance_id` 列 ⇒ 库结构与 M1 前逐字节一致） | M1-01…M1-15 | **用**：dsh 的 `session/query` 是「一条线缆入口跑完整会话」的形状 ⇒ 验收脚本同理跑完整往返。**暴露**：**宿主可见控制面** —— 这条脚本将来就是 `ctx.remote.stratix` 的**集成测试基线**（插件化后必须在**同一 scope** 内跑通） |
+
+### 7.2 M1 的双面向小结（为什么这 16 条不是「随便拆的」）
+
+| 面 | M1 产出 | 将来在 dsh 生态里的位置 |
+|---|---|---|
+| **A 面（Stratix 用 dsh）** | M1-11（种子键分区）、M1-13（仪式） | 与 dsh 的 session / workspace 语义对齐（cwd = 项目根、归属按目录） |
+| **B 面（Stratix 被 dsh 嵌入）** | M1-02（端口 = DI 接缝）、M1-03/M1-04（事件载荷原型）、M1-08/M1-09（显式清理 = scope 隔离的先决条件）、M1-10（scope 感知转发）、M1-12/M1-14（控制面 UI 落点）、M1-16（集成测试基线） | `ctx.remote.stratix.*` / `ctx.tools` / `@Remote({mode:'stream'})` / npm 包（**形态定义见 §5.3.2；实现待 scope 隔离立项**） |
+
+> **一句话**：**M1 的每一条都在为 B 面铺路，但 M1 本身不需要 dsh 存在** —— 这是「双面向」的正确含义（不是「每条任务都去调 dsh」，而是「每条任务的形状都不阻碍将来被 dsh 看见」）。
 
 ---
 
