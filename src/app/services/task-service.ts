@@ -44,6 +44,19 @@
  * M0 阶段供给口缺省恒 undefined ⇒ cwd 仍为 undefined ⇒ 子进程继承宿主进程 cwd，
  *   **行为与今天逐字节一致**（S6b 接入活跃实例后才给值）。
  *
+ * ============ 项目契约块注入（@since v3.3，task_170 / §8 M0-06）============
+ * 派单 prompt 里的 `<stratix-project>` 块（`.stratix` 项目契约快照）**与 `<stratix-context>`
+ *   战场现状块同一注入点**（都是 runTask 里拼装首发 prompt 时取一次快照），
+ *   但**独立标签**（不嵌进战场现状块内部 —— 两块语义不同：一个是项目契约，一个是战场现状）。
+ *   位置：**角色设定之后、引用会话之前**（首发一次；引用会话是「接着的那段历史」，
+ *   项目契约是「这是哪个项目」—— 契约在前，历史在后）。
+ * 续发**不重注**：buildResumedTaskPrompt 不传项目块 ⇒ 续段 prompt 里没有 `<stratix-project>`。
+ *   why 与 dsh 同构：dsh 的 session 是 **append-only 事件 log**，resume **重放历史** ⇒
+ *   首发那一条里的项目块仍在上下文里，再注一遍就是重复注入（prompt 膨胀 + 契约版本歧义）。
+ * 取件口：deps.provideProjectContext（ProjectContextSource 端口，M0-04 的 provider 三段式）——
+ *   缺省 = 不注入；provider 抛错 ⇒ resolveProjectContextBlock 吞错降级为无块
+ *   （「上下文是增强，不是依赖，坏了不能绑架任务回路」）。
+ *
  * ============ 任务审批门（@since v3.25，task_049）============
  * plan-first 人设（personaPlanFirst 判定，两路：手写「先出计划」/ plan-first 预设）的任务：
  *   ① 派发拼装时在 prompt 尾部追加「先输出执行计划并以单独一行 PLAN_WAIT 结束」指令；
@@ -128,6 +141,7 @@
  *   渲染进程（transport 经 IPC 桥）与 service 进程（transport 直接 spawn 子进程）共用同一份
  *   FIFO / 并发 1 / 守门 / 相位回报逻辑，两边只是 transport 工厂的来源不同；
  *   v3.43（task_093 / v3.2a S3）追加会话域接线（task_run / mission_run：LITE 建 + 收尾两事件）。
+ *   v3.3（task_170 / §8 M0-06）追加项目契约块注入点（`<stratix-project>`，首发注 / 续发不注）。
  */
 
 import { emitWorldEvent, onWorldEvent } from '../../core/bus';
@@ -152,6 +166,10 @@ import {
   type DispatchCwdProvider,
 } from './dispatch-cwd';
 import { defaultExpWeight } from './exp-config';
+import {
+  resolveProjectContextBlock,
+  type ProjectContextSource,
+} from './project-context';
 import {
   resolveSessionReferences,
   type SessionReferenceService,
@@ -262,6 +280,24 @@ export function guardTaskCharacter(
 }
 
 /**
+ * 任务指令拼装的选项（@since v3.3，task_170 把项目契约块并入 options）。
+ */
+export interface TaskPromptOptions {
+  /**
+   * 向 worker 要一个任务标题（@since v3.11，task_155）。
+   * 只有「标题待生成」的任务才要（发起时标题是占位「生成中…」，由 Agent 首轮回报生成）。
+   * 指令插在【任务指令】之后、plan-first 尾部指令之前（尾部指令恒在最后）。
+   */
+  readonly askTitle?: boolean;
+  /**
+   * 项目契约块（@since v3.3，task_170 / §8 M0-06）：`<stratix-project>` 独立标签的块文本。
+   * 位置：**角色设定之后、引用会话之前**（首发注入一次；续发路径不传 ⇒ 不重注）。
+   * 缺省 = 不注入（行为与 M0 之前一致）。
+   */
+  readonly projectBlock?: string;
+}
+
+/**
  * 任务指令拼装：角色设定引导语 + persona + 任务指令。
  * 任务会话是**一次性**的（每轮独立会话，无续发），所以每次都内嵌 persona ——
  * 与 chat-service.buildFirstPrompt 的差别只有措辞（任务语境 vs 对话语境），拼装式样刻意一致。
@@ -275,24 +311,37 @@ export function guardTaskCharacter(
  * （【引用会话 <title>(<id>) 摘要/时间线】…）。插在 persona 之后、战场现状块之前 ——
  * 引用是"这次任务要接着的那段历史"，属于**上下文**（不是指令），位置与战场现状块同层。
  * @since v3.11（task_155）可选第五参 options.askTitle：**向 worker 要一个任务标题**。
- *   只有「标题待生成」的任务才要（发起时标题是占位「生成中…」，由 Agent 首轮回报生成）。
- *   指令插在【任务指令】之后、plan-first 尾部指令之前（尾部指令恒在最后）。
+ * @since v3.3（task_170 / §8 M0-06）options.projectBlock：`<stratix-project>` 项目契约块。
+ *   插在 **角色设定之后、引用会话之前**（独立标签，**不**嵌进 `<stratix-context>` 内部）。
+ *   续发路径（buildResumedTaskPrompt）**不传**这个块 ⇒ 续段 prompt 不重注项目契约。
  */
 export function buildTaskPrompt(
   character: CharacterView,
   taskPrompt: string,
   contextBlock?: string,
   referenceBlock?: string,
-  options?: { readonly askTitle?: boolean }
+  options?: TaskPromptOptions
 ): string {
   const persona = character.persona.trim();
   const hasContext = contextBlock !== undefined && contextBlock.length > 0;
   const hasReference = referenceBlock !== undefined && referenceBlock.length > 0;
-  if (persona.length === 0 && !hasContext && !hasReference && !options?.askTitle) return taskPrompt;
+  const projectBlock = options?.projectBlock;
+  const hasProject = projectBlock !== undefined && projectBlock.length > 0;
+  if (
+    persona.length === 0 &&
+    !hasContext &&
+    !hasReference &&
+    !hasProject &&
+    !options?.askTitle
+  ) {
+    return taskPrompt;
+  }
   const parts: string[] = [
     `你将扮演「${character.name}」这个角色执行任务，请全程保持角色设定一致。`,
   ];
   if (persona.length > 0) parts.push(`【角色设定】\n${persona}`);
+  // 项目契约块（task_170）：角色设定之后、引用会话之前（首发注入一次）。
+  if (hasProject) parts.push(projectBlock as string);
   if (hasReference) parts.push(referenceBlock as string);
   if (hasContext) parts.push(contextBlock as string);
   parts.push(`【任务指令】\n${taskPrompt}`);
@@ -383,6 +432,9 @@ export function extractPlanDraft(output: string): string | null {
  *（调用方只在 sessionId 丢失的重讲路径上传入）。
  * @since v3.49（task_107）可选第五参 referenceBlock：重建首发语义时同样附 @会话引用块
  *（引用是任务指令的一部分 —— 丢了它，重讲出来的任务就不是用户交代的那件事了）。
+ * @since v3.3（task_170 / §8 M0-06）：**不传项目契约块** —— 续发不重注
+ *（dsh 的 session 是 append-only 事件 log，resume 重放历史 ⇒ 首发那一条里的
+ *   `<stratix-project>` 仍在上下文里；再注一遍就是重复注入）。
  */
 export function buildResumedTaskPrompt(
   character: CharacterView,
@@ -529,6 +581,18 @@ export interface TaskServiceDeps {
    * 每次执行取一次快照（resolveStratixContextBlock；异常吞掉不绑架任务回路）。
    */
   readonly provideContext?: StratixContextSource;
+  /**
+   * 项目契约上下文供给口（@since v3.3，task_170 / DESIGN-workspace §8 M0-06；缺省不注入）。
+   *
+   * 形状 = `ProjectContextSource`（M0-04 的 provider 三段式）：组合根用
+   * `createProjectContextProvider({ load })` 组装（读 `.stratix` 的读数口在 app 侧，M0-05）。
+   * 本服务**零 IO**：只调一次 provider 拿纯数据，块文本由 resolveProjectContextBlock 渲染。
+   * 注入语义（与战场现状块同一注入点、**独立标签**）：
+   *   - **首发**（runTask 拼装 prompt 时）注一次 ⇒ prompt 含 `<stratix-project>`；
+   *   - **续发**（buildResumedTaskPrompt）不注 ⇒ 续段 prompt 不含项目块（不重注）；
+   *   - provider 抛错 ⇒ 吞错降级为无块（「上下文是增强，不是依赖」，不绑架任务回路）。
+   */
+  readonly provideProjectContext?: ProjectContextSource;
   /** 单轮执行超时；缺省 DEFAULT_TASK_TIMEOUT_MS（10min，主进程上限同档）。 */
   readonly timeoutMs?: number;
   /** 日志口；缺省静默。 */
@@ -1032,12 +1096,18 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
     // persona 每次内嵌（常规任务会话隔离 → 无续发，每条任务都是首发）；plan-first 追加计划指令
     //（见文件头）。task_053：首发语义 → 同样附战场现状块（每任务一次；快照取件异常吞掉不绑架任务）。
     // task_107：@会话引用块插在 persona 之后、战场现状块之前（上下文头部）。
+    // task_170（M0-06）：项目契约块与战场现状块**同一注入点**（这里取一次快照）——
+    //   独立标签（不嵌进战场现状块内）、位置在角色设定之后、引用会话之前；**只在首发注入**
+    //   （续发路径 buildResumedTaskPrompt 不传 ⇒ 续段 prompt 不含项目块）。
     const prompt = buildTaskPrompt(
       character,
       task.prompt,
       resolveStratixContextBlock(deps.provideContext, character.id, logger) || undefined,
       references.block.length > 0 ? references.block : undefined,
-      { askTitle: titlePending }
+      {
+        askTitle: titlePending,
+        projectBlock: resolveProjectContextBlock(deps.provideProjectContext, logger) || undefined,
+      }
     );
     let output = '';
     // task_049：计划轮要记 session id（批准后同 session 续发）；常规任务恒 null。
@@ -1158,6 +1228,9 @@ export function createTaskService(deps: TaskServiceDeps): TaskService {
             resolveStratixContextBlock(deps.provideContext, character.id, logger) || undefined,
             // 同样附 @会话引用块（task_107）：重讲也得是用户交代的那件事。
             entry.referenceBlock.length > 0 ? entry.referenceBlock : undefined
+            // ⚠️ 不传项目契约块（task_170 / §8 M0-06）：续发**不重注**
+            //   （dsh 的 session 是 append-only 事件 log，resume 重放历史 ⇒ 首发那条里的
+            //     <stratix-project> 仍在上下文里；再注一遍就是重复注入）。
           );
     let output = '';
     try {

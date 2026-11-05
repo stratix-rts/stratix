@@ -148,6 +148,13 @@ interface HarnessOptions {
   readonly onTaskChunk?: (characterId: string, chunk: string) => void;
   /** context-source 注入件（task_053）；缺省不注入。 */
   readonly provideContext?: (characterId: string) => import('../services/stratix-context').StratixContextInput | null;
+  /**
+   * 项目契约供给口（@since v3.3，task_170 / §8 M0-06）；缺省不注入。
+   * 形状 = `ProjectContextSource`（provider 端口）：拿快照（纯数据），块文本由服务侧渲染。
+   */
+  readonly provideProjectContext?: () => import('../services/project-context').ProjectContextInput | null;
+  /** @会话引用解析服务（task_107）；缺省 = 会话域不可用（任务指令里的 @session_ 解析不出来）。 */
+  readonly references?: import('../services/session-reference').SessionReferenceService;
   /** transport 异常上报口（@since v3.30，task_054）。 */
   readonly onTransportError?: (kind: AgentKind, code: import('../services/cli-transport/transport').TransportErrorCode) => void;
   /** 入口拦截轻提示口（@since v3.30，task_054）。 */
@@ -216,6 +223,8 @@ function makeHarness(options: HarnessOptions = {}): Harness {
     onTaskChunk: options.onTaskChunk ?? ((characterId, chunk) => chunks.push({ characterId, chunk })),
     expWeight: options.expWeight,
     provideContext: options.provideContext,
+    provideProjectContext: options.provideProjectContext,
+    references: options.references,
     timeoutMs: options.timeoutMs,
     onTransportError: options.onTransportError,
     notify: options.notify,
@@ -1386,6 +1395,141 @@ describe('上下文注入（task_053）：每条任务 prompt 附带 <stratix-co
     expect(resumed.indexOf('<stratix-context>')).toBeLessThan(resumed.indexOf('【计划审批】'));
     // 不传块 → 与老行为一致
     expect(buildResumedTaskPrompt(character, task, '计划全文')).not.toContain('<stratix-context>');
+  });
+});
+
+// ============================================================================
+// 项目契约块注入（@since v3.3，task_170 / DESIGN-workspace §8 M0-06）
+// ============================================================================
+
+describe('项目契约块注入（task_170 / M0-06）：首发注 <stratix-project>，续发不重注', () => {
+  /** 项目契约快照夹具（纯数据；渲染由服务侧的三段式负责）。 */
+  const projectInput = (): import('../services/project-context').ProjectContextInput => ({
+    projectId: 'demo',
+    projectName: '示例项目',
+    projectDescription: '用于验证注入点位置的项目',
+    roles: [{ id: 'scout', name: '斥候', agentKind: 'claude-code' }],
+  });
+
+  /** @会话引用解析服务打桩：给一块非空引用块（用来定项目块与引用块的先后）。 */
+  const referenceStub = (): import('../services/session-reference').SessionReferenceService => ({
+    resolve: (): import('../services/session-reference').SessionReferenceResolution => ({
+      ok: true,
+      block: '【引用会话 侦察(s-1) 摘要】北门有动静',
+      targetIds: ['s-1'],
+      invalid: [],
+    }),
+  });
+
+  test('首发：prompt 含 <stratix-project> 块，位置在角色设定之后、引用会话之前', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'message', text: '收到' }, { type: 'done', exitCode: 0, text: '', sessionId: null })],
+      provideProjectContext: projectInput,
+      references: referenceStub(),
+    });
+    assign(h, '侦察北门');
+    await flush();
+    const prompt = h.calls[0]?.prompt ?? '';
+    expect(prompt).toContain('<stratix-project>');
+    expect(prompt).toContain('</stratix-project>');
+    expect(prompt).toContain('示例项目'); // 契约内容真的进了 prompt
+    expect(prompt.indexOf('【角色设定】')).toBeLessThan(prompt.indexOf('<stratix-project>'));
+    expect(prompt.indexOf('<stratix-project>')).toBeLessThan(prompt.indexOf('【引用会话'));
+    expect(prompt.indexOf('【引用会话')).toBeLessThan(prompt.indexOf('【任务指令】'));
+  });
+
+  test('独立标签：项目块不在 <stratix-context> 内部（两块互不嵌套）', async () => {
+    const h = makeHarness({
+      scripts: [scripted({ type: 'done', exitCode: 0, text: '', sessionId: null })],
+      provideContext: (): import('../services/stratix-context').StratixContextInput => ({
+        characterId: 'ch-1',
+        characterName: '阿尔法',
+        profileSummary: 'Lv.1 · EXP 0 · claude-code',
+        peers: [],
+        recentTasks: [],
+        lastTopic: null,
+      }),
+      provideProjectContext: projectInput,
+    });
+    assign(h, '干活');
+    await flush();
+    const prompt = h.calls[0]?.prompt ?? '';
+    expect(prompt).toContain('<stratix-context>');
+    expect(prompt).toContain('<stratix-project>');
+    // 战场现状块内部没有项目块（项目块是独立标签，不是 stratix-context 的子节点）
+    const ctxSection = prompt.slice(
+      prompt.indexOf('<stratix-context>'),
+      prompt.indexOf('</stratix-context>') + '</stratix-context>'.length
+    );
+    expect(ctxSection).not.toContain('<stratix-project>');
+    // 反向也成立：项目块内部没有战场现状块
+    const projectSection = prompt.slice(
+      prompt.indexOf('<stratix-project>'),
+      prompt.indexOf('</stratix-project>') + '</stratix-project>'.length
+    );
+    expect(projectSection).not.toContain('<stratix-context>');
+  });
+
+  test('续发不重注：session 丢失重讲路径的 prompt 不含项目块', async () => {
+    const h = makeHarness({
+      characters: [planFirstCharacter],
+      scripts: [
+        scripted(
+          { type: 'message', text: '计划A\nPLAN_WAIT\n' },
+          { type: 'done', exitCode: 0, text: '计划A\nPLAN_WAIT\n', sessionId: null }
+        ),
+        scripted({ type: 'done', exitCode: 0, text: '干完了。', sessionId: null }),
+      ],
+      provideProjectContext: projectInput,
+    });
+    const task = assign(h, '干活', 'ch-3');
+    await flush();
+    expect(h.store.getState().tasks![0].status).toBe('awaiting_approval');
+    // 首发那条**有**项目块
+    expect(h.calls[0]?.prompt ?? '').toContain('<stratix-project>');
+
+    h.manager.approveTask(task.id);
+    await flush();
+
+    expect(h.calls).toHaveLength(2);
+    expect(h.calls[1]?.options?.sessionId ?? null).toBeNull(); // 无会话可复用 → 走重讲路径
+    const resumed = h.calls[1]?.prompt ?? '';
+    expect(resumed).toContain('计划A'); // 重讲语义照旧（persona + 计划全文）
+    expect(resumed).not.toContain('<stratix-project>'); // 但项目块不重注
+  });
+
+  test('供给口 null / 缺省 / 抛错 → prompt 不含项目块，任务照常完成', async () => {
+    for (const provideProjectContext of [
+      undefined,
+      (): null => null,
+      (): import('../services/project-context').ProjectContextInput => {
+        throw new Error('boom');
+      },
+    ]) {
+      const h = makeHarness({
+        scripts: [scripted({ type: 'done', exitCode: 0, text: '', sessionId: null })],
+        provideProjectContext,
+      });
+      assign(h, '干活');
+      await flush();
+      expect(h.calls[0]?.prompt).not.toContain('<stratix-project>');
+      expect(h.store.getState().tasks?.[0]).toMatchObject({ status: 'completed' });
+    }
+  });
+
+  test('buildTaskPrompt 纯函数：项目块在角色设定之后、任务指令之前；续发纯函数不带块', () => {
+    const prompt = buildTaskPrompt(character, '干活', undefined, undefined, {
+      projectBlock: '<stratix-project>契约</stratix-project>',
+    });
+    expect(prompt).toContain('<stratix-project>契约</stratix-project>');
+    expect(prompt.indexOf('【角色设定】')).toBeLessThan(prompt.indexOf('<stratix-project>'));
+    expect(prompt.indexOf('<stratix-project>')).toBeLessThan(prompt.indexOf('【任务指令】'));
+
+    const task: CharacterTask = {
+      id: 'task_1', characterId: 'ch-1', prompt: '原指令', status: 'awaiting_approval',
+      createdAt: 1, startedAt: null, endedAt: null, output: '', plan: '计划全文',
+    };
+    expect(buildResumedTaskPrompt(character, task, '计划全文')).not.toContain('<stratix-project>');
   });
 });
 
