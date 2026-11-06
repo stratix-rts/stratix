@@ -38,9 +38,13 @@
  *   v3.25（task_049）追加审批门三口：requestApproval / approveTask / rejectTask；
  *   v3.26（task_050）assignTask 增可选 targetCharacterId（指定承接人直达其队列，不在档 →
  *   error Notice 拒绝）。
+ * @since v3.3（task_204 / M2-07）**按副本裁剪**：tasks 的上限是**每副本**的
+ *   （design §1.4 B4a「副本配额不互相挤」）—— 裁剪只吃**当前副本**的任务；
+ *   归属口径（缺省 ⇒ 默认沙盒）见 core/project/entity-scope.ts（唯一出处）。
  */
 
 import { emitWorldEvent } from '../bus';
+import { filterInstanceScope, mergeScopedTrim, scopeOf } from '../project/entity-scope';
 import { worldStore, type CoreStore } from '../store';
 import {
   MAX_TASK_PROMPT_LEN,
@@ -215,9 +219,13 @@ class Manager implements TaskManager {
 
     const outcome: { task?: CharacterTask } = {};
     this.store.setState((state) => {
+      // 副本口径（@since v3.3，task_204 / M2-07）：上限是**每副本**的 —— 裁剪只吃当前副本的任务
+      //   （design §1.4 B4a）；别的副本的任务不占本副本的位子，也不被本副本的裁剪丢掉。
+      const scope = scopeOf(state.activeInstanceId);
+      const scoped = filterInstanceScope(state.tasks ?? [], scope);
       // 先腾位子：新任务占 1 格，裁到 max-1 且**只丢终态历史**（dropSettledTasks 的保证）；
       // 全是在办任务时腾不出位置 → 拒绝新派并回 Notice，绝不静默挤掉谁。
-      const kept = dropSettledTasks(state.tasks ?? [], this.maxTasks - 1);
+      const kept = dropSettledTasks(scoped, this.maxTasks - 1);
       if (kept.length >= this.maxTasks) return state;
       const task = createQueuedTask({
         id: this.createId('task'),
@@ -225,9 +233,12 @@ class Manager implements TaskManager {
         prompt,
         createdAt: this.now(),
         missionId: input.missionId,
+        // 盖上副本归属（@since v3.3，task_204）：与加载侧同口径（instance-loader 读出来时也盖）。
+        instanceId: scope,
       });
       outcome.task = task;
-      return { ...state, tasks: [...kept, task] };
+      const tasks = [...mergeScopedTrim(state.tasks ?? [], scoped, kept), task];
+      return { ...state, tasks };
     });
 
     const task = outcome.task;

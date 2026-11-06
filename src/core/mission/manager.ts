@@ -29,8 +29,14 @@
  *      因此"广播"就是那一次状态广播本身（不另开广播口，避免一次变更广播两遍，见本文件铁律 1）；
  *   2. confirm 守门：依赖未满足的任务**拒绝确认**，并报出还差哪几个（findMissingDependencies）。
  *      ★ 只守 accept：**拒绝 / 叫停永远允许** —— 前置没满足时用户最需要的就是能把任务撤掉。
+ *
+ * @since v3.3（task_204 / M2-07）**按副本裁剪**：missions 的上限是**每副本**的
+ *   （design §1.4 B4a「副本配额不互相挤」）—— 裁剪只吃**当前副本**的任务，
+ *   别的副本的任务既不占本副本的位子，也不被本副本的裁剪顺手丢掉。
+ *   归属口径（缺省 ⇒ 默认沙盒）见 core/project/entity-scope.ts（唯一出处）。
  */
 
+import { filterInstanceScope, mergeScopedTrim, scopeOf } from '../project/entity-scope';
 import { worldStore, type CoreStore } from '../store';
 import {
   MAX_MISSIONS,
@@ -234,9 +240,14 @@ class Manager implements MissionManager {
 
     const outcome: { mission?: MissionView; code?: MissionRejectionCode; droppedUnits?: number } = {};
     this.store.setState((state) => {
+      // 副本口径（@since v3.3，task_204 / M2-07）：上限是**每副本**的 —— 裁剪只吃当前副本的任务
+      //   （design §1.4 B4a：副本配额不互相挤）；别的副本的任务不占本副本的位子，
+      //   也不被本副本的裁剪顺手丢掉（missions 是纯内存态，丢了不可恢复）。
+      const scope = scopeOf(state.activeInstanceId);
+      const scoped = filterInstanceScope(state.missions, scope);
       // 先腾位子：新任务要占 1 格，所以裁到 max-1，且**只丢终态历史**；
       // 全是在办任务时腾不出位置 → 拒绝新建并回 Notice，绝不静默挤掉谁（见 dropSettledMissions）。
-      const kept = dropSettledMissions(state.missions, this.maxMissions - 1);
+      const kept = dropSettledMissions(scoped, this.maxMissions - 1);
       if (kept.length >= this.maxMissions) {
         outcome.code = 'limit-exceeded';
         return state;
@@ -250,10 +261,14 @@ class Manager implements MissionManager {
         // @since v3.38（task_077）：结构化正文与依赖链原样透传（归一在 machine.ts 里做）。
         brief: input.brief,
         dependsOn: input.dependsOn,
+        // 盖上副本归属（@since v3.3，task_204）：新建的实体必须说清自己属于谁 ——
+        //   与加载侧同口径（instance-loader 读出来时也盖），否则它落进「默认沙盒」名下。
+        instanceId: scope,
       });
       outcome.mission = mission;
       outcome.droppedUnits = countUnique(input.unitIds) - assigned.length;
-      return { ...state, missions: [...kept, mission], units: syncUnitMissions(state.units, mission) };
+      const missions = [...mergeScopedTrim(state.missions, scoped, kept), mission];
+      return { ...state, missions, units: syncUnitMissions(state.units, mission) };
     });
 
     const mission = outcome.mission;

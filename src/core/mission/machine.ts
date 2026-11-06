@@ -34,6 +34,7 @@
  *     物化成字段会与"历史裁剪后查不到依赖 = 已满足"的口径漂移（详见 isMissionUnlocked 注释）。
  */
 
+import { filterInstanceScope, scopeOf } from '../project/entity-scope';
 import {
   MAX_MISSION_CHECKPOINTS,
   MAX_MISSION_DEPENDENCIES,
@@ -42,6 +43,7 @@ import {
   type MissionBrief,
   type MissionPhase,
   type MissionView,
+  type ProjectInstanceId,
 } from '../types';
 
 /** 迁移被拒的机器可读原因。HUD/单测据此分流，不解析错误字符串。 */
@@ -181,6 +183,12 @@ export function createMission(input: {
   readonly createdAt: number;
   readonly brief?: MissionBrief;
   readonly dependsOn?: readonly string[];
+  /**
+   * @since v3.3（task_204 / M2-07）所属副本 id（manager 按当前活跃副本盖）。
+   * 缺省 = 不落该键（形状与 M2-07 之前一致）；落了就必须是**真 id**
+   *   （归属口径「缺省 ⇒ 默认沙盒」由 core/project/entity-scope.ts 统一裁决）。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }): MissionView {
   const unitIds = normalizeUnitIds(input.unitIds);
   const brief = normalizeBrief(input.brief);
@@ -193,6 +201,9 @@ export function createMission(input: {
     phase: unitIds.length > 0 ? 'pending' : 'draft',
     ...(brief ? { brief } : {}),
     ...(dependsOn ? { dependsOn } : {}),
+    ...(input.instanceId !== undefined && input.instanceId !== null
+      ? { instanceId: input.instanceId }
+      : {}),
   };
 }
 
@@ -342,6 +353,9 @@ export interface MissionDependencyStatus {
  * why 单独一个函数而不是让调用方各查各的：满足口径是**业务规则**（终态即满足、
  * 查不到即满足、自依赖永不满足），规则散在两处就会漂移。HUD 只做展示，
  * 但展示的必须是 core 认的那份满足 —— 所以两边都调这一个函数。
+ *
+ * @since v3.3（task_204 / M2-07）**依赖判定按副本隔离**：索引只收本副本的任务
+ *   （跨副本的依赖 id 查不到 ⇒ 不阻塞本副本的任务，见函数体的说明）。
  */
 export function resolveMissionDependencies(
   mission: MissionView,
@@ -349,7 +363,14 @@ export function resolveMissionDependencies(
 ): MissionDependencyStatus[] {
   const dependsOn = mission.dependsOn ?? [];
   if (dependsOn.length === 0) return [];
-  const byId = new Map(allMissions.map((m) => [m.id, m]));
+  // ★ 副本隔离（@since v3.3，task_204 / M2-07）：索引**只收本副本**的任务。
+  //   why：全量索引会让 A 副本的任务依赖到 B 副本的任务 id 时，被 B 的相位判「未满足」——
+  //   那是**跨副本的误判**（B 收不收尾与 A 无关），会把 A 永久锁住（design §4.2 表第 3 行）。
+  //   隔离后跨副本的依赖 id **查不到** ⇒ 按本文件既有口径「查不到即已满足」处理（不阻塞本副本）。
+  //   口径只有一份：core 的 confirm 守门、HUD 的依赖行、MCP 工具都走这个函数。
+  const byId = new Map(
+    filterInstanceScope(allMissions, scopeOf(mission.instanceId)).map((m) => [m.id, m])
+  );
   return dependsOn.map((depId) => {
     const dep = byId.get(depId);
     // 自依赖 = 死结：无论相位如何都算"没满足"（与 isMissionUnlocked 的自依赖口径一致）。

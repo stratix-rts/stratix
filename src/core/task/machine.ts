@@ -41,6 +41,7 @@ import {
   MAX_TASK_PLAN_LEN,
   MAX_TASK_SUMMARY_LEN,
   type CharacterTask,
+  type ProjectInstanceId,
   type TaskStatus,
 } from '../types';
 
@@ -115,6 +116,11 @@ export function createQueuedTask(input: {
   readonly prompt: string;
   readonly createdAt: number;
   readonly missionId?: string | null;
+  /**
+   * @since v3.3（task_204 / M2-07）所属副本 id（manager 按当前活跃副本盖）。
+   * 缺省 = 不落该键（形状与 M2-07 之前一致）；归属口径见 core/project/entity-scope.ts。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }): CharacterTask {
   return {
     id: input.id,
@@ -126,6 +132,9 @@ export function createQueuedTask(input: {
     endedAt: null,
     output: '',
     ...(input.missionId !== undefined ? { missionId: input.missionId } : {}),
+    ...(input.instanceId !== undefined && input.instanceId !== null
+      ? { instanceId: input.instanceId }
+      : {}),
   };
 }
 

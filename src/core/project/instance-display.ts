@@ -26,6 +26,8 @@ import {
   type ProjectInstanceView,
 } from '../types';
 
+import { filterInstanceScope } from './entity-scope';
+
 /**
  * 路径尾段（@since v3.3，task_187 / M1-13）—— 副本的目录名（名牌与大厅卡片同款）。
  *
@@ -96,16 +98,14 @@ export function instanceDisplayName(view: ProjectInstanceView, fallback: string)
  *   why：那些行按 `COALESCE(instance_id, 'wsp_sandbox')` 命中默认沙盒（数据可达），
  *   大厅卡片若不把它们算进「在办任务数」，沙盒卡就会显示 0 —— 与「数据就在那儿」矛盾。
  *   非沙盒实例**不**认领无归属任务（不猜归属：那份任务到底属于谁，契约没写）。
+ *
+ * @since v3.3（task_204 / M2-07）：实现改委托 core/project/entity-scope.ts 的 filterInstanceScope ——
+ *   归属口径**只有一份**（大厅卡片、managers 的裁剪、machine 的依赖判定、
+ *   桥接层的转发过滤都走同一条 COALESCE 口径 ⇒ 不会各说各话）。
  */
 export function tasksOfInstance(
   tasks: readonly CharacterTask[],
   instanceId: ProjectInstanceId,
 ): readonly CharacterTask[] {
-  const sandbox = instanceId === DEFAULT_INSTANCE_ID;
-  return tasks.filter((task) => {
-    const owner = task.instanceId;
-    if (owner === instanceId) return true;
-    if (sandbox && (owner === null || owner === undefined)) return true;
-    return false;
-  });
+  return filterInstanceScope(tasks, instanceId);
 }

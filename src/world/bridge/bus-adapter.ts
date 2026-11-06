@@ -40,6 +40,7 @@
  */
 
 import { emitWorldEvent, onState, onWorldEvent } from '../../core/bus';
+import { scopeOf } from '../../core/project/entity-scope';
 import {
   DEFAULT_INSTANCE_ID,
   type Bounds,
@@ -65,20 +66,12 @@ export type { TaskFxPhase } from '../objects/task-fx';
 /** 相机事件的最小上报间隔（ms）。窗口内只保留最后一个位姿，等 flush 或下一次放行再发。 */
 export const CAMERA_EVENT_INTERVAL_MS = 120;
 
-/**
- * 实体的**有效归属**（副本 scope）—— COALESCE 口径（design §1.2.1 / R1-03）。
- *
- * why 缺省 / null 归默认沙盒而不是「无归属」：旧数据（`instance_id IS NULL` 的行）
- *   在**查询时**按 `COALESCE(instance_id, 'wsp_sandbox')` 命中默认沙盒（落库不改写）——
- *   本文件与 app 侧的实例装载 / 归档用**同一条**口径（见 instance-loader.ts / project-archive.ts），
- *   两边口径不一致 = 「HUD 看得到、战场看不到」的老毛病。
- *
- * @param instanceId 实体上的归属声明（缺省 / null = 未归属）。
- * @returns 该实体实际所属的物理副本 id。
- */
-function scopeOf(instanceId?: ProjectInstanceId | null): ProjectInstanceId {
-  return instanceId ?? DEFAULT_INSTANCE_ID;
-}
+// 实体的**有效归属**（副本 scope）—— COALESCE 口径（design §1.2.1 / R1-03）。
+//   ★ 口径的**唯一**出处在 core（@since v3.3，task_204 / M2-07）：
+//     core/project/entity-scope.ts 的 scopeOf —— 本文件（表现层）、
+//     app 侧的实例装载 / 归档（存储层）、core managers 的裁剪（数据层）走**同一条**口径，
+//     各写一份必然漂移（同一批旧行在不同层里落进不同的副本 ⇒ 老数据「部分消失」）。
+//     口径原文与「为什么缺省 ⇒ 默认沙盒」见该文件头。
 
 /**
  * 取出**当前活跃副本**的实例视图（@since v3.3，task_187 / M1-13）。

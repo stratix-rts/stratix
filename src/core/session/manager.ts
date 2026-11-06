@@ -33,8 +33,13 @@
  *   v3.47（task_104 / v3.2b-B5）追加**改标题的显式写面**（updateTitle）：
  *   自动起名（LLM 版）是异步的，起名结果回到 service 侧后由本方法落进 WorldState.sessions
  *   —— service 侧不碰 store（写面只在会话域），同名不改（无 env 配置时白广播一轮）。
+ *
+ * @since v3.3（task_204 / M2-07）**按副本裁剪**：sessions 的上限是**每副本**的
+ *   （design §1.4 B4a「副本配额不互相挤」）—— 裁剪只吃**当前副本**的会话；
+ *   归属口径（缺省 ⇒ 默认沙盒）见 core/project/entity-scope.ts（唯一出处）。
  */
 
+import { filterInstanceScope, mergeScopedTrim, scopeOf } from '../project/entity-scope';
 import { worldStore, type CoreStore } from '../store';
 import { MAX_SESSIONS, NOTICE_TTL_MS, type NoticeLevel } from '../types';
 
@@ -340,9 +345,13 @@ class Manager implements SessionManager {
     const outcome: { session?: SessionRecord; event?: SessionEvent | null; code?: SessionRejectionCode } = {};
     this.store.setState((state) => {
       const sessions = state.sessions ?? [];
+      // 副本口径（@since v3.3，task_204 / M2-07）：上限是**每副本**的 —— 裁剪只吃当前副本的会话
+      //   （design §1.4 B4a）；别的副本的会话不占本副本的位子，也不被本副本的裁剪丢掉。
+      const scope = scopeOf(state.activeInstanceId);
+      const scoped = filterInstanceScope(sessions, scope);
       // 先腾位子：新会话要占 1 格，所以裁到 max-1，且**只丢已关闭的最旧会话**；
       // 全是在办会话时腾不出位置 → 拒绝新建并回 Notice，绝不静默挤掉谁。
-      const kept = dropClosedSessions(sessions, this.maxSessions - 1);
+      const kept = dropClosedSessions(scoped, this.maxSessions - 1);
       if (kept.length >= this.maxSessions) {
         outcome.code = 'limit-exceeded';
         return state;
@@ -358,6 +367,8 @@ class Manager implements SessionManager {
         lastEventAt: at,
         closedAt: null,
         eventCount: 0,
+        // 盖上副本归属（@since v3.3，task_204）：与加载侧同口径（instance-loader 读出来时也盖）。
+        instanceId: scope,
       };
       // 建会话事件（seq=1）：事件本体是"发生了什么"，摘要里的 eventCount 从 1 起算。
       const created = appendSessionEvent(record, {
@@ -368,7 +379,8 @@ class Manager implements SessionManager {
       const session = created.next;
       outcome.session = session;
       outcome.event = created.event;
-      return { ...state, sessions: [...kept, session] };
+      const merged = [...mergeScopedTrim(sessions, scoped, kept), session];
+      return { ...state, sessions: merged };
     });
 
     const session = outcome.session;
@@ -691,19 +703,25 @@ class Manager implements SessionManager {
       lastEventAt: at,
       closedAt: null,
       eventCount: copied.length + 2,
+      // 盖上副本归属（@since v3.3，task_204）：分叉出来的新会话属于**当前副本**（与加载侧同口径）。
+      instanceId: scopeOf(this.store.getState().activeInstanceId),
     };
 
     // 入 store（**一次写入 = 一次广播**；满了就拒，绝不静默挤掉别人）。
     const outcome: { ok: boolean; code?: SessionRejectionCode } = { ok: true };
     this.store.setState((state) => {
       const sessions = state.sessions ?? [];
-      const kept = dropClosedSessions(sessions, this.maxSessions - 1);
+      // 副本口径（@since v3.3，task_204 / M2-07）：与 createSession 同款 —— 裁剪只吃当前副本的会话。
+      const scope = scopeOf(state.activeInstanceId);
+      const scoped = filterInstanceScope(sessions, scope);
+      const kept = dropClosedSessions(scoped, this.maxSessions - 1);
       if (kept.length >= this.maxSessions) {
         outcome.ok = false;
         outcome.code = 'limit-exceeded';
         return state;
       }
-      return { ...state, sessions: [...kept, record] };
+      const merged = [...mergeScopedTrim(sessions, scoped, kept), record];
+      return { ...state, sessions: merged };
     });
     if (!outcome.ok) {
       this.notify('warn', rejectionText(outcome.code ?? 'limit-exceeded', this.maxSessions));
