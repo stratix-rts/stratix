@@ -178,6 +178,8 @@ import { CODE_FX_SOURCES_KEY } from '../../world/appearance/code-fx-sources';
 import { FX_ASSET_BASE_URL_KEY, fxBaseUrl } from '../../world/appearance/fx-asset-path';
 import { FX_PALETTE_KEY } from '../../world/appearance/fx-palette';
 import { PartRegistry } from '../../world/appearance/part-registry';
+// 输入焦点探针键（@since v3.3，task_217 / IX-04）：画布键盘让路的事实来源（world 零 DOM，判在 app 层）。
+import { INPUT_FOCUS_KEY } from '../../world/input-focus';
 // 动效降级标志（@since v3.8，task_140）：reduced-motion 时入场直接落位（world 零 DOM，判在 app 层）。
 import { REDUCED_MOTION_KEY } from '../../world/motion';
 import { UNIT_SPRITE_SOURCE_KEY } from '../../world/objects/unit-sprite-source';
@@ -313,6 +315,8 @@ import {
   sessionCompressThresholdRaw,
   titleLlmEnv,
 } from './dev-flags';
+// 输入焦点探针（@since v3.3，task_217 / IX-04）：DOM 侧的事实（world 零 DOM，判在 app 层）。
+import { hasInputFocus } from './input-focus';
 import { createOnboardingHost } from './onboarding-host';
 // 自定义 agent 注册端口（@since v3.32，task_056）：向导扫描步的「+ 添加自定义 agent」表单 /
 // 设置屏的注册管理经它进主进程（IPC 面 = preload 的 customAgents）。非 Electron → null，降级。
@@ -1504,6 +1508,12 @@ async function boot(): Promise<void> {
         // 动效降级（task_140）：reduced-motion 时入场直接落位 / 下场直接移除。
         // why 在 app 层判：world 零 DOM —— matchMedia 只有组合根能碰（见 world/motion.ts）。
         booting.registry.set(REDUCED_MOTION_KEY, prefersReducedMotion());
+        // 输入焦点探针（@since v3.3，task_217 / IX-04）：画布键盘让路用的事实 ——
+        //   聊天框里打字时按 ESC / 字符，画布不许抢（design §3 C-04）。
+        // why 塞**探针**而不是布尔：焦点随时会变，world 每次现取（缓存必然过期）。
+        // why 在 app 层判：world 零 DOM —— document.activeElement 只有组合根能碰
+        //   （见 world/input-focus.ts 的读口，与 reduced-motion 同一模式）。
+        booting.registry.set(INPUT_FOCUS_KEY, () => hasInputFocus());
         // 精灵特效素材根的绝对 URL（@since v3.3，task_161）：场景 preload 时据此取 sheet。
         // why 也在 app 层算：world 零 DOM —— document.baseURI 只有组合根能碰（同上口径）。
         booting.registry.set(FX_ASSET_BASE_URL_KEY, fxBaseUrl(document.baseURI, ENTRY_PATH_DEPTH));

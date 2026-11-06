@@ -362,6 +362,54 @@ describe('组件：抽屉开合', () => {
   });
 });
 
+describe('组件：ESC 收权（task_217 / IX-04）', () => {
+  let h: Harness;
+  afterEach(() => h?.unmount());
+
+  test('聊天框里按 ESC ⇒ 抽屉关 + 事件**不冒泡到 window**（画布收不到这次 ESC）', () => {
+    h = mountPanel();
+    h.panel.open('c1');
+    const box = h.panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="draft"]');
+    if (!box) throw new Error('输入框未渲染');
+
+    // 画布的键盘钩子挂在 window 上（Phaser）⇒ 这次 ESC 冒上去它就会顺手「回全景」。
+    const seen: string[] = [];
+    const onWindowKey = (ev: KeyboardEvent) => {
+      seen.push(ev.key);
+    };
+    window.addEventListener('keydown', onWindowKey);
+    try {
+      // composed: true = 真实键盘事件的形态（浏览器的 keydown 是 composed 的，能跨影子树冒泡）。
+      const event = new KeyboardEvent('keydown', {
+        key: 'Escape',
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+      });
+      box.dispatchEvent(event);
+
+      expect(railOf(h.panel).getAttribute('data-open')).toBe('false');
+      expect(event.defaultPrevented).toBe(true);
+      expect(seen).toEqual([]);
+    } finally {
+      window.removeEventListener('keydown', onWindowKey);
+    }
+  });
+
+  test('关抽屉时把焦点撤掉（否则画布会一直以为「有人在打字」，键盘一直让路）', () => {
+    h = mountPanel();
+    h.panel.open('c1');
+    const box = h.panel.shadowRoot?.querySelector<HTMLTextAreaElement>('[data-role="draft"]');
+    if (!box) throw new Error('输入框未渲染');
+    box.focus();
+    expect(h.panel.shadowRoot?.activeElement).toBe(box);
+
+    h.panel.close();
+
+    expect(h.panel.shadowRoot?.activeElement).not.toBe(box);
+  });
+});
+
 describe('组件：点战场单位 → 选中（selection 广播驱动）', () => {
   let h: Harness;
   afterEach(() => h?.unmount());

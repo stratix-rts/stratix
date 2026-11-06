@@ -449,6 +449,24 @@ world 现在**不知道**「聊天框正开着、用户在打字」⇒ 它的 ES
 
 **推荐 E-3a**：把「焦点在哪」变成**core 里的事实**，world 与 HUD 读同一份（与 `infoLayer` / `directorEnabled` 同款口径 —— `core/types.ts:1466`/`:1478`）。
 
+### 5.4.1 实施口径（task_217 / IX-04 落地）：走 E-3c（app 层探针 → registry），**不走 E-3a**
+
+> 落地于 task_217（2026-11-07）。**与 §5.4 的推荐有出入**，此处写明实际选择与理由 —— 后续读者按本节为准。
+
+**实际做法（E-3c）**：`app 层`（唯一允许碰 DOM 的组合根）用 `src/app/main/input-focus.ts` 的 `hasInputFocus()` 回答「此刻有可编辑元素持焦」，装配成**探针**塞进 `game.registry`（`stratix:input-focus`）；world 侧用 `src/world/input-focus.ts` 的 `readInputFocus(this.registry)` **现取现用**（不缓存）。与 reduced-motion 同一模式（`prefersReducedMotion()` → `REDUCED_MOTION_KEY` → `world/motion.ts`）。
+
+**为什么不走 E-3a（`WorldState.inputFocus`）**：
+
+| 理由 | 说明 |
+|---|---|
+| **焦点不是世界真相** | 它是**本机视图态**（这个客户端的输入框有没有焦点）。放进共享的 `WorldState` ⇒ 多客户端互相覆盖：客户端 A 在打字会把客户端 B 的画布一起锁住。 |
+| **广播代价不划算** | 每一次焦点变化都要广播一份全量快照（远程模式还得多走一趟 WS 往返），为一个「谁在打字」付这个代价（perf：广播数据必须有界且成本可控）。 |
+| **契约纪律** | `core` 只认 `core/types` 与 `core/bus`；把 DOM 事实塞进契约等于把 DOM 泄漏进真相面。探针是**只读端口**，不污染契约面。 |
+
+**仍然满足 C-04 的原始要求**：「DOM 侧提供，world 通过契约读」—— DOM 侧 = app 层，契约 = registry 里的探针（world 侧零 DOM，见 `src/world/input-focus.ts` 的禁止事项）。
+
+**归属链的落点**（§2.3 规则 4 的画布侧）：`src/world/keyboard-priority.ts` 的 `resolveKeyboardOwner` = **仪式 > 输入焦点 > 画布**（链尾 = 镜头归位，task_079）。
+
 ### 5.5 新增事件的命名与登记清单（新增交互的「入场券」）
 
 新增任何画布交互前，必须同时产出：

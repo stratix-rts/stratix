@@ -27,11 +27,14 @@
  *     —— 当日回放的重演指令：化身出现 / 干活 / 插旗 / 半频冒泡；
  *   - core/bus 的 world 通道上的 level.up（@since v3.3，task_161，转发到 syncLevelUp）
  *     —— 角色升级 → 在该角色所在单位脚下播升级光环；
- *   - 浏览器指针输入（按下 / 移动 / 松开 / 滚轮）+ 键盘 ESC（@since v3.3，task_079：回全景）。
+ *   - 浏览器指针输入（按下 / 移动 / 松开 / 滚轮）+ 键盘 ESC（@since v3.3，task_079：回全景；
+ *     @since v3.3 task_217 / IX-04：ESC 的归属链 = 仪式 > 输入焦点 > 画布 ——
+ *     聊天框里打字时画布让路，见 keyboard-priority.ts）。
  * 输出：把交互转成 WorldEvent（unit.click / selection.box / unit.move / camera.moved），
  *   经桥接层发回 core。
  * 镜头编排（@since v3.3，task_079）：拖拽平移带**橡皮筋回弹**（拉出边界 → 松手弹回）；
- *   滚轮缩放夹在 0.6-1.6x；双击单位 = 跟随镜头（再双击解除）；ESC = 回全景；
+ *   滚轮缩放夹在 0.6-1.6x；双击单位 = 跟随镜头（再双击解除）；ESC = 回全景
+ *   （@since v3.3，task_217 / IX-04：ESC 先过归属链 —— 仪式在演就归仪式、输入框持焦就归输入框）；
  *   氛围彩蛋：每 30-60s 飘过一朵小云 + 真实时间 19-24 点背景格网微微变暖（都不发总线事件）。
  * RTS 操作语义（@since v3.21，task_045。血缘：交互口径移植 v2 StratixRTSGameScene 的
  *   右击移动惯例，判定参数自 v2 MovementSystem / FormationSystem 考古）：
@@ -106,6 +109,9 @@ import { DirectorController, type DirectorHost } from '../camera/director';
 import type { DirectorEventKind } from '../camera/director-policy';
 // 点击语义判定（@since v3.3，task_214 / IX-03）：单击 = 选中 / 双击 = 打开单独聊天框（纯逻辑，可单测）。
 import { resolveCanvasClick } from '../click-semantics';
+// 键盘归属裁决 + 输入焦点读口（@since v3.3，task_217 / IX-04）：ESC 收权与焦点让路。
+import { readInputFocus } from '../input-focus';
+import { resolveKeyboardOwner, type KeyboardOwner } from '../keyboard-priority';
 // 动效降级标志（@since v3.3，task_194 / AP-04）：reduced-motion ⇒ 不播代码路由（DESIGN §1.3）。
 import { readReducedMotion } from '../motion';
 import { isWarmHour } from '../objects/ambience-layout';
@@ -462,6 +468,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.input.on('pointerupoutside', this.onPointerUp, this);
     this.input.on('wheel', this.onWheel, this);
     // ESC 回全景（@since v3.3，task_079）：镜头编排的「归位」键。
+    // why 要先问归属（@since v3.3，task_217 / IX-04）：仪式在演 ⇒ 这次 ESC 归仪式；
+    //   输入框持焦 ⇒ 这次 ESC 归输入框（画布让路，镜头不动）—— 见 onEscape 的裁决。
     this.input.keyboard?.on('keydown-ESC', this.onEscape, this);
     // 任意按键 = 跳过进副本仪式（@since v3.3，task_187 / M1-13：「任意输入即跳到末态」）。
     // why 排在 ESC 之后：Phaser 先发键专属事件再发通用 'keydown'（KeyboardPlugin.update）
@@ -1250,10 +1258,23 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     });
   }
 
-  /** ESC = 回全景：整个战场装进视口（同时解除跟随）。 */
+  /**
+   * ESC = 回全景：整个战场装进视口（同时解除跟随）。
+   *
+   * 归属裁决（@since v3.3，task_217 / IX-04）：**仪式 > 输入焦点 > 画布**（keyboard-priority.ts）。
+   *   - 仪式在演 ⇒ ESC = 跳过仪式（跳到末态），不回全景（回全景正是仪式的收尾动作）；
+   *   - 输入框持焦（聊天框在打字）⇒ 画布**让路**：镜头不动、选择不动（design §3 C-04）；
+   *   - 其余 ⇒ 回全景（task_079）。
+   */
   private onEscape(): void {
+    const owner = this.resolveKeyOwner();
     // 仪式在演 ⇒ ESC = 跳过仪式（跳到末态），不回全景（回全景正是仪式的收尾动作）。
-    if (this.consumeCeremonyInput()) return;
+    if (owner === 'ceremony') {
+      this.consumeCeremonyInput();
+      return;
+    }
+    // 输入焦点在输入框里 ⇒ 这次 ESC 归输入框：画布不动。
+    if (owner === 'input') return;
     this.releaseFollow();
     // 手动优先（task_081）：ESC 回全景也是手动操作 —— 导演让位。
     this.releaseDirector();
@@ -1266,9 +1287,30 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    * 任意按键（@since v3.3，task_187 / M1-13）：仪式在演就跳过它。
    *
    * why 单独一个监听：验收②「任意输入即跳到末态」—— 不只是鼠标，键盘也算输入。
+   * why 非仪式期画布**不拦**任何键：矩阵 §2 的键盘面里，除 ESC 外画布没有键位
+   *   ⇒ 未定义的键一律**无操作**（不 preventDefault、不吞字符）。
    */
   private onKeyDown(): void {
+    if (this.resolveKeyOwner() !== 'ceremony') return;
     this.consumeCeremonyInput();
+  }
+
+  /**
+   * 这一次键击归谁（@since v3.3，task_217 / IX-04）：仪式 > 输入焦点 > 画布。
+   *
+   * why 焦点是「现取」而不是缓存：焦点随时会变（用户点一下聊天框就变了）
+   *   —— 读口每次现取（见 world/input-focus.ts）。
+   */
+  private resolveKeyOwner(): KeyboardOwner {
+    return resolveKeyboardOwner({
+      ceremonyPlaying: this.ceremonyPlaying(),
+      inputFocused: readInputFocus(this.registry),
+    });
+  }
+
+  /** 进场仪式在不在演（@since v3.3，task_217 / IX-04：归属链的第一档）。 */
+  private ceremonyPlaying(): boolean {
+    return this.nameplate?.active === true;
   }
 
   /**

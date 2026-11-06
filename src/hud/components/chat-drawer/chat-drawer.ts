@@ -350,7 +350,20 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
 
     close(): void {
       this._open = false;
+      // 抽屉关了还要把焦点撤掉（@since v3.3，task_217 / IX-04）：
+      //   输入框还留着焦点 ⇒ 画布会一直以为「有人在打字」（键盘一直让路，画布再也收不到键）。
+      //   抽屉的输入框只是被移出可视区，DOM 里还在 —— 焦点不会自动掉，必须显式撤。
+      this.blurActiveField();
       this.syncRail();
+    }
+
+    /**
+     * 撤掉抽屉里当前持焦的元素（@since v3.3，task_217 / IX-04）。
+     * why 走 shadowRoot.activeElement：焦点在影子树里时 document.activeElement 只给到宿主。
+     */
+    private blurActiveField(): void {
+      const active = this.shadowRoot?.activeElement as HTMLElement | null;
+      active?.blur?.();
     }
 
     setCharacter(characterId: string): void {
@@ -894,6 +907,15 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
           const target = ev.target as HTMLTextAreaElement | null;
           if (!target || target.dataset.role !== 'draft') return;
           const key = ev as KeyboardEvent;
+          // ESC = 关抽屉（@since v3.3，task_217 / IX-04：ESC 收权 —— 抽屉关、镜头不动、不清选择）。
+          // why 阻断冒泡：画布的键盘钩子挂在 window 上（Phaser），这次 ESC 冒上去它就会顺手「回全景」。
+          //   口径与命令面板的 ESC 同款（command-palette.ts：自己关自己 + stopPropagation）。
+          if (key.key === 'Escape') {
+            ev.preventDefault();
+            ev.stopPropagation();
+            this.close();
+            return;
+          }
           if (key.key !== 'Enter' || key.shiftKey) return;
           ev.preventDefault();
           this.send();
