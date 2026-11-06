@@ -2,7 +2,10 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": ".",
-    "types": ["jest", "node"]
+    "types": ["jest", "node"],
+    // why 允许编译 .js：pixelfx 是**源码进仓的 ESM**（vendor/pixelfx，task_191 / AP-01），
+    //   双路由像素一致性测试要 import 它（jest/node 不原生跑 ESM，由 ts-jest 编译成 CJS）。
+    "allowJs": true
   },
   "include": [
     "tests/**/*",

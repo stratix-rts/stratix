@@ -75,7 +75,15 @@ export function toCodeFxSource(
     scale: options.scale,
     paletteRoles: options.paletteRoles,
     create: (createOptions: CodeFxOptions) => {
-      const frame: PixelfxFrame = createFrame(width, height, originX, originY);
+      // ★ 帧的原点 = **画布左上角 (0,0)**，不是效果原点。
+      // why：帧原点是「画布左上角在 world 里的位置」，效果原点是「效果被放置到哪」——
+      //   两者混起来，效果就会被画到画布角上、还被裁掉大半（实测 hit-spark 掉了 90% 像素）。
+      //   烘焙链（vendor/pixelfx 的 fxlib）用的正是 createFrame(w, h, 0, 0) 这套口径，
+      //   代码路由必须与它一致，否则同一效果两条路由画出来的东西对不上
+      //   （见 tests/asset-pipeline/fx-dual-route-consistency.test.ts 的双路由一致性测试）。
+      //   效果原点的落位由 createFx 的 x/y 决定（= 画布里的 originX/originY），
+      //   与 CodeFxLayer 的 setOrigin(originX / width, originY / height) 对得上。
+      const frame: PixelfxFrame = createFrame(width, height, 0, 0);
       const fx = createFx(mod, {
         x: originX,
         y: originY,
