@@ -232,6 +232,15 @@ const LOBBY_PANEL_STYLE = `
     border: var(--srf-border-width, 1px) dashed var(--srf-border-strong, #3a4252);
     border-radius: var(--srf-radius, 6px);
   }
+  /* why 要这一条：.empty 的 display:flex 会**盖掉** UA 样式表的 [hidden]{display:none}
+     ⇒ 有卡时空态照样露脸（一张沙盒卡 + 「没有可用副本」同时在屏上 = 自相矛盾）。
+     组件用 hidden 属性表达「此刻不画空态」（见 render 里 _empty.hidden = !model.empty），
+     样式必须认这个属性 —— 否则属性只是摆设。
+     ★ 注意：本段在**模板字符串**里 ⇒ 注释里**不许出现反引号**（会截断模板字面量 ⇒
+       整个模块语法错 ⇒ vite 500 ⇒ 整个应用起不来）。用「」代替反引号。 */
+  .empty[hidden] {
+    display: none;
+  }
   .empty-title {
     margin: 0;
     font-size: var(--srf-font-size-md, 14px);

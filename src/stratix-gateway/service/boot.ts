@@ -181,6 +181,25 @@ export function bootStratixService(options: ServiceBootOptions = {}): BootedStra
   // 实例清单进世界态（大厅卡片的数据源）—— 一次写入 = 一次广播（state 通道）。
   publishProjectInstances(store, instanceRegistry);
 
+  // ===== ⓪-ter 开机即大厅态（@since v3.3，task_213 / M2-12）=====
+  // why 必须**显式**写 `activeInstanceId = null`（而不是让它缺省）：
+  //   HUD 大厅层只认**显式 null**（缺省 = 未知，见 src/app/main/main-entry.ts 的判据注释）
+  //   —— 缺省 ⇒ `<strat-lobby-panel>` 永不挂载 ⇒ 大厅里没有默认沙盒卡片
+  //   ⇒ 用户进不去任何副本（大厅卡片是唯一的入口）＝ 用户实机报的「大厅空卡」。
+  // why 显式 null 还能活过序列化：`undefined` 会被 JSON.stringify 丢掉 ⇒ world-sync 快照里
+  //   连字段都没有（前端拿到的永远是 undefined）—— 这正是本缺陷的传输形态。
+  // why 由**真相持有者**（service 进程）说这句，而不是让 HUD 去猜：
+  //   「开机没有活跃副本」是事实，不是渲染层的推断；真相缺省 = 未知，未知不敢当大厅用。
+  // why 落在 service 侧（而不是 core 的 createInitialState）：只有这里**同时**握得住
+  //   「实例清单（卡片的数据源）」与「活跃副本（卡片能不能点）」两件 —— 清单在这里发布，
+  //   大厅态也必须在这里说；渲染层直连模式（本地 core）压根没有注册表 ⇒ 没有卡可画，
+  //   那条路径不该被拖进大厅（否则是「空卡」的另一种形态）。
+  // why 排在**清单发布之后**：不变量「谁看见 activeInstanceId === null，谁就看得见卡片清单」
+  //   —— 大厅面板第一次挂上就有卡（不会先闪一帧「没有可用副本」再补上）。
+  if (store.getState().activeInstanceId !== null) {
+    store.setState((prev) => ({ ...prev, activeInstanceId: null }));
+  }
+
   // ===== ② 世界态恢复（A4）：快照（missions + 角色）→ store；再从库里补角色档案 =====
   // 快照是 gateway 自己的世界态真相（missions 与 characters 一起存一起读）；
   // 库里的 characters 表是**渲染侧**那条路径的存档 —— 两条来源都按 id 去重，谁先到谁先占位。

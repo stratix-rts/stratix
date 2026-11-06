@@ -29,6 +29,7 @@ e2e-tests/
 ├── m0-project-context/service-process.ts # 生产组合根（真 service）+ 真派单（tsx 直跑）
 ├── m0-project-context/schema-baseline.ts  # 「M0 前」的库结构基线快照程序
 ├── fixtures/m0-project/               # **入库夹具**：一个最小 `.stratix` 契约面
+├── lobby-empty-card/                  # **大厅空卡探针**（task_213 / M2-12）：快照探针 + DOM 探针（详见其 README）
 └── README.md
 ```
 
