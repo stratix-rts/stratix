@@ -381,7 +381,7 @@ describe('M2-01：六表 instance_id 列 + 沙盒 COALESCE 语义（task_198）'
     });
   });
 
-  describe('StratixDatabase 迁移链（schema v14）', () => {
+  describe('StratixDatabase 迁移链（schema v15）', () => {
     let dir: string;
     let opened: StratixDatabase | null = null;
 
@@ -400,18 +400,18 @@ describe('M2-01：六表 instance_id 列 + 沙盒 COALESCE 语义（task_198）'
       fs.rmSync(dir, { recursive: true, force: true });
     });
 
-    it('全新库：六表都有 instance_id、版本落 14', async () => {
+    it('全新库：六表都有 instance_id、版本落 15', async () => {
       const db = await openAndInitialize(dir);
       opened = db;
       const raw = db.getDatabase();
-      expect(versionOf(raw)).toBe(14);
+      expect(versionOf(raw)).toBe(15);
       for (const table of INSTANCE_SCOPED_TABLES) {
         expect(columnInfo(raw, table).some((c) => String(c.name) === 'instance_id')).toBe(true);
       }
       db.close();
     });
 
-    it('v13 老库：六表补列、旧行零改写（instance_id 仍 NULL）、版本升 14', async () => {
+    it('v13 老库：六表补列、旧行零改写（instance_id 仍 NULL）、版本升 15', async () => {
       const db = await openAndInitialize(dir);
       opened = db;
       const raw = db.getDatabase();
@@ -440,7 +440,7 @@ describe('M2-01：六表 instance_id 列 + 沙盒 COALESCE 语义（task_198）'
       expect(versionOf(raw)).toBe(13);
 
       db.initialize(); // 版本号低于目标 → 重跑迁移链
-      expect(versionOf(raw)).toBe(14);
+      expect(versionOf(raw)).toBe(15);
       for (const table of INSTANCE_SCOPED_TABLES) {
         expect(columnInfo(raw, table).some((c) => String(c.name) === 'instance_id')).toBe(true);
       }
@@ -474,14 +474,14 @@ describe('M2-01：六表 instance_id 列 + 沙盒 COALESCE 语义（task_198）'
       db.close();
     });
 
-    it('重开已 14 版的库：不再重建、列不重复（迁移可重复执行）', async () => {
+    it('重开已 15 版的库：不再重建、列不重复（迁移可重复执行）', async () => {
       const first = await openAndInitialize(dir);
       first.close();
 
       const reopened = await openAndInitialize(dir);
       opened = reopened;
       const raw = reopened.getDatabase();
-      expect(versionOf(raw)).toBe(14);
+      expect(versionOf(raw)).toBe(15);
       for (const table of INSTANCE_SCOPED_TABLES) {
         expect(columnInfo(raw, table).filter((c) => String(c.name) === 'instance_id')).toHaveLength(1);
       }

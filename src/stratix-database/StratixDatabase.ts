@@ -80,7 +80,19 @@ const DEFAULT_FILENAME = 'stratix.db';
  *   CHECK 重建会丢掉不在临时表 DDL 里的列 ⇒ 重建跑完再统一加列，列序与新库一致。
  * DDL 与 app/services/persistence/*-dao.ts 的 ensure* 同构同步改（铁律同上）。
  */
-const TARGET_SCHEMA_VERSION = 14;
+/**
+ * v15（@since v3.3，task_199）：**N4a** —— `characters` 加 `role_id` 列（= roster 角色 id）
+ *   + 复合唯一索引 `(role_id, instance_id)`；**N4c** —— 新增 `character_id_map` 表
+ *   （old_id / new_id / instance_id / created_at；主键 `(old_id, instance_id)` + new_id 索引）。
+ * 权威依据：docs/DESIGN-project-map.md §1.3.2 **步 N4a**（加列 + 复合唯一索引）
+ *   + **步 N4c**（映射表与数据**同库、同事务** —— N4b 唯一的回滚凭据）。
+ * why 加法优先：N4a 是纯加列 + 加索引（旧行 role_id 落 NULL = **未回填**，可延后填），
+ *   N4c 是纯新表 ⇒ 两步都**不碰存量数据**，回滚只需删索引 / 删表（见 §1.3.2 回滚矩阵）。
+ * why role_id 不可解析 id 字符串代替：N4b 之后 `characters.id` 有两种格式并存
+ *   （沙盒行 = 历史 id，其它 = `<roleId>_<instanceId>`）⇒ 身份判定只能靠 role_id 列。
+ * DDL 与 app/services/persistence/game-save-dao.ts / character-id-map-dao.ts 的 ensure* 同构同步改。
+ */
+const TARGET_SCHEMA_VERSION = 15;
 
 /**
  * 六张带副本维度的表（design §1.3.2 步 N1 的表清单）。
@@ -98,6 +110,22 @@ const INSTANCE_SCOPED_TABLES = [
 
 /** instance_id 列名（六表统一；改一处必须同步六张表的建表 DDL 与两处迁移链）。 */
 const INSTANCE_ID_COLUMN = 'instance_id';
+
+/**
+ * role_id 列名（characters 表，design §1.3.2 步 N4a）。
+ *
+ * 语义：= `.stratix/roster/<role-id>.json` 的角色 id（契约面，M0 的 project-context 已有读取链）
+ *   ⇒ 「这个角色行是 roster 里哪个角色」。**与 characters.id 是两回事**：
+ *   id 是运行层的行标识（N4b 之后 instance 内唯一），role_id 是契约面的身份。
+ * 旧行 role_id = NULL = **未回填**（可延后填，见步 N4a 的加法语义）。
+ */
+const ROLE_ID_COLUMN = 'role_id';
+
+/** character_id_map 表名（design §1.3.2 步 N4c：N4b 唯一的回滚凭据）。 */
+const CHARACTER_ID_MAP_TABLE = 'character_id_map';
+
+/** 复合唯一索引名（characters(role_id, instance_id)）。 */
+const CHARACTERS_ROLE_INSTANCE_INDEX = 'idx_characters_role_instance';
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -223,6 +251,9 @@ export class StratixDatabase {
     // v14（task_198）：六表加 instance_id 列。**排在所有重建迁移之后** ——
     // character_tasks 的 CHECK 重建只搬临时表 DDL 里的列，最后统一加列 ⇒ 不会丢。
     this.migrateInstanceIdColumns();
+    // v15（task_199）：N4a（characters 加 role_id 列 + 复合唯一索引）+ N4c（character_id_map 表）。
+    // 排在 instance_id 之后：唯一索引 (role_id, instance_id) 依赖两列都存在。
+    this.migrateRoleIdAndIdMap();
   }
 
   /**
@@ -580,7 +611,8 @@ export class StratixDatabase {
           context_enabled INTEGER NOT NULL DEFAULT 1,
           created_at INTEGER NOT NULL,
           updated_at INTEGER NOT NULL,
-          instance_id TEXT
+          instance_id TEXT,
+          role_id TEXT
         )
       `);
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_characters_kind ON characters(kind)');
@@ -754,6 +786,57 @@ export class StratixDatabase {
       this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${INSTANCE_ID_COLUMN} TEXT`);
       log('info', `Added ${INSTANCE_ID_COLUMN} column to ${table} table (task_198)`);
     }
+  }
+
+  /**
+   * N4a + N4c（@since v3.3，task_199，schema v15）——
+   * design §1.3.2 步 **N4a**（characters 加 `role_id` 列 + 复合唯一索引 `(role_id, instance_id)`）
+   *   + 步 **N4c**（`character_id_map` 表，与数据同库、同事务 —— N4b 唯一的回滚凭据）。
+   *
+   * 幂等：列/索引/表都在（新建库 / 已迁移过的库）⇒ 直接跳过 ⇒ 迁移可重复执行。
+   * 零数据改写：加列用 `ALTER TABLE ADD COLUMN col TEXT`（**无 DEFAULT**）⇒ 存量行落 NULL
+   *   （= 未回填，与 instance_id 同款的「加法语义」）；新表不装旧行。
+   *
+   * why 复合唯一索引建在**原始列**上（而不是 `COALESCE(...)` 表达式索引）：
+   *   SQLite 的唯一索引把 NULL 视为彼此不同 ⇒ 旧行（role_id IS NULL）之间**不冲突**
+   *   ⇒ 索引能在存量库上直接建成（表达式索引会把旧行归一成同一个值而建不出来），
+   *   也让「role_id 延后回填」成立（回填时才受唯一约束约束）。
+   * why 唯一约束不能吞错：建索引时若真有重复的 (role_id, instance_id) ⇒ 直接抛错，
+   *   因为那说明上游写坏了「一个副本内一个 roster 角色只有一行」的硬约束，静默跳过更危险。
+   */
+  private migrateRoleIdAndIdMap(): void {
+    const tables = this.getTableNames();
+
+    // —— N4a：characters 加 role_id 列 ——
+    if (tables.has('characters')) {
+      const columns = this.getColumnNames('characters');
+      if (!columns.has(ROLE_ID_COLUMN)) {
+        this.db.exec(`ALTER TABLE characters ADD COLUMN ${ROLE_ID_COLUMN} TEXT`);
+        log('info', `Added ${ROLE_ID_COLUMN} column to characters table (task_199)`);
+      }
+      // —— N4a：复合唯一索引 (role_id, instance_id) ——
+      //   两列都在才建：instance_id 由 migrateInstanceIdColumns 负责补（它排在本方法之前）；
+      //   万一它没补上，宁可不建索引也不要抛「no such column」把启动炸掉。
+      if (this.getColumnNames('characters').has(INSTANCE_ID_COLUMN)) {
+        this.db.exec(
+          `CREATE UNIQUE INDEX IF NOT EXISTS ${CHARACTERS_ROLE_INSTANCE_INDEX} ON characters(${ROLE_ID_COLUMN}, ${INSTANCE_ID_COLUMN})`
+        );
+      }
+    }
+
+    // —— N4c：character_id_map 表（N4b 唯一的回滚凭据；与数据同库、同寿命）——
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ${CHARACTER_ID_MAP_TABLE} (
+        old_id TEXT NOT NULL,
+        new_id TEXT NOT NULL,
+        instance_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (old_id, instance_id)
+      )
+    `);
+    this.db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_character_id_map_new ON ${CHARACTER_ID_MAP_TABLE}(new_id)`
+    );
   }
 
   /**
@@ -1253,6 +1336,7 @@ export class StratixDatabase {
       -- 角色档案表：core WorldState.characters 的落库形态（appearance 存 JSON）；
       -- @since v3.29 context_enabled = 角色级上下文注入开关（task_053，缺省开）
       -- @since v3.3 instance_id = 副本归属（task_198，步 N1：可空、无 DEFAULT ⇒ 旧行 = NULL = 默认沙盒）
+      -- @since v3.3 role_id = roster 角色 id（task_199，步 N4a：可空、无 DEFAULT ⇒ 旧行 = NULL = 未回填）
       CREATE TABLE IF NOT EXISTS characters (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -1267,7 +1351,20 @@ export class StratixDatabase {
         context_enabled INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
-        instance_id TEXT
+        instance_id TEXT,
+        role_id TEXT
+      );
+
+      -- character id 重写映射表（@since v3.3，task_199，步 N4c）——
+      -- N4b（一次性 id 重写）**唯一的回滚凭据**：与数据同库、同事务、同寿命（不进 .stratix/state/）。
+      -- 主键 (old_id, instance_id)：N4b 之后角色 id 是 instance 内唯一 ⇒ 映射天然带副本维度。
+      -- new_id 上建索引：前滚回滚（new → old 反向 UPDATE）按它查。
+      CREATE TABLE IF NOT EXISTS character_id_map (
+        old_id TEXT NOT NULL,
+        new_id TEXT NOT NULL,
+        instance_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (old_id, instance_id)
       );
 
       -- 单位站位表：characterId → 战场世界坐标（app 层防抖批量写入）
@@ -1317,10 +1414,26 @@ export class StratixDatabase {
 
       -- 索引
       CREATE INDEX IF NOT EXISTS idx_characters_kind ON characters(kind);
+      -- 映射表反查索引（task_199，步 N4c）：前滚回滚按 new_id 查 old_id。
+      CREATE INDEX IF NOT EXISTS idx_character_id_map_new ON character_id_map(new_id);
       CREATE INDEX IF NOT EXISTS idx_character_chat_messages_character ON character_chat_messages(character_id, id);
       CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at);
     `;
     this.db.exec(sql);
+
+    // 复合唯一索引（task_199，步 N4a）：一个副本内一个 roster 角色只能有一行角色档案。
+    // NULL 视为彼此不同 ⇒ 旧行（role_id IS NULL）不冲突 ⇒ role_id 可延后回填。
+    //
+    // why 不写进上面那段 DDL：老库的 characters 表可能是 v13 / v14 形状
+    //   （**没有 role_id 或没有 instance_id 列**）⇒ 在 createTables 里建索引会报
+    //   「no such column」并炸掉启动。⇒ 这里只在**两列都在**时建；
+    //   缺列的老库交给迁移链（ALTER ADD 补列之后再建索引）。
+    const characterColumns = this.getColumnNames('characters');
+    if (characterColumns.has(ROLE_ID_COLUMN) && characterColumns.has(INSTANCE_ID_COLUMN)) {
+      this.db.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS ${CHARACTERS_ROLE_INSTANCE_INDEX} ON characters(${ROLE_ID_COLUMN}, ${INSTANCE_ID_COLUMN})`
+      );
+    }
   }
 
   // ---- Cached prepared statements ----

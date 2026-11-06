@@ -26,9 +26,18 @@
  * why 列加在 DDL 末尾：与 ALTER ADD 落地的列序一致（新建库与老库升级后形状逐列相同）。
  * why 谓词与加列不写在这里：口径只有一份出处（instance-scope.ts），本文件只调用它。
  *
- * @since v3.12，task_033；v3.3（task_198）两表加 instance_id 列 + 读口按副本过滤。
+ * ============ 身份维度：role_id 列 + 复合唯一索引（@since v3.3，task_199 / M2-02）============
+ * `characters` 加一列 `role_id`（**可空、无 DEFAULT**）—— design §1.3.2 步 **N4a**：
+ * 角色行 =「roster 里哪个角色」的**权威归属声明**（= `.stratix/roster/<role-id>.json` 的 id）。
+ * 旧行 `role_id IS NULL` = **未回填**（可延后填；与 instance_id 同款的加法语义，零数据改写）。
+ * 复合唯一索引 `(role_id, instance_id)`：一个副本内一个 roster 角色只能有一行角色档案。
+ * 同事务的 `character_id_map` 表（步 **N4c**）由 character-id-map-dao.ts 拥有，本文件只调它的 ensure。
+ *
+ * @since v3.12，task_033；v3.3（task_198）两表加 instance_id 列 + 读口按副本过滤；
+ * v3.3（task_199）characters 加 role_id 列 + 复合唯一索引。
  */
 
+import { ensureCharacterIdMapTable } from './character-id-map-dao';
 import {
   ensureInstanceIdColumn,
   instanceScopeWhere,
@@ -116,7 +125,8 @@ export function ensureGameSaveTables(db: SqliteDatabaseLike): void {
       context_enabled INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
-      instance_id TEXT
+      instance_id TEXT,
+      role_id TEXT
     );
     CREATE TABLE IF NOT EXISTS ${UNIT_POSITIONS_TABLE} (
       character_id TEXT PRIMARY KEY,
@@ -133,6 +143,32 @@ export function ensureGameSaveTables(db: SqliteDatabaseLike): void {
   // v14 兜底（task_198）：旧库补 instance_id 列（可空、无 DEFAULT ⇒ 存量行原样留 NULL）。
   ensureInstanceIdColumn(db, CHARACTERS_TABLE);
   ensureInstanceIdColumn(db, UNIT_POSITIONS_TABLE);
+  // v15 兜底（task_199，步 N4a）：旧库补 role_id 列 + 复合唯一索引 (role_id, instance_id)。
+  ensureRoleIdColumn(db);
+  // v15 兜底（task_199，步 N4c）：character_id_map 表（角色 id 重写映射 = N4b 唯一回滚凭据）。
+  ensureCharacterIdMapTable(db);
+}
+
+/**
+ * 旧 characters 表补 role_id 列 + 复合唯一索引（幂等）。
+ *
+ * 列：可空、**无 DEFAULT** ⇒ 存量行落 NULL =「未回填」（步 N4a 的加法语义：
+ * 加列不碰存量数据；回填可以延后到 roster 物化那一步）。
+ *
+ * 索引：`(role_id, instance_id)` 复合唯一 —— 一个副本内一个 roster 角色只能有一行角色档案。
+ * SQLite 的唯一索引把 NULL 视为彼此不同 ⇒ 旧行（role_id IS NULL）之间**不冲突**
+ * ⇒ 索引能在存量库上直接建成，也讓「role_id 延后回填」成立（回填时才受约束）。
+ * 必须在加列**之后**建：老库的 characters 表没有 role_id 列时建索引会报「no such column」。
+ */
+function ensureRoleIdColumn(db: SqliteDatabaseLike): void {
+  const rows = db.prepare(`PRAGMA table_info(${CHARACTERS_TABLE})`).all() as Array<Record<string, unknown>>;
+  const hasColumn = rows.some((row) => String(row.name) === 'role_id');
+  if (!hasColumn) {
+    db.exec(`ALTER TABLE ${CHARACTERS_TABLE} ADD COLUMN role_id TEXT`);
+  }
+  db.exec(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_characters_role_instance ON ${CHARACTERS_TABLE}(role_id, instance_id)`
+  );
 }
 
 /** 旧 characters 表补 context_enabled 列（存在性探测 → ALTER ADD；幂等）。 */

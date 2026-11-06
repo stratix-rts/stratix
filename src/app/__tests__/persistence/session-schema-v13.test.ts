@@ -57,7 +57,7 @@ describe('schema v13 迁移：sessions + session_events 表（真实 sql.js 文�
     expect(
       raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='session_events'").all()
     ).toHaveLength(1);
-    expect(versionOf(raw)).toBe(14);
+    expect(versionOf(raw)).toBe(15);
 
     upsertSessionRecord(raw, {
       id: 'session_peer_chat_1',
@@ -106,7 +106,7 @@ describe('schema v13 迁移：sessions + session_events 表（真实 sql.js 文�
     expect(versionOf(raw)).toBe(12);
 
     db.initialize(); // 版本号低于目标 → 重跑迁移链
-    expect(versionOf(raw)).toBe(14);
+    expect(versionOf(raw)).toBe(15);
     expect(raw.prepare('SELECT COUNT(*) AS n FROM characters').get()).toMatchObject({ n: 1 });
     expect(raw.prepare('SELECT COUNT(*) AS n FROM character_tasks').get()).toMatchObject({ n: 1 });
     expect(raw.prepare('SELECT COUNT(*) AS n FROM character_chat_messages').get()).toMatchObject({ n: 1 });
@@ -129,7 +129,7 @@ describe('schema v13 迁移：sessions + session_events 表（真实 sql.js 文�
 
     const reopened = await openAndInitialize(dir);
     const raw = reopened.getDatabase();
-    expect(versionOf(raw)).toBe(14);
+    expect(versionOf(raw)).toBe(15);
     expect(
       raw.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_sessions_kind_status'").all()
     ).toHaveLength(1);
