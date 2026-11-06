@@ -44,6 +44,8 @@
     "nocodb:start": "node vendor/nocodb/packages/nocodb/dist/bundle.js",
     "nocodb:start:dev": "cd vendor/nocodb/packages/nocodb && pnpm start",
     "fx:generate": "tsx scripts/generate-pixelfx-sheets.ts",
+    "fx:bake": "tsx scripts/bake-fx-release.ts",
+    "fx:bake:verify": "tsx scripts/bake-fx-release.ts --verify",
     "textures:generate": "node tools/texture-generator/generate-textures.js",
     "textures:deploy": "node tools/texture-generator/generate-textures.js --deploy",
     "dev:setup": "bash scripts/setup-textures.sh"

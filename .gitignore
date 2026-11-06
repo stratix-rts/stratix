@@ -9,6 +9,11 @@ dist/
 build/
 *.tsbuildinfo
 
+# 发布期特效烘焙产物（v3.3 / task_192 AP-02）—— 构建期现烘，**不入库**
+# why 显式点名：dist/ 整条已被忽略（上面一行），但「烘焙产物不入库」是 DESIGN §0 的硬纪律，
+#   值得在忽略清单里占一行 —— 万一日后有人放开 dist/ 的部分路径，这条规则仍在守门。
+dist/frontend/fx/
+
 # Environment
 .env
 .env.local

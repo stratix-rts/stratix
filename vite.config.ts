@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue';
 import { resolve, relative, isAbsolute, sep, basename } from 'path';
 import { existsSync, readFileSync, readdirSync, statSync, createReadStream } from 'fs';
 import { NEW_ENTRY_HTML } from './src/app/entry-paths';
+import { bakeFxRelease } from './scripts/lib/fx-release-bake';
 
 const ANALYZE = process.env.ANALYZE === 'true';
 
@@ -132,12 +133,51 @@ function sfxAssetsPlugin(root: string): Plugin {
   };
 }
 
+/**
+ * **发布期特效烘焙**（@since v3.3，task_192 / AP-02）—— 构建期把 pixelfx 特效烘成 sprite sheet。
+ *
+ * why 挂在 closeBundle（构建产物写完之后）：vite 在 renderStart 阶段就把 publicDir（= assets/）
+ *   拷进产物根，后面才是 rollup 写 bundle、最后 closeBundle —— 只有这个时点，
+ *   本插件写进产物根的 fx/ 才不会被 publicDir 的拷贝覆盖。
+ * why 产物落**产物根下的 fx/**：运行时按 world/appearance/fx-asset-path.ts 的相对规则取图
+ *   （dev 是 <站点根>/fx/…，electron 是 file://…/dist/frontend/fx/…）—— 同一个相对位置，
+ *   三种环境通用，运行时零改动。
+ * why 产物不入库：它落在构建产物目录（dist/，已被 .gitignore 覆盖）——
+ *   发布期的图是「构建期现烘」，不随仓库走（DESIGN §0 特效管线行）。
+ * why 失败要炸构建：烘不出来还硬发 = 发一版特效缺失的包，比构建失败难查得多。
+ * 逃生门：STRATIX_SKIP_FX_BAKE=1（本地只想看页面、不想等烘焙时用）。
+ */
+function fxReleaseBakePlugin(): Plugin {
+  let root = process.cwd();
+  let outDir = '';
+  return {
+    name: 'stratix:fx-release-bake',
+    apply: 'build',
+    configResolved(config) {
+      root = config.root;
+      outDir = config.build.outDir;
+    },
+    closeBundle() {
+      if (process.env.STRATIX_SKIP_FX_BAKE === '1') {
+        this.info('特效烘焙已跳过（STRATIX_SKIP_FX_BAKE=1）');
+        return;
+      }
+      const target = resolve(outDir, 'fx');
+      const manifest = bakeFxRelease({ rootDir: root, outDir: target });
+      this.info(
+        `特效发布期烘焙完成：${manifest.artifacts.length} 个 atlas（皮肤 ${manifest.skins.join('/')}）→ ${target}`,
+      );
+    },
+  };
+}
+
 export default defineConfig(async () => {
   const plugins = [
     vue(),
     hmrFullReloadGuard(__dirname),
     legacyEntryRedirect(),
     sfxAssetsPlugin(__dirname),
+    fxReleaseBakePlugin(),
   ];
 
   if (ANALYZE) {
