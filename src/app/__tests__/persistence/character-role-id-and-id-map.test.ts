@@ -149,10 +149,10 @@ describe('M2-02：N4a role_id 列 + 复合唯一索引 / N4c character_id_map �
       expect(indexColumns(raw, 'idx_characters_role_instance')).toEqual(['role_id', 'instance_id']);
     });
 
-    it('StratixDatabase 全新库：role_id 列 + 复合唯一索引在位、版本落 15', async () => {
+    it('StratixDatabase 全新库：role_id 列 + 复合唯一索引在位、版本落 16', async () => {
       const db = await openAndInitialize(dir);
       const raw2 = db.getDatabase();
-      expect(versionOf(raw2)).toBe(15);
+      expect(versionOf(raw2)).toBe(16);
 
       const column = columnInfo(raw2, 'characters').find((c) => String(c.name) === 'role_id');
       expect(column).toBeDefined();
@@ -310,7 +310,7 @@ describe('M2-02：N4a role_id 列 + 复合唯一索引 / N4c character_id_map �
       expect(versionOf(raw)).toBe(14);
 
       db.initialize(); // 版本号低于目标 → 重跑迁移链
-      expect(versionOf(raw)).toBe(15);
+      expect(versionOf(raw)).toBe(16);
 
       // ① role_id 列 + 复合唯一索引就位
       const column = columnInfo(raw, 'characters').find((c) => String(c.name) === 'role_id');
@@ -346,7 +346,7 @@ describe('M2-02：N4a role_id 列 + 复合唯一索引 / N4c character_id_map �
         db.initialize();
       }).not.toThrow();
 
-      expect(versionOf(raw)).toBe(15);
+      expect(versionOf(raw)).toBe(16);
       expect(columnInfo(raw, 'characters').filter((c) => String(c.name) === 'role_id')).toHaveLength(1);
       expect(
         indexList(raw, 'characters').filter((i) => String(i.name) === 'idx_characters_role_instance')
@@ -388,7 +388,7 @@ describe('M2-02：N4a role_id 列 + 复合唯一索引 / N4c character_id_map �
       const reopened = await openAndInitialize(dir);
       opened = reopened;
       const raw = reopened.getDatabase();
-      expect(versionOf(raw)).toBe(15);
+      expect(versionOf(raw)).toBe(16);
       expect(columnInfo(raw, 'characters').filter((c) => String(c.name) === 'role_id')).toHaveLength(1);
       expect(
         indexList(raw, 'characters').filter((i) => String(i.name) === 'idx_characters_role_instance')

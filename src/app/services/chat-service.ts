@@ -39,12 +39,22 @@
  * 统一策略（本服务不区分 adapter）：session 事件 / done.sessionId 里拿到 id 就记进会话状态并回写档案
  * （externalSessionId），下一轮原样透传 —— 「有没有续会话能力」由各家 CLI 自己兑现，本层不猜。
  *
- * ============ 重启恢复（task_055 统一口径）============
- * 内存会话表（sessions）重启即空；角色的 externalSessionId（存档回执，SQLite 档案 diff 自动落盘）
- * 是唯一能跨重启的会话线索。策略（三服务口径一致，chat 在此兑现）：
- *   ①externalSessionId **有效**（非空字符串）→ 种入内存会话状态，首发即透传 resume
- *     （续发语义：只发原文，persona 在会话上下文里，不重拼）；
- *   ②无效 / 空 → 首发重建（buildFirstPrompt：persona + 053 context 重注入，一次性讲齐）。
+ * ============ 重启恢复（task_055 统一口径；@since v3.3 task_200 换口径）============
+ * 内存会话表（sessions）重启即空；**外部会话引用**是唯一能跨重启的会话线索。策略（chat 在此兑现）：
+ *   ①引用表命中（`(characterId, instanceId)` 联合匹配 ⇒ 外部会话 id）→ 种入内存会话状态，
+ *     首发即透传 resume（续发语义：只发原文，persona 在会话上下文里，不重拼）；
+ *   ②未命中 → 首发重建（buildFirstPrompt：persona + 053 context 重注入，一次性讲齐）。
+ *
+ * ============ 外部会话引用（@since v3.3，task_200 / M2-03 N4b-1）============
+ * `externalSessionId` 是 **CLI 侧的 resume 凭据**，与角色行 id 无绑定关系 ⇒ 它**独立于角色行**存放：
+ *   真相表 `session_external_refs`，主键 `(external_session_id, instance_id)`（联合键）。
+ * 两条链：
+ *   写点 = 本文件 applySession（**外部会话建立处**）：落一条 (extId, instanceId) 凭据；
+ *   读点 = 本文件 runRound 的恢复种子：按 (characterId, instanceId) **联合匹配**查凭据。
+ * why 联合键：design §3.4 **R3**（chat / 互聊会话不得跨副本续发）—— 切副本后 B 副本查
+ *   `(extId, B)` 查不到 ⇒ resume 不可能 ⇒ id 重写（N4b）与副本归属彻底解耦。
+ * 兼容期：`characters.externalSessionId` 列**照写**（只读兼容镜像），新链路**不读**它；
+ *   端口未接的形态（无库）才回落读镜像列。
  * 互聊（agent-chat-service）与任务（task-service）的口径见各自文件头：任务审批门挂单表存
  * sessionId（有效→同 session 续发短指令；丢失→首发重讲，已有单测固化）；互聊短生命周期编排，
  * 重启后首发重建（externalSessionId 与聊天共用同一档案字段、后写覆盖，无法区分归属，不共享续接）。
@@ -55,7 +65,7 @@
  * 上面两种边沿事件对用户是**不可见**的：重启后第一句话接的是旧会话，还是新开的会话？
  * 用户看不出来。于是插一条 role='system' 的抽屉行（渲染复用 073 的居中弱化样式）把状态说出来：
  *   ①「已恢复会话（session xxxxxxxx）」—— runRound 起手**种子命中**时（内存无该角色会话 +
- *     档案 externalSessionId 非空 + 本轮按续发处理）：本轮接的是重启前的旧会话；
+ *     外部会话引用命中（联合匹配）+ 本轮按续发处理）：本轮接的是重启前的旧会话；
  *   ②「会话已重建（session xxxxxxxx）」—— 运行中 session 事件 / done 回的 id 与原值**不同**时
  *     （CLI 侧旧会话已被清理，resume 落到了空会话 / 换了新会话 —— task_055 风险注记里的自愈）：
  *     旧会话接不上了，本轮起是新会话。
@@ -115,18 +125,22 @@
  * @since v3.14（task_035）；v3.15（task_036）追加消息落库时机；v3.18（task_039）追加每轮经验事件；
  *   v3.30（task_054）追加离线守门（在线位拦截 + 轻提示去重）与 transport 异常上报口；
  *   v3.31（task_055）重启恢复（externalSessionId 种入内存会话）+ 差异表校准（kimi stderr / openclaw uuid）；
- *   v3.43（task_093 / v3.2a S3）追加会话域接线（character_chat：首轮建会话 + 每轮收尾推进 lastEventAt）。
+ *   v3.43（task_093 / v3.2a S3）追加会话域接线（character_chat：首轮建会话 + 每轮收尾推进 lastEventAt）；
+ *   v3.3（task_200 / M2-03 N4b-1）恢复种子换成**外部会话引用表的联合匹配**（R3 判据），
+ *     写点（外部会话建立处）同步落引用表。
  */
 
 import { emitWorldEvent } from '../../core/bus';
 import type { SessionManager } from '../../core/session';
-import type {
-  AgentKind,
-  CharacterView,
-  DetectedAgent,
-  ExpSource,
-  WorldState,
+import {
+  DEFAULT_INSTANCE_ID,
+  type AgentKind,
+  type CharacterView,
+  type DetectedAgent,
+  type ExpSource,
+  type WorldState,
 } from '../../core/types';
+
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
 import {
   defaultDispatchCwdProvider,
@@ -179,6 +193,38 @@ export interface ChatPersistedMessage {
   readonly role: 'user' | 'assistant' | 'system' | 'error';
   readonly text: string;
   readonly sessionRef: string | null;
+}
+
+/**
+ * 外部会话引用端口（@since v3.3，task_200 / M2-03 N4b-1）——
+ *   `session_external_refs` 表（design §1.3.2「`externalSessionId` 的处置（R1-40）」）。
+ *
+ * why 有这个端口：`externalSessionId` 是 **CLI 侧的 resume 凭据**，与角色行 id 无绑定关系 ⇒
+ *   它必须**独立于角色行**存放（否则 N4b 重写 `characters.id` 时凭据与角色的对应关系断裂）。
+ *   独立表的主键是**联合键** `(externalSessionId, instanceId)` ⇒ 这就是 design §3.4 **R3**
+ *   （chat / 互聊会话不得跨副本续发）的判据：切副本后 B 副本查 `(extId, B)` 查不到 ⇒ resume 不可能。
+ *
+ * 读口为什么也带 instanceId：凭据是**副本级**的 —— 只按角色查会把别的副本的凭据捞进来
+ *   ⇒ 跨副本携带上下文（§3.4 要禁的那件事）。
+ *
+ * why 读是异步：渲染层没有 Node 能力（SQLite 只在主进程）⇒ 经 IPC 读库。
+ */
+export interface ChatExternalSessionRefPort {
+  /**
+   * 读：按 `(characterId, instanceId)` 联合查该角色在**本副本**的外部会话 id；
+   *   查不到（或查失败）⇒ null（= 按首发处理，不复用外部会话）。
+   */
+  resolve(characterId: string, instanceId: string): Promise<string | null>;
+  /**
+   * 写：外部会话建立处记一条凭据（联合键 = `(externalSessionId, instanceId)`）。
+   *   失败不阻断对话（凭据缺失只降级为「重启后首发重建」）。
+   */
+  record(ref: {
+    readonly externalSessionId: string;
+    readonly instanceId: string;
+    readonly characterId: string;
+    readonly sessionId: string | null;
+  }): void;
 }
 
 // ============================================================================
@@ -316,6 +362,16 @@ export interface ChatServiceDeps {
   /** 会话 id 回写口（组合根接 worldStore —— 存档协调器会顺着档案 diff 自动落库）。 */
   readonly persistSessionId: (characterId: string, sessionId: string) => void;
   /**
+   * 外部会话引用端口（@since v3.3，task_200 / M2-03 N4b-1；**缺省不接**）。
+   *
+   * 接了 ⇒ resume 的种子一律走 `session_external_refs` 的**联合匹配**
+   *   （`(characterId, instanceId)` ⇒ 外部会话 id），写点也往该表落凭据。
+   * 不接 ⇒ 回落旧口径（读档案镜像 `character.externalSessionId`）——
+   *   仅供「没有库」的形态（纯 vite dev / 未接 preload 的旧版本），
+   *   接了端口的新形态**不读镜像列**（design §1.3.2 R1-40：镜像列是只读兼容镜像）。
+   */
+  readonly externalSessionRefs?: ChatExternalSessionRefPort;
+  /**
    * 消息落库口（@since v3.15，task_036；缺省不落库）。同步签名、实现方内部异步 ——
    * 组合根注入 makeChatMessagePersister(chatHistoryApi())；时机见文件头「消息落库」。
    */
@@ -402,6 +458,12 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
   const chatSessionIds = new Map<string, string>();
   /** 全局单飞（见文件头「单飞约束」）。 */
   let activeRun: ActiveRun | null = null;
+  /**
+   * 恢复种子的查询窗口占位（@since v3.3，task_200）：种子查询是异步 IO（经 IPC 读库），
+   *   而 `activeRun` 要到种子拿到之后才占位 ⇒ 期间留一个占位，否则两次并发首发会双双进入。
+   *   语义与 activeRun 同款（全局单飞：一个回合在跑时不接第二轮）。
+   */
+  let pendingSeed: string | null = null;
   /** characterId → 最近一次失败的原文（重试路径的弹药；新一轮 send 会清掉）。 */
   const lastFailed = new Map<string, string>();
   /** kind → transport 缓存（IPC 桥的 transport 无状态可缓存；省一次工厂往返）。 */
@@ -442,6 +504,57 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
       // 回写失败不致命：会话在内存里还续得上，只是重启后要重新开局。
       logger(`[chat-service] 会话 id 回写失败（${characterId}）：${describe(error)}`);
     }
+    // 外部会话引用（@since v3.3，task_200 / N4b-1）：外部会话**建立处**就是凭据的诞生点 ——
+    //   落 session_external_refs（联合键 (externalSessionId, instanceId) = design §3.4 R3 的判据）。
+    //   失败不致命：凭据缺失只降级为「重启后按首发重建」，不绑架当前这轮对话。
+    recordExternalSessionRef(characterId, sessionId);
+  };
+
+  /**
+   * 外部会话引用的**写点**（@since v3.3，task_200 / N4b-1）：外部会话建立 ⇒ 记一条凭据。
+   *
+   * 副本维度取**角色所属副本**（CharacterView.instanceId；缺省 = 默认沙盒）——
+   *   凭据跟着角色走 ⇒ 与「同一角色在不同副本各有独立养成」的运行态口径一致（design §1.3.3）。
+   */
+  const recordExternalSessionRef = (characterId: string, externalSessionId: string): void => {
+    const port = deps.externalSessionRefs;
+    if (!port) return;
+    const character = deps.getState().characters.find((c) => c.id === characterId);
+    const instanceId = character?.instanceId ?? DEFAULT_INSTANCE_ID;
+    try {
+      port.record({
+        externalSessionId,
+        instanceId,
+        characterId,
+        // 内部会话 id 是辅助列：还没有内部会话（会话域未接入）时为 null。
+        sessionId: chatSessionIds.get(characterId) ?? null,
+      });
+    } catch (error) {
+      logger(`[chat-service] 外部会话引用写入失败（${characterId}）：${describe(error)}`);
+    }
+  };
+
+  /**
+   * 外部会话引用的**读点**（@since v3.3，task_200 / N4b-1）：恢复种子 =
+   *   `session_external_refs` 的联合匹配（`(characterId, instanceId)` ⇒ 外部会话 id）。
+   *
+   * 查不到 ⇒ null ⇒ 按首发处理（不复用外部会话）—— 这正是 design §3.4 R3 的落法：
+   *   切副本后 B 副本查不到 A 副本的凭据 ⇒ resume 不可能。
+   *
+   * 兼容回落：**端口未接**时读档案镜像（`character.externalSessionId`）——
+   *   仅供「没有库」的形态（纯 vite dev / 旧 preload）；接了端口的新形态不读镜像列
+   *   （design §1.3.2 R1-40：镜像列是只读兼容镜像）。
+   */
+  const resolveResumeSessionId = async (character: CharacterView): Promise<string | null> => {
+    const port = deps.externalSessionRefs;
+    if (!port) {
+      return typeof character.externalSessionId === 'string' && character.externalSessionId.length > 0
+        ? character.externalSessionId
+        : null;
+    }
+    const instanceId = character.instanceId ?? DEFAULT_INSTANCE_ID;
+    const externalSessionId = await port.resolve(character.id, instanceId);
+    return typeof externalSessionId === 'string' && externalSessionId.length > 0 ? externalSessionId : null;
   };
 
   /**
@@ -560,17 +673,32 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
   /** 一轮对话的完整生命周期（守门已过）。 */
   const runRound = async (character: CharacterView, kind: AgentKind, text: string): Promise<void> => {
     const characterId = character.id;
-    // 重启恢复（task_055）：内存会话表没有该角色时，用档案 externalSessionId（存档回执）作种子 ——
-    // 有效（非空）→ 本轮按续发处理（透传 resume，只发原文，persona 在会话上下文里）；
-    // 无效 / 空 → sessionId=null，首发重建（persona + 053 context 重注入，见下方拼装分支）。
-    // 种子只做一次：内存状态建立后，回执不再是真相源（运行中的 session 事件才是）。
+    // 重启恢复（task_055 / task_200）：内存会话表没有该角色时，种子 = **外部会话引用表**的
+    // 联合匹配结果（`(characterId, instanceId)` ⇒ 外部会话 id）——
+    //   命中 → 本轮按续发处理（透传 resume，只发原文，persona 在会话上下文里）；
+    //   未命中 → sessionId=null，首发重建（persona + 053 context 重注入，见下方拼装分支）。
+    // 种子只做一次：内存状态建立后，运行中的 session 事件才是真相源。
+    // why 联合匹配（而非只按角色查）：凭据是**副本级**的（design §3.4 R3）——
+    //   切副本后 B 副本查不到 A 副本的凭据 ⇒ resume 不可能（不跨副本携带上下文）。
     const existing = sessions.get(characterId);
-    const session: ChatSessionState = existing ?? {
-      sessionId: typeof character.externalSessionId === 'string' && character.externalSessionId.length > 0
-        ? character.externalSessionId
-        : null,
-      busy: false,
-    };
+    let session: ChatSessionState;
+    if (existing) {
+      session = existing;
+    } else {
+      // 种子查询是一次异步 IO（渲染层经 IPC 读库）⇒ 期间用 pendingSeed 占住**全局单飞位**，
+      //   否则两次并发首发会双双通过 dispatch 的 activeRun 检查（activeRun 在 await 之后才占）。
+      pendingSeed = characterId;
+      let seeded: string | null = null;
+      try {
+        seeded = await resolveResumeSessionId(character);
+      } catch (error) {
+        // 查询失败不致命：按首发处理（persona 重注入），对话可用性优先。
+        logger(`[chat-service] 恢复种子查询失败（${characterId}）：${describe(error)}`);
+      } finally {
+        pendingSeed = null;
+      }
+      session = { sessionId: seeded, busy: false };
+    }
     sessions.set(characterId, session);
     if (!existing && session.sessionId !== null) {
       view.addMessage({ characterId, role: 'system', text: chatSessionRestoredText(session.sessionId) });
@@ -694,7 +822,7 @@ export function createChatService(deps: ChatServiceDeps): ChatService {
   ): Promise<void> => {
     const character = guard(characterId);
     if (!character || !character.agentKind) return;
-    if (activeRun) return; // 全局单飞
+    if (activeRun || pendingSeed !== null) return; // 全局单飞（含恢复种子的查询窗口）
     const session = sessions.get(characterId);
     if (session?.busy) return; // per-character 锁（与全局锁冗余成对，见文件头）
     if (options.persistUser) {

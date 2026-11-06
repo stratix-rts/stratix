@@ -48,7 +48,7 @@ describe('StratixDatabase schema v10（agent_health_events，task_054）', () =>
     const dir = tempDir();
     try {
       const db = await openAndInitialize(dir);
-      expect(versionOf(db)).toBe(15); // v15（task_199）起目标 schema 是 15（role_id + 复合唯一索引 + character_id_map）
+      expect(versionOf(db)).toBe(16); // v16（task_200）起目标 schema 是 16（session_external_refs）
       const tables = (
         db.getDatabase().prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as Array<{
           name: string;
@@ -88,7 +88,7 @@ describe('StratixDatabase schema v10（agent_health_events，task_054）', () =>
       raw.close();
 
       const db = await openAndInitialize(dir);
-      expect(versionOf(db)).toBe(15); // v15（task_199）起目标 schema 是 15（role_id + 复合唯一索引 + character_id_map）
+      expect(versionOf(db)).toBe(16); // v16（task_200）起目标 schema 是 16（session_external_refs）
       const row = db.getDatabase().prepare(`SELECT id FROM characters WHERE id = 'c_old'`).get() as { id: string };
       expect(row.id).toBe('c_old'); // 老表老行原样
       insertAgentHealthEvent(db.getDatabase(), { kind: 'kimi', event: 'offline', createdAt: 42 });

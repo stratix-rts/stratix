@@ -33,6 +33,11 @@
  * 复合唯一索引 `(role_id, instance_id)`：一个副本内一个 roster 角色只能有一行角色档案。
  * 同事务的 `character_id_map` 表（步 **N4c**）由 character-id-map-dao.ts 拥有，本文件只调它的 ensure。
  *
+ * ============ external_session_id 列 = 只读兼容镜像（@since v3.3，task_200 / M2-03 N4b-1）============
+ * `characters.external_session_id` 退化为**只读兼容镜像**：resume 的真相搬到独立表
+ *   `session_external_refs`（联合键 `(external_session_id, instance_id)` = design §3.4 R3 的判据）。
+ * 本文件**照写**该列（兼容期：旧代码/旧库仍读得到），但新代码的 resume 链路不再依赖它。
+ *
  * @since v3.12，task_033；v3.3（task_198）两表加 instance_id 列 + 读口按副本过滤；
  * v3.3（task_199）characters 加 role_id 列 + 复合唯一索引。
  */
@@ -68,7 +73,14 @@ export interface PersistedCharacterRecord {
   readonly bodyType: string | null;
   /** 皮肤 id（渲染侧资源键，core 不解析）；无皮肤为 null。 */
   readonly skinId: string | null;
-  /** 外部会话 id（各家 CLI 原样透传）；未建立会话为 null。 */
+  /**
+   * 外部会话 id（各家 CLI 原样透传）；未建立会话为 null。
+   *
+   * ⚠️ @since v3.3（task_200 / N4b-1）：本字段是 `characters.external_session_id` 列的
+   *   **只读兼容镜像** —— resume 的真相在 `session_external_refs` 表（联合键
+   *   `(external_session_id, instance_id)` = design §3.4 R3 的判据）。
+   *   写侧仍会照写（兼容期），读侧新链路不依赖它。
+   */
   readonly externalSessionId: string | null;
   /**
    * 角色级上下文注入开关（@since v3.29，task_053；context_enabled 列镜像）。
@@ -121,6 +133,10 @@ export function ensureGameSaveTables(db: SqliteDatabaseLike): void {
       appearance TEXT,
       body_type TEXT,
       skin_id TEXT,
+      -- external_session_id = **只读兼容镜像**（@since v3.3，task_200 / M2-03 N4b-1）：
+      --   真相在 session_external_refs 表（联合键 (external_session_id, instance_id) = design §3.4 R3 的判据）。
+      --   本列保留只为兼容旧代码/旧库；新代码的 resume 链路**不读**它（design §1.3.2 R1-40 裁决方案 b）。
+      --   兼容期**仍照写**（镜像写入保持，见 chat-service 的 applySession），直到旧链路退役。
       external_session_id TEXT,
       context_enabled INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL,

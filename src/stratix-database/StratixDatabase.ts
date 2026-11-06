@@ -92,7 +92,18 @@ const DEFAULT_FILENAME = 'stratix.db';
  *   （沙盒行 = 历史 id，其它 = `<roleId>_<instanceId>`）⇒ 身份判定只能靠 role_id 列。
  * DDL 与 app/services/persistence/game-save-dao.ts / character-id-map-dao.ts 的 ensure* 同构同步改。
  */
-const TARGET_SCHEMA_VERSION = 15;
+/**
+ * v16（@since v3.3，task_200）：**N4b-1** —— 新增 `session_external_refs` 表
+ *   （external_session_id / instance_id / character_id / session_id / created_at；
+ *   主键 `(external_session_id, instance_id)` + (character_id, instance_id) 索引）。
+ * 权威依据：docs/DESIGN-project-map.md §1.3.2「`externalSessionId` 的处置（R1-40）」
+ *   + §3.4 **R3**（chat / 互聊会话不得跨副本续发）。
+ * why 加法优先：N4b-1 是**纯新表** ⇒ 不碰存量数据，回滚只需删表（见 §1.3.2 回滚矩阵）。
+ * why 联合键是 R3 的判据：切副本后 B 副本查 `(extId, B)` 查不到 ⇒ resume 不可能
+ *   ⇒ id 重写与副本归属彻底解耦（`characters.externalSessionId` 列退化为只读兼容镜像）。
+ * DDL 与 app/services/persistence/session-external-ref-dao.ts 的 ensure* 同构同步改。
+ */
+const TARGET_SCHEMA_VERSION = 16;
 
 /**
  * 六张带副本维度的表（design §1.3.2 步 N1 的表清单）。
@@ -123,6 +134,17 @@ const ROLE_ID_COLUMN = 'role_id';
 
 /** character_id_map 表名（design §1.3.2 步 N4c：N4b 唯一的回滚凭据）。 */
 const CHARACTER_ID_MAP_TABLE = 'character_id_map';
+
+/**
+ * session_external_refs 表名（design §1.3.2 步 N4b-1：外部会话引用独立成表）。
+ *
+ * 语义：`externalSessionId`（CLI 侧 resume 凭据）**独立于角色行**存放；
+ *   主键 `(external_session_id, instance_id)` = §3.4 R3 的判据（联合匹配）。
+ */
+const SESSION_EXTERNAL_REFS_TABLE = 'session_external_refs';
+
+/** 联合键反查索引名（session_external_refs(character_id, instance_id)）。 */
+const SESSION_EXTERNAL_REFS_CHARACTER_INDEX = 'idx_session_external_refs_character';
 
 /** 复合唯一索引名（characters(role_id, instance_id)）。 */
 const CHARACTERS_ROLE_INSTANCE_INDEX = 'idx_characters_role_instance';
@@ -254,6 +276,9 @@ export class StratixDatabase {
     // v15（task_199）：N4a（characters 加 role_id 列 + 复合唯一索引）+ N4c（character_id_map 表）。
     // 排在 instance_id 之后：唯一索引 (role_id, instance_id) 依赖两列都存在。
     this.migrateRoleIdAndIdMap();
+    // v16（task_200）：N4b-1（session_external_refs 表：外部会话引用独立成表，联合键 = R3 判据）。
+    // 纯新表 ⇒ 不依赖任何列，排在最后即可。
+    this.migrateSessionExternalRefs();
   }
 
   /**
@@ -607,6 +632,10 @@ export class StratixDatabase {
           appearance TEXT,
           body_type TEXT,
           skin_id TEXT,
+          -- external_session_id = **只读兼容镜像**（@since v3.3，task_200 / N4b-1）：
+          --   真相在 session_external_refs 表（联合键 (external_session_id, instance_id) = R3 判据）。
+          --   本列保留是为了兼容旧代码/旧库；新代码的 resume 链路**不读**它（见 design §1.3.2 R1-40）。
+          --   兼容期仍照写（镜像写入保持），直到旧链路退役。
           external_session_id TEXT,
           context_enabled INTEGER NOT NULL DEFAULT 1,
           created_at INTEGER NOT NULL,
@@ -836,6 +865,34 @@ export class StratixDatabase {
     `);
     this.db.exec(
       `CREATE INDEX IF NOT EXISTS idx_character_id_map_new ON ${CHARACTER_ID_MAP_TABLE}(new_id)`
+    );
+  }
+
+  /**
+   * N4b-1（@since v3.3，task_200，schema v16）—— design §1.3.2「`externalSessionId` 的处置（R1-40）」。
+   *
+   * 建 `session_external_refs` 表：`externalSessionId`（CLI 侧 resume 凭据）**独立于角色行**存放。
+   * 主键 `(external_session_id, instance_id)` = §3.4 **R3** 的判据：
+   *   切副本后 B 副本查 `(extId, B)` 查不到 ⇒ resume 不可能 ⇒ id 重写与副本归属彻底解耦。
+   *
+   * 幂等：IF NOT EXISTS ⇒ 新库 / 老库 / 迁移重跑都直过（可重复执行）。
+   * 零数据改写：纯新表，不装旧行 ⇒ 存量数据一个字节都没动。
+   * why `instance_id` 是 NOT NULL（不是可空）：本表没有「NULL = 默认沙盒」的旧行语义 ——
+   *   默认沙盒有自己的真实 id（`DEFAULT_INSTANCE_ID = 'wsp_sandbox'`）⇒ 一律写实值。
+   */
+  private migrateSessionExternalRefs(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ${SESSION_EXTERNAL_REFS_TABLE} (
+        external_session_id TEXT NOT NULL,
+        instance_id TEXT NOT NULL,
+        character_id TEXT,
+        session_id TEXT,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (external_session_id, instance_id)
+      )
+    `);
+    this.db.exec(
+      `CREATE INDEX IF NOT EXISTS ${SESSION_EXTERNAL_REFS_CHARACTER_INDEX} ON ${SESSION_EXTERNAL_REFS_TABLE}(character_id, instance_id)`
     );
   }
 
@@ -1347,6 +1404,10 @@ export class StratixDatabase {
         appearance TEXT,
         body_type TEXT,
         skin_id TEXT,
+        -- external_session_id = **只读兼容镜像**（@since v3.3，task_200 / N4b-1）：
+        --   真相在 session_external_refs 表（联合键 (external_session_id, instance_id) = R3 判据）。
+        --   本列保留是为了兼容旧代码/旧库；新代码的 resume 链路**不读**它（design §1.3.2 R1-40）。
+        --   兼容期仍照写（镜像写入保持），直到旧链路退役。
         external_session_id TEXT,
         context_enabled INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL,
@@ -1365,6 +1426,19 @@ export class StratixDatabase {
         instance_id TEXT NOT NULL,
         created_at INTEGER NOT NULL,
         PRIMARY KEY (old_id, instance_id)
+      );
+
+      -- 外部会话引用表（@since v3.3，task_200，步 N4b-1）——
+      -- externalSessionId（CLI 侧 resume 凭据）**独立于角色行**存放；主键
+      -- (external_session_id, instance_id) = design §3.4 R3 的判据：
+      -- 切副本后 B 副本查 (extId, B) 查不到 ⇒ resume 不可能（id 重写与副本归属彻底解耦）。
+      CREATE TABLE IF NOT EXISTS session_external_refs (
+        external_session_id TEXT NOT NULL,
+        instance_id TEXT NOT NULL,
+        character_id TEXT,
+        session_id TEXT,
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (external_session_id, instance_id)
       );
 
       -- 单位站位表：characterId → 战场世界坐标（app 层防抖批量写入）
@@ -1416,6 +1490,8 @@ export class StratixDatabase {
       CREATE INDEX IF NOT EXISTS idx_characters_kind ON characters(kind);
       -- 映射表反查索引（task_199，步 N4c）：前滚回滚按 new_id 查 old_id。
       CREATE INDEX IF NOT EXISTS idx_character_id_map_new ON character_id_map(new_id);
+      -- 外部会话引用的联合键反查索引（task_200，步 N4b-1）：resume 读口按 (character_id, instance_id) 查。
+      CREATE INDEX IF NOT EXISTS idx_session_external_refs_character ON session_external_refs(character_id, instance_id);
       CREATE INDEX IF NOT EXISTS idx_character_chat_messages_character ON character_chat_messages(character_id, id);
       CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at);
     `;

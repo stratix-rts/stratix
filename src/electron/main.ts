@@ -34,6 +34,14 @@ import {
   type PersistedCharacterRecord,
   type PersistedUnitPosition,
 } from '../app/services/persistence/game-save-dao';
+// 外部会话引用表 IPC（@since v3.3，task_200 / N4b-1）：session_external_refs 的读写两条通道。
+// 联合键 (external_session_id, instance_id) = design §3.4 R3 的判据（切副本后查不到 ⇒ 不能 resume）。
+import {
+  ensureSessionExternalRefsTable,
+  findSessionExternalRefByCharacter,
+  parseSessionExternalRefInsert,
+  recordSessionExternalRef,
+} from '../app/services/persistence/session-external-ref-dao';
 // 角色对话历史表 IPC（@since v3.15，task_036）：**读侧**两条通道（loadChatMessages /
 // loadEarlierChatMessages）。写侧（saveChatMessage）已迁 service（A3 / task_079）—— 消息落库
 // 由 service 进程的存储件独占写（service/storage.ts，铁律 6）。
@@ -707,6 +715,46 @@ function setupIPC() {
       return { ok: true, rows: aggregateCharacterActivity(db) };
     } catch (error: any) {
       console.error('[Electron] game:growthOverview failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  // ==================== 外部会话引用 IPC（@since v3.3，task_200 / M2-03 N4b-1）===================
+  // session_external_refs 表：externalSessionId（CLI 侧 resume 凭据）**独立于角色行**存放，
+  // 主键 (external_session_id, instance_id) = design §3.4 R3 的判据：
+  //   切副本后 B 副本查 (extId, B) 查不到 ⇒ resume 不可能（id 重写与副本归属彻底解耦）。
+  // 写口 = 外部会话建立处（渲染层 chat-service 的 applySession）；读口 = 恢复种子（联合匹配）。
+  // 参数校验从严（IPC 是可信度最低的入口）：脏形状一律拒（拒绝即回 {ok:false}，调用方只警告）。
+  ipcMain.handle('game:saveSessionExternalRef', async (_event, ref: unknown) => {
+    try {
+      const parsed = parseSessionExternalRefInsert(ref);
+      if (!parsed) return { ok: false, error: 'invalid session external ref' };
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensureSessionExternalRefsTable(db);
+      recordSessionExternalRef(db, parsed);
+      return { ok: true };
+    } catch (error: any) {
+      console.error('[Electron] game:saveSessionExternalRef failed:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  ipcMain.handle('game:loadSessionExternalRef', async (_event, characterId: unknown, instanceId: unknown) => {
+    try {
+      if (typeof characterId !== 'string' || characterId.length === 0) {
+        return { ok: false, error: 'bad characterId' };
+      }
+      if (typeof instanceId !== 'string' || instanceId.length === 0) {
+        return { ok: false, error: 'bad instanceId' };
+      }
+      if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
+      const db = getDatabase().getDatabase();
+      ensureSessionExternalRefsTable(db);
+      const ref = findSessionExternalRefByCharacter(db, characterId, instanceId);
+      return { ok: true, ...(ref ? { ref } : {}) };
+    } catch (error: any) {
+      console.error('[Electron] game:loadSessionExternalRef failed:', error);
       return { ok: false, error: error?.message ?? String(error) };
     }
   });

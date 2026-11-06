@@ -207,6 +207,12 @@ import {
   gameSaveApi,
   type RestoreInjection,
 } from '../services/persistence/game-save-coordinator';
+// 外部会话引用端口（@since v3.3，task_200 / M2-03 N4b-1）：session_external_refs 的渲染侧适配器。
+// 联合键 (external_session_id, instance_id) = design §3.4 R3 的判据（切副本后查不到 ⇒ 不能 resume）。
+import {
+  createSessionExternalRefPort,
+  sessionExternalRefApi,
+} from '../services/persistence/session-external-ref-client';
 import { resolveSessionCompressThreshold } from '../services/session-compress-config';
 import { createSessionEventLog } from '../services/session-event-log';
 import {
@@ -822,6 +828,14 @@ async function boot(): Promise<void> {
         logger: (line) => console.warn(`[Stratix] ${line}`),
       });
   if (characterDrawer && cliChat) {
+    // 外部会话引用端口（@since v3.3，task_200 / N4b-1）：恢复种子与凭据写入都走它。
+    // 拿不到面（非 Electron / 旧 preload）⇒ 不接端口 ⇒ chat-service 回落旧口径（读档案镜像）。
+    const externalRefApi = sessionExternalRefApi();
+    const externalSessionRefs = externalRefApi
+      ? createSessionExternalRefPort(externalRefApi, {
+          logger: (line) => console.warn(`[Stratix] ${line}`),
+        })
+      : undefined;
     const chatService = createChatService({
       view: characterDrawer,
       getState: () => worldStore.getState(),
@@ -830,6 +844,9 @@ async function boot(): Promise<void> {
       // 换注入件即接管 —— 本服务零改动（交接注记见 chat-service.ts 文件头）。
       expWeight: expWeightFor,
       persistSessionId: (characterId, sessionId) => {
+        // 兼容镜像写入（@since v3.3，task_200 / N4b-1）：角色档案的 externalSessionId 字段
+        //   仍照写（存档协调器顺着档案 diff 自动落 characters.external_session_id 列）——
+        //   该列是**只读兼容镜像**（真相在 session_external_refs 表，见 ChatExternalSessionRefPort）。
         worldStore.setState((current) => {
           const index = current.characters.findIndex((c) => c.id === characterId);
           if (index < 0) return current;
@@ -844,6 +861,9 @@ async function boot(): Promise<void> {
       // task_053：换成包过话题缓存的同一个 persister（上方组装说明）。
       persistMessage: contextPersister.persist,
       provideContext: stratixContextSource,
+      // task_200 / N4b-1：外部会话引用端口（读 = 联合匹配，写 = 落凭据）。
+      //   拿不到面就不接（服务回落旧口径）⇒ 这里用条件展开而不是 undefined 字段。
+      ...(externalSessionRefs ? { externalSessionRefs } : {}),
       // task_093：会话域 LITE 接线（character_chat）—— 首轮建会话、每轮末追加一条空 round 事件
       //   （只更新 lastEventAt / counters，消息本体仍在 chat_messages 表里，不重复落库）。
       //   远程模式不接（见上方 sessionManager 注释：本地不能再造一份真相）。

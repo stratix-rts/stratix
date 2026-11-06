@@ -20,6 +20,10 @@ import type {
   PersistedExpEvent,
 } from '../app/services/persistence/exp-event-dao';
 import type { PersistedCustomAgentRecord } from '../app/services/persistence/custom-agent-dao';
+import type {
+  PersistedSessionExternalRef,
+  SessionExternalRefInsert,
+} from '../app/services/persistence/session-external-ref-dao';
 import type { BakedCharacterSheetMeta } from '../world/appearance/bake-sheet-meta';
 
 /**
@@ -191,6 +195,19 @@ export interface ElectronAPI {
     loadExpEvents: (characterId: string, sinceMs: number) => Promise<{ ok: boolean; events?: PersistedExpEvent[]; error?: string }>;
     /** 全场活跃度聚合（@since v3.36，task_061：三源 UNION 按角色计数 + 建档时间）。 */
     growthOverview: () => Promise<{ ok: boolean; rows?: PersistedActivityRow[]; error?: string }>;
+    /**
+     * 写一条外部会话引用（@since v3.3，task_200 / N4b-1，落 session_external_refs 表）。
+     * 联合键 = (externalSessionId, instanceId) = design §3.4 R3 的判据。
+     */
+    saveSessionExternalRef: (ref: SessionExternalRefInsert) => Promise<{ ok: boolean; error?: string }>;
+    /**
+     * 读某角色在某副本的外部会话引用（@since v3.3，task_200；联合匹配）。
+     * 查不到 ⇒ ok=true 且 ref 缺省（= 该副本没有这条凭据 ⇒ 按首发处理）。
+     */
+    loadSessionExternalRef: (
+      characterId: string,
+      instanceId: string
+    ) => Promise<{ ok: boolean; ref?: PersistedSessionExternalRef; error?: string }>;
   };
 
   /**
@@ -379,6 +396,11 @@ const electronAPI: ElectronAPI = {
     saveExpEvent: (insert: ExpEventInsert) => ipcRenderer.invoke('game:saveExpEvent', insert),
     loadExpEvents: (characterId: string, sinceMs: number) => ipcRenderer.invoke('game:loadExpEvents', characterId, sinceMs),
     growthOverview: () => ipcRenderer.invoke('game:growthOverview'),
+    // 外部会话引用（@since v3.3，task_200 / N4b-1）：读写 session_external_refs 表。
+    // 联合键 (external_session_id, instance_id) = design §3.4 R3 的判据。
+    saveSessionExternalRef: (ref: SessionExternalRefInsert) => ipcRenderer.invoke('game:saveSessionExternalRef', ref),
+    loadSessionExternalRef: (characterId: string, instanceId: string) =>
+      ipcRenderer.invoke('game:loadSessionExternalRef', characterId, instanceId),
   },
 
   /**
