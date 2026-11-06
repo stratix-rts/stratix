@@ -15,6 +15,11 @@
  * ★ 为什么要"精灵带"而不是整张精灵表：
  *   LPC 一张完整精灵表是 832×3456（约 11MB），而战场只需要"走路"这一个动画的 4 个方向。
  *   故合成完立刻裁出走路那 4 行（832×256），上传进显存的就只有这一条。
+ *
+ * ★ 烘焙缓存优先（@since v3.3，task_195 / CP-01）：
+ *   整精灵图会被烘焙进用户本地缓存（见 app/services/character-bake-service.ts），
+ *   本实现**先读缓存图**再裁带；没有缓存才合成（现状路径）。
+ *   缓存图与现合成图同权 —— 两者都是像素，判空口径一致。
  */
 
 import type { CharacterAppearance } from '../../core/types';
@@ -43,6 +48,15 @@ export interface UnitSpriteSourceOptions {
    *   缺省 = 不给兜底（角色没外观就没有形象，渲染层回落到占位形体）。
    */
   readonly resolveAppearance?: (characterId: string) => CharacterAppearance | null;
+  /**
+   * 烘焙缓存整图的读取口（@since v3.3，task_195 / CP-01）：**运行时优先读缓存图**，
+   *   没有缓存才走现状的直合成（DESIGN §2.1「运行时一律只读整图」）。
+   *   缺省 = 没有缓存这回事（行为与今天一致）。
+   */
+  readonly loadCachedSheet?: (
+    characterId: string,
+    appearance: CharacterAppearance
+  ) => Promise<HTMLCanvasElement | null>;
 }
 
 /**
@@ -51,7 +65,7 @@ export interface UnitSpriteSourceOptions {
  * 生命周期：每次 loadWalkBand → 等元数据就绪 → 合成 → 裁出走路 4 行 → 交出画布。
  */
 export function createUnitSpriteSource(options: UnitSpriteSourceOptions): UnitSpriteSource {
-  const { registry, composer, createCanvas, resolveAppearance } = options;
+  const { registry, composer, createCanvas, resolveAppearance, loadCachedSheet } = options;
 
   /** 复用的合成画布（832×3456 —— 重建很贵，务必复用）。 */
   let sheet: HTMLCanvasElement | null = null;
@@ -131,6 +145,19 @@ export function createUnitSpriteSource(options: UnitSpriteSourceOptions): UnitSp
         // 裁决不出（没注入裁决器 / 角色查不到）→ null，渲染层回落占位形象。
         const effective = appearance ?? resolveFallback(characterId);
         if (!effective) return null;
+
+        // ===== 运行时优先读烘焙缓存图（@since v3.3，task_195 / CP-01）=====
+        // why 在最前面：缓存图是**整精灵图**，裁走路那 4 行即可 —— 省掉整轮合成
+        //   （合成要逐层取图 + 画 832×3456，是战场进场的最大一笔开销）。
+        // 没缓存 / 缓存图是空的 → 落回现状的直合成（静默降级，用户无感知）。
+        if (loadCachedSheet) {
+          const cached = await loadCachedSheet(characterId, effective);
+          if (cached) {
+            const cachedBand = cropWalkBand(cached);
+            if (!isBlankBand(cachedBand)) return cachedBand;
+            console.warn(`[UnitSpriteSource] 角色 ${characterId} 的缓存整图为空，回落直合成`);
+          }
+        }
 
         return await enqueue(async () => {
           const selections = {

@@ -123,8 +123,56 @@ describe('单位形象精灵源（app 层实现）', () => {
     expect(result).toBeNull();
   });
 
-  test('并发请求串行执行（合成共用一张画布，同时跑会互踩画面）', async () => {
+  test('运行时优先读烘焙缓存图（有缓存就不合成 —— task_195 / CP-01）', async () => {
     const registry = createFakeRegistry();
+    const composer = createFakeComposer();
+    const band = createFakeCanvas();
+    const cachedSheet = createFakeCanvas();
+
+    const source = createUnitSpriteSource({
+      registry,
+      composer,
+      createCanvas: () => band.canvas,
+      loadCachedSheet: async () => cachedSheet.canvas,
+    });
+
+    const result = await source.loadWalkBand('character_1', APPEARANCE);
+
+    expect(result).not.toBeNull();
+    // 缓存整图被裁成走路带，**没有**再走一遍合成。
+    expect(composer.composeCharacter).not.toHaveBeenCalled();
+    expect(band.drawImage).toHaveBeenCalledWith(
+      cachedSheet.canvas,
+      0,
+      ANIMATION_OFFSETS[DEFAULT_ANIMATION],
+      UNIT_SHEET_COLUMNS * FRAME_SIZE,
+      4 * FRAME_SIZE,
+      0,
+      0,
+      UNIT_SHEET_COLUMNS * FRAME_SIZE,
+      4 * FRAME_SIZE
+    );
+  });
+
+  test('没有缓存图 ⇒ 落回现状的直合成（静默降级，用户无感知）', async () => {
+    const registry = createFakeRegistry();
+    const composer = createFakeComposer();
+    const band = createFakeCanvas();
+
+    const source = createUnitSpriteSource({
+      registry,
+      composer,
+      createCanvas: () => band.canvas,
+      loadCachedSheet: async () => null,
+    });
+
+    const result = await source.loadWalkBand('character_1', APPEARANCE);
+
+    expect(result).not.toBeNull();
+    expect(composer.composeCharacter).toHaveBeenCalledTimes(1);
+  });
+
+  test('并发请求串行执行（合成共用一张画布，同时跑会互踩画面）', async () => {    const registry = createFakeRegistry();
     const track = { current: 0, max: 0 };
     const composer = createFakeComposer({ track });
     const band = createFakeCanvas();

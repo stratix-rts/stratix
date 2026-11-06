@@ -110,6 +110,13 @@ let tailscale: EmbeddedTailscale | null = null;
 let activeOpenClawConnection: WebSocketOpenClawAdapter | null = null;
 let userDataPath: string = '';
 let texturesDir: string = '';
+/**
+ * 角色烘焙缓存目录（@since v3.3，task_195 / CP-01）。
+ * why 落在 userData **顶层**（不在 data/ 下）：烘焙产物是**缓存**，不是业务数据 ——
+ *   删掉整个目录就该能整体重建（DESIGN §2.2 纪律 3），单独放一处最省事。
+ * why 不进仓库、不进 .stratix 契约目录：那是发布资产的归宿，缓存不属于那儿。
+ */
+let characterBakesDir: string = '';
 
 // Development server ports to try when connecting to Vite dev server
 const DEV_PORTS = [7523, 7524, 7525, 7526, 7527, 7528, 7529, 7530] as const;
@@ -160,6 +167,23 @@ function safeParseJson<T>(data: string, fallback: T): T {
 }
 
 /**
+ * 烘焙缓存键的文件名级校验（@since v3.3，task_195 / CP-01）。
+ *
+ * why 主进程要再校验一次：渲染层那边已经消毒过（world/appearance/bake-cache-key.ts 的
+ *   sanitizeKeySegment），但**键会变成文件名** —— 一道纵深防御：只放行
+ *   `[A-Za-z0-9._-]` 且不含连续点号（`..`），其余一律拒绝。
+ *
+ * @returns 合法且安全的键；非法返回 null。
+ */
+function sanitizeBakeKey(key: unknown): string | null {
+  if (typeof key !== 'string') return null;
+  if (key.length === 0 || key.length > 160) return null;
+  if (!/^[A-Za-z0-9._-]+$/.test(key)) return null;
+  if (key.includes('..')) return null;
+  return key;
+}
+
+/**
  * 初始化所有服务
  */
 async function initializeServices() {
@@ -172,6 +196,11 @@ async function initializeServices() {
   texturesDir = path.join(dataDir, 'textures');
   ensureDirSync(texturesDir);
   console.log('[Electron] Textures directory:', texturesDir);
+
+  // 角色烘焙缓存目录（@since v3.3，task_195 / CP-01）：整精灵图 + atlas 元数据落这里。
+  characterBakesDir = path.join(userDataPath, 'character-bakes');
+  ensureDirSync(characterBakesDir);
+  console.log('[Electron] Character bakes directory:', characterBakesDir);
 
   // 2. 初始化 DataStoreService
   await dataStoreService.initialize(dataDir);
@@ -929,6 +958,70 @@ function setupIPC() {
     } catch (error: any) {
       console.error('[TextureService] Delete failed:', error);
       return { success: false, error: error.message };
+    }
+  });
+
+  // ==================== 角色烘焙缓存 IPC（task_195 / CP-01）====================
+  // 产物：部件合成的一张整精灵图（PNG）+ atlas 元数据（JSON），落 userData/character-bakes/。
+  // why 走 IPC：渲染进程没有文件系统（nodeIntegration 关闭），写盘只能在主进程。
+  // why 键要再校验一次：键会变成文件名，主进程是最后一道防线（防目录穿越）。
+  ipcMain.handle('characterBake:read', async (_event, key: unknown) => {
+    try {
+      if (!characterBakesDir) return { ok: false, error: '缓存目录未初始化' };
+      const safeKey = sanitizeBakeKey(key);
+      if (!safeKey) return { ok: false, error: '非法的缓存键' };
+
+      const pngPath = path.join(characterBakesDir, `${safeKey}.png`);
+      const metaPath = path.join(characterBakesDir, `${safeKey}.json`);
+      if (!fs.existsSync(pngPath) || !fs.existsSync(metaPath)) {
+        return { ok: true, pngBase64: null, meta: null };
+      }
+
+      const pngBase64 = fs.readFileSync(pngPath).toString('base64');
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+      return { ok: true, pngBase64, meta };
+    } catch (error: any) {
+      console.error('[CharacterBake] 读取失败:', error);
+      return { ok: false, error: error?.message ?? String(error) };
+    }
+  });
+
+  ipcMain.handle(
+    'characterBake:write',
+    async (_event, key: unknown, pngBase64: unknown, meta: unknown) => {
+      try {
+        if (!characterBakesDir) return { ok: false, error: '缓存目录未初始化' };
+        const safeKey = sanitizeBakeKey(key);
+        if (!safeKey) return { ok: false, error: '非法的缓存键' };
+        if (typeof pngBase64 !== 'string' || pngBase64.length === 0) {
+          return { ok: false, error: '空的 PNG 数据' };
+        }
+
+        ensureDirSync(characterBakesDir);
+        fs.writeFileSync(path.join(characterBakesDir, `${safeKey}.png`), Buffer.from(pngBase64, 'base64'));
+        fs.writeFileSync(
+          path.join(characterBakesDir, `${safeKey}.json`),
+          JSON.stringify(meta ?? {}),
+          'utf-8'
+        );
+        return { ok: true };
+      } catch (error: any) {
+        console.error('[CharacterBake] 写入失败:', error);
+        return { ok: false, error: error?.message ?? String(error) };
+      }
+    }
+  );
+
+  ipcMain.handle('characterBake:clear', async () => {
+    try {
+      if (!characterBakesDir) return { ok: false, error: '缓存目录未初始化' };
+      // 整体删目录（纪律 3：删缓存目录 ⇒ 下次触发全量重烘，无其他依赖）。
+      fs.rmSync(characterBakesDir, { recursive: true, force: true });
+      ensureDirSync(characterBakesDir);
+      return { ok: true };
+    } catch (error: any) {
+      console.error('[CharacterBake] 清空失败:', error);
+      return { ok: false, error: error?.message ?? String(error) };
     }
   });
 

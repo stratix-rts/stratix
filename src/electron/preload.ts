@@ -20,6 +20,7 @@ import type {
   PersistedExpEvent,
 } from '../app/services/persistence/exp-event-dao';
 import type { PersistedCustomAgentRecord } from '../app/services/persistence/custom-agent-dao';
+import type { BakedCharacterSheetMeta } from '../world/appearance/bake-sheet-meta';
 
 /**
  * 自定义 agent 注册的 IPC 形状（@since v3.32，task_056）：主进程四条通道的
@@ -115,6 +116,25 @@ export interface ElectronAPI {
     upload: (characterId: string, imageData: string, filename?: string) => Promise<{ success: boolean; data?: any; error?: string }>;
     check: (filePath: string) => Promise<{ exists: boolean; url?: string | null; size?: number; generatedAt?: number }>;
     delete: (filePath: string) => Promise<{ success: boolean; error?: string }>;
+  };
+
+  /**
+   * 角色烘焙缓存（@since v3.3，task_195 / CP-01）：整精灵图（PNG）+ atlas 元数据（JSON），
+   * 落 Electron 主进程的 userData 侧（`userData/character-bakes/`）。
+   * why 走主进程：渲染进程没有文件系统（nodeIntegration 关闭）。
+   */
+  characterBake: {
+    /** 读一条产物；未命中返回 ok + 空载荷（未命中是常态，不是错误）。 */
+    read: (key: string) => Promise<{
+      ok: boolean;
+      pngBase64?: string | null;
+      meta?: BakedCharacterSheetMeta | null;
+      error?: string;
+    }>;
+    /** 写一条产物（覆盖同键旧产物）。 */
+    write: (key: string, pngBase64: string, meta: BakedCharacterSheetMeta) => Promise<{ ok: boolean; error?: string }>;
+    /** 整体清空（删缓存目录）—— 之后下次触发全量重烘。 */
+    clear: () => Promise<{ ok: boolean; error?: string }>;
   };
 
   // 本地 CLI agent 检测（@since v3.8，task_022）
@@ -301,6 +321,13 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke('texture:upload', { characterId, imageData, filename }),
     check: (filePath) => ipcRenderer.invoke('texture:check', filePath),
     delete: (filePath) => ipcRenderer.invoke('texture:delete', filePath),
+  },
+
+  // 角色烘焙缓存（@since v3.3，task_195 / CP-01）：产物落主进程 userData/character-bakes/。
+  characterBake: {
+    read: (key) => ipcRenderer.invoke('characterBake:read', key),
+    write: (key, pngBase64, meta) => ipcRenderer.invoke('characterBake:write', key, pngBase64, meta),
+    clear: () => ipcRenderer.invoke('characterBake:clear'),
   },
 
   // 本地 CLI agent 检测（@since v3.8，task_022）；健康周期探测（@since v3.30，task_054）。

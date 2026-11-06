@@ -101,7 +101,7 @@ import { createCoreRuntime, type UnhandledChannel } from '../../core/runtime';
 import { createSessionManager } from '../../core/session';
 import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
-import { DEFAULT_INSTANCE_ID, type DetectedAgent, type HudCommand, type Point, type WorldEvent, type WorldState } from '../../core/types';
+import { DEFAULT_INSTANCE_ID, type CharacterAppearance, type DetectedAgent, type HudCommand, type Point, type WorldEvent, type WorldState } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
 // ⌘K 命令面板（@since v3.9，task_150）：全应用键盘可达 —— 命令定义在共享注册表
 //   （hud/lib/command-registry.ts），底栏 composer 与本面板共用一份事实源。
@@ -223,6 +223,11 @@ import {
 import { createBrowserAppearanceEnvironment } from '../services/appearance-environment';
 import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
+import { createCharacterBakeService } from '../services/character-bake-service';
+import {
+  characterBakeIpcApi,
+  createIpcCharacterBakeStore,
+} from '../services/character-bake-store';
 import { createAgentChatService, resolvePeerTurnTimeoutMs, type AgentChatService } from '../services/agent-chat-service';
 import { createSessionTitleServiceFromEnv } from '../services/session-title';
 import { createSessionReferenceService } from '../services/session-reference';
@@ -1141,16 +1146,35 @@ async function boot(): Promise<void> {
     if (errorGlowTrigger(event, directorEnabled)) errorGlow.pulse();
   });
 
+  // ===== 角色形象烘焙（@since v3.3，task_195 / CP-01）=====
+  // 部件合成**一张整精灵图** + atlas 元数据，落用户本地缓存（Electron 的 userData 侧）。
+  // 纯浏览器 dev 没有 userData → 没有存取口 → 全程降级（不烘焙、运行时直合成，行为与今天一致）。
+  // 铁则：与特效烘焙链互不引用（DESIGN §0「两条烘焙管线禁止互卷」）。
+  const characterBakeStore = (() => {
+    const api = characterBakeIpcApi();
+    return api ? createIpcCharacterBakeStore(api) : null;
+  })();
+  const characterBakes = createCharacterBakeService({
+    registry: appearanceRegistry,
+    composer: appearanceComposer,
+    createCanvas: appearanceEnv.createCanvas,
+    createImage: appearanceEnv.createImage,
+    store: characterBakeStore,
+  });
+
   // ===== 战场单位的形象（@since v3.10，task_029）=====
   // 单位带 appearance 时，战场用合成好的 LPC 精灵表当身体（走路动画）。
   // 合成要 DOM（canvas / Image），world 层零 DOM —— 故实现在 app 层，world 只认端口。
   // @since v3.8（task_140）追加**兜底长相**：角色没自带外观（老档案 / 没绑 agent 种类）时，
   //   按 agent 种类取品牌预设、取不到就随机合成（见 world/appearance/character-look.ts）——
   //   裁决要查角色名册（app 层才知道），故注入回调而不是让 world 自己猜。
+  // @since v3.3（task_195）**运行时优先读烘焙缓存图**：有缓存图就裁它，没有才现合成。
   const unitSpriteSource = createUnitSpriteSource({
     registry: appearanceRegistry,
     composer: appearanceComposer,
     createCanvas: appearanceEnv.createCanvas,
+    loadCachedSheet: (characterId: string, appearance: CharacterAppearance) =>
+      characterBakes.loadCachedSheet(characterId, appearance),
     resolveAppearance: (characterId: string) => {
       const character = worldStore.getState().characters.find((item) => item.id === characterId);
       if (!character) return null;
@@ -1163,6 +1187,17 @@ async function boot(): Promise<void> {
         { registry: appearanceRegistry }
       );
     },
+  });
+
+  // ===== 角色烘焙的两个触发点（@since v3.3，task_195 / CP-01）=====
+  // ① 首次导入 Agent 并选择皮肤 → core 收 'character.create'（带 appearance）→ 落库 → 状态广播；
+  // ② 更改皮肤 → core 收 'character.appearance.update' → 落库 → 状态广播。
+  // 两处都收敛到「角色档案里的 appearance 变了」这一件事上，故挂**状态广播**这一处即可。
+  // why 不挂命令：'character.create' 命令里**还没有角色 id**（id 是 core 建档时生成的），
+  //   而缓存键的第一要素就是 agent 标识 —— 挂状态广播，两处拿到的都是已建档角色的同一个 id。
+  // 订阅放在 runtime 启动之前：总线不回放历史，早订阅才接得住第一帧广播。
+  const stopCharacterBakeWatch = onState((state) => {
+    characterBakes.syncCharacters(state.characters);
   });
 
   // ===== 首启向导覆盖层（@since v3.9，task_026）=====
@@ -1658,6 +1693,8 @@ async function boot(): Promise<void> {
     () => {
       stopOnboardingWatch();
       onboarding.dispose();
+      // 角色烘焙订阅（task_195 / CP-01）：退总线订阅（页面销毁前退干净，与其它订阅同一纪律）。
+      stopCharacterBakeWatch();
       // 场景切换订阅（task_186）：退总线订阅（页面销毁前退干净，与其它订阅同一纪律）。
       stopSceneSwitch();
       // 特效调色板的皮肤订阅（task_194 / AP-04）：退订（页面销毁前退干净）。

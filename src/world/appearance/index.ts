@@ -24,3 +24,7 @@ export * from './character-composer';
 export * from './character-look';
 export * from './part-config';
 export * from './spritesheet-path';
+// 角色烘焙（@since v3.3，task_195 / CP-01）：版本号 + 缓存键 + 整图元数据。
+export * from './composer-version';
+export * from './bake-cache-key';
+export * from './bake-sheet-meta';
