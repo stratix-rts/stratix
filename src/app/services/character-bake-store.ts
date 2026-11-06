@@ -30,6 +30,36 @@ export interface CharacterBakeEntry {
 }
 
 /**
+ * 存取失败的**种类**（@since v3.3，task_196 / CP-02）。
+ *
+ * why 要分类：上层（烘焙服务）要据此判「这是哪一类失败面」——
+ *   - `corrupt`：缓存里的东西**坏了**（文件截断 / JSON 损坏 / 版本不符）→ 该重烘；
+ *   - `unavailable`：环境**不配合**（目录不可写 / 磁盘满 / IPC 断）→ 重烘也会失败，降温重试。
+ *   两者都不该让用户看见（DESIGN §2.2 纪律 2），但内部日志要能分开说。
+ */
+export type CharacterBakeStoreErrorKind = 'corrupt' | 'unavailable';
+
+/**
+ * 存取口抛出的错误（带种类）。
+ *
+ * why 不用裸 Error：上层要按种类分流（重烘 / 降温重试），裸 Error 分不出来。
+ */
+export class CharacterBakeStoreError extends Error {
+  readonly kind: CharacterBakeStoreErrorKind;
+
+  constructor(kind: CharacterBakeStoreErrorKind, message: string) {
+    super(message);
+    this.name = 'CharacterBakeStoreError';
+    this.kind = kind;
+  }
+}
+
+/** 取存取错误的种类（不是存取错误 → undefined）。 */
+export function characterBakeStoreErrorKind(error: unknown): CharacterBakeStoreErrorKind | undefined {
+  return error instanceof CharacterBakeStoreError ? error.kind : undefined;
+}
+
+/**
  * 缓存存取口（渲染层视角）。
  *
  * 契约：
@@ -52,13 +82,15 @@ export interface CharacterBakeIpcApi {
     readonly pngBase64?: string | null;
     readonly meta?: BakedCharacterSheetMeta | null;
     readonly error?: string;
+    /** 失败种类（@since v3.3，task_196 / CP-02）：坏了 / 环境不配合。 */
+    readonly kind?: CharacterBakeStoreErrorKind;
   }>;
   write(
     key: string,
     pngBase64: string,
     meta: BakedCharacterSheetMeta
-  ): Promise<{ readonly ok: boolean; readonly error?: string }>;
-  clear(): Promise<{ readonly ok: boolean; readonly error?: string }>;
+  ): Promise<{ readonly ok: boolean; readonly error?: string; readonly kind?: CharacterBakeStoreErrorKind }>;
+  clear(): Promise<{ readonly ok: boolean; readonly error?: string; readonly kind?: CharacterBakeStoreErrorKind }>;
 }
 
 /**
@@ -86,7 +118,11 @@ export function createIpcCharacterBakeStore(api: CharacterBakeIpcApi): Character
     async read(key: string): Promise<CharacterBakeEntry | null> {
       const result = await api.read(sanitizeKeySegment(key));
       if (!result?.ok) {
-        throw new Error(`读取烘焙缓存失败：${result?.error ?? '未知原因'}`);
+        // 种类由主进程给（corrupt = 文件坏了；unavailable = 环境不配合）。
+        throw new CharacterBakeStoreError(
+          result?.kind ?? 'unavailable',
+          `读取烘焙缓存失败：${result?.error ?? '未知原因'}`
+        );
       }
       if (!result.pngBase64 || !result.meta) return null;
       return { pngBase64: result.pngBase64, meta: result.meta };
@@ -95,14 +131,20 @@ export function createIpcCharacterBakeStore(api: CharacterBakeIpcApi): Character
     async write(key: string, pngBase64: string, meta: BakedCharacterSheetMeta): Promise<void> {
       const result = await api.write(sanitizeKeySegment(key), pngBase64, meta);
       if (!result?.ok) {
-        throw new Error(`写入烘焙缓存失败：${result?.error ?? '未知原因'}`);
+        throw new CharacterBakeStoreError(
+          result?.kind ?? 'unavailable',
+          `写入烘焙缓存失败：${result?.error ?? '未知原因'}`
+        );
       }
     },
 
     async clear(): Promise<void> {
       const result = await api.clear();
       if (!result?.ok) {
-        throw new Error(`清空烘焙缓存失败：${result?.error ?? '未知原因'}`);
+        throw new CharacterBakeStoreError(
+          result?.kind ?? 'unavailable',
+          `清空烘焙缓存失败：${result?.error ?? '未知原因'}`
+        );
       }
     },
   };

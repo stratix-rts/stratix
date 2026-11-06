@@ -1160,6 +1160,9 @@ async function boot(): Promise<void> {
     createCanvas: appearanceEnv.createCanvas,
     createImage: appearanceEnv.createImage,
     store: characterBakeStore,
+    // 烘焙失败对用户是静默的（DESIGN §2.2 纪律 2），内部日志是唯一的事后线索 ——
+    // 日志形态与 app 侧其它服务一致（组合根注入 logger，见 sessionReferenceService）。
+    logger: (line) => console.warn(line),
   });
 
   // ===== 战场单位的形象（@since v3.10，task_029）=====

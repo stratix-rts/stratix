@@ -34,7 +34,7 @@
  * ⚠️ 改动合成器源码（character-composer.ts / part-registry.ts / constants.ts）后
  *   **必须**把这里更新成新哈希（单测会打印期望值，照抄即可）。
  */
-export const COMPOSER_VERSION = 'r1-2caad413';
+export const COMPOSER_VERSION = 'r1-cebde5c0';
 
 /**
  * 参与源码哈希的合成器源码文件（相对本目录）。

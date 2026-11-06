@@ -49,7 +49,23 @@ function createFakeComposer(options: { fail?: boolean } = {}): CharacterComposer
   const fake = createFakeCanvas();
   const composeCharacter = jest.fn(async () => {
     if (options.fail) throw new Error('合成炸了');
-    return { canvas: fake.canvas, parts: [], credits: [] };
+    // parts 非空：合成计划为空 = 部件缺件（task_196 / CP-02 的失败面①），
+    // 正常路径必须有一层可画的层。
+    return {
+      canvas: fake.canvas,
+      parts: [
+        {
+          itemId: 'body',
+          variant: 'light',
+          spritePath: '/spritesheets/body/male/walk/light.png',
+          zPos: 10,
+          layerNum: 1,
+          animation: 'walk',
+          yPos: 0,
+        },
+      ],
+      credits: [],
+    };
   });
   return { composeCharacter } as unknown as CharacterComposer & { composeCharacter: jest.Mock };
 }

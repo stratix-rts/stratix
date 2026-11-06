@@ -130,11 +130,17 @@ export interface ElectronAPI {
       pngBase64?: string | null;
       meta?: BakedCharacterSheetMeta | null;
       error?: string;
+      /** 失败种类（@since v3.3，task_196 / CP-02）：corrupt = 文件坏了；unavailable = 环境不配合。 */
+      kind?: 'corrupt' | 'unavailable';
     }>;
     /** 写一条产物（覆盖同键旧产物）。 */
-    write: (key: string, pngBase64: string, meta: BakedCharacterSheetMeta) => Promise<{ ok: boolean; error?: string }>;
+    write: (
+      key: string,
+      pngBase64: string,
+      meta: BakedCharacterSheetMeta
+    ) => Promise<{ ok: boolean; error?: string; kind?: 'corrupt' | 'unavailable' }>;
     /** 整体清空（删缓存目录）—— 之后下次触发全量重烘。 */
-    clear: () => Promise<{ ok: boolean; error?: string }>;
+    clear: () => Promise<{ ok: boolean; error?: string; kind?: 'corrupt' | 'unavailable' }>;
   };
 
   // 本地 CLI agent 检测（@since v3.8，task_022）

@@ -92,7 +92,7 @@ export class CharacterComposer {
 
     // 先算"要画什么"（纯逻辑，可单测），再取图、绘制。
     const plan = this.planItems(selections, bodyType, animations);
-    const images = await this.loadImages(plan);
+    const { loaded: images, failed } = await this.loadImages(plan);
 
     for (const item of plan) {
       const img = images.get(item.spritePath);
@@ -105,7 +105,8 @@ export class CharacterComposer {
       plan.map((item) => item.itemId)
     );
 
-    return { canvas, parts: plan, credits };
+    // 缺件（取不到图的层）随结果带出 —— 烘焙期据此判定失败面（task_196 / CP-02）。
+    return { canvas, parts: plan, credits, failedParts: failed };
   }
 
   /**
@@ -164,9 +165,16 @@ export class CharacterComposer {
    *
    * why 单张失败不中断整轮合成：某个部位缺图不该让整个角色画不出来 ——
    * 失败的那张跳过即可（画面上少一层），其余照常合成。
+   * why 还要把失败的路径**收集起来**（@since v3.3，task_196 / CP-02）：
+   * 「少了一层」对合成器是可接受的降级，但对烘焙是失败面 ——
+   * 烘焙期要拿这份名单去判失败、去内部日志暴露（DESIGN §2.3）。
    */
-  private async loadImages(plan: readonly PartInfo[]): Promise<Map<string, HTMLImageElement>> {
+  private async loadImages(plan: readonly PartInfo[]): Promise<{
+    readonly loaded: Map<string, HTMLImageElement>;
+    readonly failed: readonly string[];
+  }> {
     const loaded = new Map<string, HTMLImageElement>();
+    const failed: string[] = [];
     const uniquePaths = Array.from(new Set(plan.map((item) => item.spritePath)));
 
     await Promise.all(
@@ -175,12 +183,13 @@ export class CharacterComposer {
           const img = await this.imageCache.get(path);
           loaded.set(path, img);
         } catch (error) {
+          failed.push(path);
           console.warn(`[CharacterComposer] 精灵图加载失败，跳过该层：${path}`, error);
         }
       })
     );
 
-    return loaded;
+    return { loaded, failed };
   }
 
   /** 加载单张图片（注入的 image 工厂）。 */

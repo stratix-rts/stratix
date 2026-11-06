@@ -113,6 +113,15 @@ export interface ComposeResult {
   readonly parts: readonly PartInfo[];
   /** 参与部位的版权署名（去重后）。 */
   readonly credits: readonly CreditInfo[];
+  /**
+   * **加载失败**的层（素材缺件 / 路径取不到图）。
+   *
+   * why 要把它带出来（@since v3.3，task_196 / CP-02）：合成器对单张缺图是**跳过该层**的
+   *   （少一层照常出图，不让整轮合成炸掉）—— 但烘焙期需要知道「这一炉少了几层」：
+   *   缺件是烘焙的**失败面**（要静默降级 + 内部日志暴露），不是无声无息地烤进缓存
+   *   （DESIGN §2.2 纪律 2 + §2.3「烘焙期的静默日志会暴露全部此类问题」）。
+   */
+  readonly failedParts?: readonly string[];
 }
 
 /** 部位类别的展示配置（UI 侧用；合成栈本身不关心文案）。 */

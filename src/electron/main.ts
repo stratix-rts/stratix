@@ -184,6 +184,29 @@ function sanitizeBakeKey(key: unknown): string | null {
 }
 
 /**
+ * 烘焙元数据的**结构**校验（@since v3.3，task_196 / CP-02）。
+ *
+ * why 要在主进程也校验一遍：元数据是从磁盘读回来的 JSON —— 它可能**不是**我们写的那种
+ *   （别人写的 / 写了一半 / 手工改过）。渲染层那边还会再按版本/键/指纹校验一遍（纵深防御），
+ *   但主进程这道能当场把「坏文件」标成 corrupt，渲染层据此重烘修好，而不是拿它当命中用。
+ */
+function isBakedSheetMeta(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const meta = value as Record<string, unknown>;
+  return (
+    typeof meta.key === 'string' &&
+    meta.key.length > 0 &&
+    typeof meta.agentId === 'string' &&
+    typeof meta.composerVersion === 'string' &&
+    typeof meta.skinFingerprint === 'string' &&
+    typeof meta.width === 'number' &&
+    typeof meta.height === 'number' &&
+    typeof meta.frameSize === 'number' &&
+    Array.isArray(meta.animations)
+  );
+}
+
+/**
  * 初始化所有服务
  */
 async function initializeServices() {
@@ -961,15 +984,17 @@ function setupIPC() {
     }
   });
 
-  // ==================== 角色烘焙缓存 IPC（task_195 / CP-01）====================
+  // ==================== 角色烘焙缓存 IPC（task_195 / CP-01；task_196 / CP-02 补失败分类）====================
   // 产物：部件合成的一张整精灵图（PNG）+ atlas 元数据（JSON），落 userData/character-bakes/。
   // why 走 IPC：渲染进程没有文件系统（nodeIntegration 关闭），写盘只能在主进程。
   // why 键要再校验一次：键会变成文件名，主进程是最后一道防线（防目录穿越）。
+  // why 失败要分类（kind）：渲染层要据此判失败面 ——
+  //   corrupt = 缓存里的东西坏了（该重烘）；unavailable = 环境不配合（目录不可写 / 磁盘满）。
   ipcMain.handle('characterBake:read', async (_event, key: unknown) => {
     try {
-      if (!characterBakesDir) return { ok: false, error: '缓存目录未初始化' };
+      if (!characterBakesDir) return { ok: false, error: '缓存目录未初始化', kind: 'unavailable' };
       const safeKey = sanitizeBakeKey(key);
-      if (!safeKey) return { ok: false, error: '非法的缓存键' };
+      if (!safeKey) return { ok: false, error: '非法的缓存键', kind: 'corrupt' };
 
       const pngPath = path.join(characterBakesDir, `${safeKey}.png`);
       const metaPath = path.join(characterBakesDir, `${safeKey}.json`);
@@ -978,11 +1003,21 @@ function setupIPC() {
       }
 
       const pngBase64 = fs.readFileSync(pngPath).toString('base64');
-      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+      // 元数据 JSON 坏了 = 缓存坏了（kind: corrupt）—— 渲染层据此走「重烘修好」那条路。
+      let meta: unknown;
+      try {
+        meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+      } catch (parseError: any) {
+        console.error('[CharacterBake] 元数据 JSON 损坏:', parseError);
+        return { ok: false, error: '元数据 JSON 损坏', kind: 'corrupt' };
+      }
+      if (!isBakedSheetMeta(meta)) {
+        return { ok: false, error: '元数据结构不合法', kind: 'corrupt' };
+      }
       return { ok: true, pngBase64, meta };
     } catch (error: any) {
       console.error('[CharacterBake] 读取失败:', error);
-      return { ok: false, error: error?.message ?? String(error) };
+      return { ok: false, error: error?.message ?? String(error), kind: 'unavailable' };
     }
   });
 
@@ -990,11 +1025,11 @@ function setupIPC() {
     'characterBake:write',
     async (_event, key: unknown, pngBase64: unknown, meta: unknown) => {
       try {
-        if (!characterBakesDir) return { ok: false, error: '缓存目录未初始化' };
+        if (!characterBakesDir) return { ok: false, error: '缓存目录未初始化', kind: 'unavailable' };
         const safeKey = sanitizeBakeKey(key);
-        if (!safeKey) return { ok: false, error: '非法的缓存键' };
+        if (!safeKey) return { ok: false, error: '非法的缓存键', kind: 'corrupt' };
         if (typeof pngBase64 !== 'string' || pngBase64.length === 0) {
-          return { ok: false, error: '空的 PNG 数据' };
+          return { ok: false, error: '空的 PNG 数据', kind: 'corrupt' };
         }
 
         ensureDirSync(characterBakesDir);
@@ -1006,22 +1041,23 @@ function setupIPC() {
         );
         return { ok: true };
       } catch (error: any) {
+        // 写不进去 = 环境不配合（目录不可写 / 磁盘满 / 只读卷）—— kind: unavailable。
         console.error('[CharacterBake] 写入失败:', error);
-        return { ok: false, error: error?.message ?? String(error) };
+        return { ok: false, error: error?.message ?? String(error), kind: 'unavailable' };
       }
     }
   );
 
   ipcMain.handle('characterBake:clear', async () => {
     try {
-      if (!characterBakesDir) return { ok: false, error: '缓存目录未初始化' };
+      if (!characterBakesDir) return { ok: false, error: '缓存目录未初始化', kind: 'unavailable' };
       // 整体删目录（纪律 3：删缓存目录 ⇒ 下次触发全量重烘，无其他依赖）。
       fs.rmSync(characterBakesDir, { recursive: true, force: true });
       ensureDirSync(characterBakesDir);
       return { ok: true };
     } catch (error: any) {
       console.error('[CharacterBake] 清空失败:', error);
-      return { ok: false, error: error?.message ?? String(error) };
+      return { ok: false, error: error?.message ?? String(error), kind: 'unavailable' };
     }
   });
 
