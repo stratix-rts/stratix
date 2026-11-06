@@ -63,8 +63,8 @@
 
 import { createSessionPersister } from '../../app/services/persistence/session-persister';
 import { toSessionEventView } from '../../app/services/persistence/session-reader';
-import { sessionCompressThresholdFromEnv } from '../../app/services/session-compress-config';
 import { createProgressionService } from '../../app/services/progression-service';
+import { sessionCompressThresholdFromEnv } from '../../app/services/session-compress-config';
 import type { TaskService, TaskTransportFactory } from '../../app/services/task-service';
 import { onWorldEvent } from '../../core/bus';
 import { createCharacterManager, type CharacterManager } from '../../core/character';
@@ -80,9 +80,9 @@ import type {
   WorldEvent,
 } from '../../core/types';
 
-import { createServiceTaskExecution, type ServiceTaskExecutionPorts } from './task-execution';
 import { settleMissionFromTaskReport } from './mission-report';
 import type { ServiceStorage } from './storage';
+import { createServiceTaskExecution, type ServiceTaskExecutionPorts } from './task-execution';
 
 /**
  * 经验事件落库口（可选）—— 形状与 app/services/progression-service 的 persistExpEvent 一致。

@@ -55,8 +55,8 @@ import {
   readWorldSnapshotFile,
   type WorldPersister,
 } from './world-persist';
-import { restoreWorldFromSnapshot, type WorldSnapshotRestoreResult } from './world-snapshot';
 import { restoreWorldFromDatabase, type WorldRestoreResult } from './world-restore';
+import { restoreWorldFromSnapshot, type WorldSnapshotRestoreResult } from './world-snapshot';
 
 /** 启动接线的参数（全部可缺席；缺席即降级，不报错）。 */
 export interface ServiceBootOptions {

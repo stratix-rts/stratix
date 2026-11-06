@@ -23,11 +23,11 @@ import { worldStore } from '../../core/store';
 import type { HudCommand, UnitView, WorldState } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
 import { createMainScreen } from '../../hud/screens/main-screen';
+// 像素皮肤的真像素字体（@since v3.8，task_134）：与生产入口同一口径。
+import { pixelFontFaceCss, pixelFontUrl } from '../../hud/theme/pixel-font';
 import { createThemeController, defaultThemeStorage } from '../../hud/theme/theme-controller';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
-// 像素皮肤的真像素字体（@since v3.8，task_134）：与生产入口同一口径。
-import { pixelFontFaceCss, pixelFontUrl } from '../../hud/theme/pixel-font';
 import { defineStratButton } from '../../hud/widgets/strat-button';
 import { BattlefieldScene, BATTLEFIELD_SCENE_KEY } from '../../world/scenes/BattlefieldScene';
 

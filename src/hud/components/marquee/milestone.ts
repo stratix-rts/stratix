@@ -21,9 +21,10 @@
 
 import { MARQUEE_METRICS, VISUAL_PALETTE, hexToRgba } from '../../../core/theme/visual-spec';
 import type { HudCommand } from '../../../core/types';
-import { isMilestoneCount, milestoneText } from './marquee-catalog';
 import { zVar } from '../../theme/layer-tokens';
 import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
+
+import { isMilestoneCount, milestoneText } from './marquee-catalog';
 
 export const MILESTONE_TAG = 'strat-milestone';
 

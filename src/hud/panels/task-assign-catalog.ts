@@ -41,7 +41,6 @@ import type {
   UnitView,
   WorldState,
 } from '../../core/types';
-
 import { agentKindLabel } from '../screens/onboarding-catalog';
 import { dedicatedPresetCount } from '../screens/persona-presets';
 

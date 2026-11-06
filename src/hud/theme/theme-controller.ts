@@ -31,6 +31,7 @@
  */
 
 import { SKIN_STORAGE_KEY } from '../../core/theme/skin-registry';
+
 import { syncIconsForSkin } from './skin-icons';
 // 排版字阶（@since v3.8，task_137）：字阶随皮肤走 —— 像素皮用 +1px 的那套（像素网格对齐）。
 import { typeScaleCssFor } from './type-scale';

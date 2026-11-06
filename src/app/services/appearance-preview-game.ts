@@ -105,18 +105,28 @@ export function createPhaserPreviewGame(host: HTMLElement): PreviewGameHandle {
     }, Math.round(1000 / PREVIEW_FPS));
   };
 
+  /**
+   * 场景初始化。
+   * why 把场景对象**当参数传进来**而不是 `scene = this`：
+   *   直接给 `this` 起别名会踩 @typescript-eslint/no-this-alias（"this 别名"是出了名的坑），
+   *   而 Phaser 的 create() 回调必须靠 this 拿到场景 —— 传参是同一份对象，语义零差异。
+   */
+  const setupScene = (activeScene: Phaser.Scene): void => {
+    scene = activeScene;
+    const texture = activeScene.textures.createCanvas(PREVIEW_FRAME_TEXTURE_KEY, FRAME_SIZE, FRAME_SIZE);
+    if (texture) {
+      sprite = activeScene.add.sprite(PREVIEW_SIZE / 2, PREVIEW_SIZE / 2, PREVIEW_FRAME_TEXTURE_KEY);
+      sprite.setOrigin(0.5, 0.5);
+      sprite.setScale(PREVIEW_SIZE / FRAME_SIZE);
+    }
+    drawFrame();
+    startTimer();
+  };
+
   const sceneConfig = {
     key: PREVIEW_SCENE_KEY,
     create(this: Phaser.Scene): void {
-      scene = this;
-      const texture = this.textures.createCanvas(PREVIEW_FRAME_TEXTURE_KEY, FRAME_SIZE, FRAME_SIZE);
-      if (texture) {
-        sprite = this.add.sprite(PREVIEW_SIZE / 2, PREVIEW_SIZE / 2, PREVIEW_FRAME_TEXTURE_KEY);
-        sprite.setOrigin(0.5, 0.5);
-        sprite.setScale(PREVIEW_SIZE / FRAME_SIZE);
-      }
-      drawFrame();
-      startTimer();
+      setupScene(this);
     },
   };
 

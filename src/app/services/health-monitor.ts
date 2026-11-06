@@ -34,6 +34,7 @@
 
 import { emitWorldEvent } from '../../core/bus';
 import { isCustomAgentKind, type AgentKind, type DetectedAgent, type WorldEvent } from '../../core/types';
+
 import { T1_AGENT_DETECTION_TARGETS } from './agent-detector';
 import type { TransportErrorCode } from './cli-transport/transport';
 import type { AgentHealthEventInsert } from './persistence/agent-health-dao';

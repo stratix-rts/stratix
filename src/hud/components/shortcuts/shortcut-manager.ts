@@ -20,6 +20,7 @@
  */
 
 import { WORLD_BOUNDS, type HudCommand, type Point, type WorldState } from '../../../core/types';
+
 import {
   isActivatableTarget,
   isEditableTarget,

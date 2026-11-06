@@ -24,6 +24,7 @@
  *   - 超时   ：探测超时 → status='timeout'，installed 视 which 是否已成功而定（未知 ≠ 没装）。
  */
 
+import { isAllowedCustomAgentCmd } from '../../core/custom-agent';
 import {
   DETECTABLE_AGENT_KINDS,
   buildCustomAgentKind,
@@ -31,7 +32,6 @@ import {
   type DetectableAgentKind,
   type DetectedAgent,
 } from '../../core/types';
-import { isAllowedCustomAgentCmd } from '../../core/custom-agent';
 
 // ============================================================================
 // 名单（与 docs/AGENT-MATRIX.md 一一对应）

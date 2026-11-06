@@ -21,8 +21,8 @@
  * @since v3.27（task_051）。
  */
 
-import type { AgentKind, HudCommand, PipelineSpec, PipelineStepSpec } from '../../core/types';
 import { validatePipelineIssue, validatePipelineSpec } from '../../core/task';
+import type { AgentKind, HudCommand, PipelineSpec, PipelineStepSpec } from '../../core/types';
 
 /** 自定义模式的站数（task 需求：预设 3 个 + 自定义两站 —— 站数定死，UI 与构造器同源）。 */
 export const CUSTOM_PIPELINE_STATIONS = 2;

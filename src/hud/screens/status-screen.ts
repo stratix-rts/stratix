@@ -29,8 +29,8 @@
 
 import type { ScreenId, WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
-import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
 import type { GatewayConnectionState, GatewayLinkPort } from '../bridge/gateway-link-port';
+import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
 import { defineStratButton, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 import type { StatusMetricId, StatusModel, StatusTone } from './status-catalog';

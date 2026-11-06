@@ -61,6 +61,9 @@ import type { GatewayLinkPort } from '../bridge/gateway-link-port';
 // 当日回放（@since v3.3，task_082）：底栏时间轴 scrubber（组件 + 控制器口径）。
 import { mountDayReplay } from '../components/replay/day-replay';
 import type { ReplayController } from '../components/replay/replay-controller';
+// 遮挡规则（@since v3.5，task_099）：全屏弹窗壳（遮罩 + 居中面板 + ESC/遮罩双关闭）
+//   + 遮挡控制器（弹窗开着 → 四角常驻件降对比禁点）。
+import { mountModalShell, type OcclusionController } from '../layers/occlusion';
 // 宿主动作登记口（@since v3.9，task_150）：⌘K 面板要能叫到本屏的私有能力
 //   （示例会话 / 日志抽屉 / 态势屏）—— 它们不落总线契约（core 不该知道 HUD 有个抽屉），
 //   走这张动作表登记；注销随本屏卸载（全局单例 —— 留着会变成「永远可用但点了没反应」的幽灵）。
@@ -69,9 +72,6 @@ import { mountAgentPanel, type AgentPanelDeps } from '../panels/agent-panel';
 import { mountCommandPanel } from '../panels/command-panel';
 import { mountLogDrawer, LOG_DRAWER_TAG, type StratLogDrawerElement } from '../panels/log-drawer';
 import { mountMissionConfirm } from '../panels/mission-confirm';
-// 遮挡规则（@since v3.5，task_099）：全屏弹窗壳（遮罩 + 居中面板 + ESC/遮罩双关闭）
-//   + 遮挡控制器（弹窗开着 → 四角常驻件降对比禁点）。
-import { mountModalShell, type OcclusionController } from '../layers/occlusion';
 import type { PipelineFeedInput } from '../panels/pipeline-catalog';
 import type { SessionHistoryPort } from '../panels/session-catalog';
 import {
@@ -92,6 +92,7 @@ import {
 import { demoMode } from '../theme/demo-mode';
 // 浮层堆叠登记制度（@since v3.9，task_146）：z-index 一律取刻度表（不再有裸数字）。
 import { zVar } from '../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 // 排版字阶与截断规则（@since v3.8，task_137）：字阶 token 走皮肤层（theme-controller 注入），
 //   截断规则是文档级工具类（各表面共用同一份文案，见 theme/type-scale.ts）。
 import { TRUNCATE_CSS } from '../theme/type-scale';
@@ -103,7 +104,6 @@ import type { CustomAgentsPort } from './custom-agents-port';
 import type { GrowthStatsPort } from './growth-catalog';
 import { mountSettingsScreen } from './settings-screen';
 import { mountStatusScreen } from './status-screen';
-import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 /** currentScreen 缺省回落（与读取 WorldState.currentScreen 的各处共用）。 */
 const DEFAULT_SCREEN: WorldState['currentScreen'] = 'main';

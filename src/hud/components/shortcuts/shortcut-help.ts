@@ -15,14 +15,15 @@
  * @since v3.34（task_058）。
  */
 
+import { zVar } from '../../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
+
 import {
   SHORTCUT_CATALOG,
   SHORTCUT_CATEGORY_LABELS,
   formatShortcutDisplay,
   type ShortcutCategoryId,
 } from './shortcut-catalog';
-import { zVar } from '../../theme/layer-tokens';
-import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 export const SHORTCUT_HELP_TAG = 'strat-shortcut-help';
 

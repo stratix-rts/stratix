@@ -20,13 +20,14 @@ import { AGENT_KINDS, type BuiltinAgentKind, type AgentKind } from '../../../../
 import type { CliAdapter } from '../transport';
 
 import { createClaudeAdapter, type ClaudeAdapterOptions } from './claude';
-import { createCustomAdapter, type CustomAgentAdapterSpec } from './custom';
-export { createCustomAdapter, type CustomAgentAdapterSpec } from './custom';
 import { createCodexAdapter, type CodexAdapterOptions } from './codex';
 import { createDshAdapter, type DshAdapterOptions } from './dsh';
 import { createKimiAdapter, type KimiAdapterOptions } from './kimi';
 import { createOpenclawAdapter, type OpenclawAdapterOptions } from './openclaw';
 import { createOpencodeAdapter, type OpencodeAdapterOptions } from './opencode';
+
+// 自定义段（custom:<id>）的工厂与形状 —— 本注册表只盖内置六家，自定义段由调用方直接取这两个。
+export { createCustomAdapter, type CustomAgentAdapterSpec } from './custom';
 
 /** 每家 adapter 的可选参数（并集 —— 调用方按种类传自己关心的那部分）。 */
 export type CliAdapterOptions = ClaudeAdapterOptions &

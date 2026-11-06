@@ -13,10 +13,10 @@
  *   - **暴露**：宿主可见控制面 —— 派单 cwd 语义统一后，宿主换副本 = 换 instanceId。
  */
 
+import type { ProjectInstanceId } from '../../core/types';
 import { StratixAgentConfig } from '../../stratix-core';
 import { AgentRouter, agentRouter } from '../../stratix-core/agent/AgentRouter';
 import type { AgentTask } from '../../stratix-core/agent/types';
-import type { ProjectInstanceId } from '../../core/types';
 import { LRAClient } from '../../stratix-lra-bridge/LRAClient';
 import { loadApiKey } from '../api/apiKeyStore';
 

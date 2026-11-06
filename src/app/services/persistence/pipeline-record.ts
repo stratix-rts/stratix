@@ -19,8 +19,9 @@
  */
 
 import type { TaskPersistRecord } from '../task-service';
-import type { PersistedTaskRecord } from './task-record-dao';
+
 import type { PersistedPipelineRecord } from './pipeline-record-dao';
+import type { PersistedTaskRecord } from './task-record-dao';
 
 /**
  * preload 的 gameSave 扩展面（@since task_051 追加一条：game:savePipeline —— 与

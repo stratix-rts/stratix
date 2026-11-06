@@ -83,13 +83,13 @@ import {
   writeSoundEnabled,
   writeSoundVolume,
 } from '../sound-engine';
+import { zVar } from '../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 import type { ThemeId } from '../theme/theme-controller';
 import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
 // 自定义 agent 注册端口（@since v3.32，task_056）：类型 only —— hud 不 import electron（铁律）。
 import type { CustomAgentsPort, CustomAgentView } from './custom-agents-port';
-import { zVar } from '../theme/layer-tokens';
-import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 export const SETTINGS_SCREEN_TAG = 'strat-settings-screen';
 

@@ -60,12 +60,12 @@
 
 import type { ProjectInstanceId } from '../../../core/types';
 
+import type { SqliteDatabaseLike } from './game-save-dao';
 import {
   ensureInstanceIdColumn,
   instanceScopeWhere,
   type InstanceReadOptions,
 } from './instance-scope';
-import type { SqliteDatabaseLike } from './game-save-dao';
 
 /** character_tasks 表名（与 StratixDatabase 里的 DDL 同名 —— 改一处必须同步另一处）。
  * why 不叫 tasks：tasks 表自 v1 起就是 agent 平台的任务队列（task_id 主键 / zone 形状），

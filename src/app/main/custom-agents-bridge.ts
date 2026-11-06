@@ -13,13 +13,13 @@
  * @since v3.32，task_056。
  */
 
+import type { CustomAgentValidationCode } from '../../core/custom-agent';
 import type {
   CustomAgentCreateResult,
   CustomAgentProbeResult,
   CustomAgentsPort,
   CustomAgentView,
 } from '../../hud/screens/custom-agents-port';
-import type { CustomAgentValidationCode } from '../../core/custom-agent';
 
 /** preload 面的最小形状（这里的类型收口不 import electron/preload —— 两侧解耦）。 */
 interface CustomAgentsIpcLike {

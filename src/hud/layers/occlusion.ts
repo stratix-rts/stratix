@@ -34,9 +34,9 @@
  */
 
 import { HUD_LAYER_METRICS } from '../../core/theme/visual-spec';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 import type { L1DimSink } from './info-layer';
-import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 /** 注入样式表的稳定 id（幂等覆盖，便于重复挂载与测试定位）。 */
 export const OCCLUSION_STYLE_ID = 'srf-occlusion';

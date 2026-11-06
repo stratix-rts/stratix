@@ -25,6 +25,7 @@ import {
 import type { PersistedCharacterRecord } from '../../app/services/persistence/game-save-dao';
 import { toCharacterUnit } from '../../core/character';
 import { normalizeBrief, syncUnitMissions } from '../../core/mission';
+import type { CoreStore } from '../../core/store';
 import {
   MAX_MISSIONS,
   MAX_MISSION_CHECKPOINTS,
@@ -34,7 +35,6 @@ import {
   type MissionView,
   type WorldState,
 } from '../../core/types';
-import type { CoreStore } from '../../core/store';
 
 /** 快照格式版本（将来改结构时靠它识别旧档）。 */
 export const WORLD_SNAPSHOT_VERSION = 1;

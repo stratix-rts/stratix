@@ -19,9 +19,9 @@ import {
   REPLAY_METRICS,
   VISUAL_PALETTE,
 } from '../../../core/theme/visual-spec';
+import { zVar } from '../../theme/layer-tokens';
 
 import { formatReplayClock, formatReplayDate } from './replay-catalog';
-import { zVar } from '../../theme/layer-tokens';
 
 export const REPLAY_CLOCK_TAG = 'strat-replay-clock';
 

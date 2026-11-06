@@ -74,16 +74,16 @@
  */
 
 import type { AgentLinkManager } from './agent-link';
-import { clampShake, clampWorldPoint } from './camera';
 import { emitState, emitWorldEvent, onCommand, onWorldEvent, type Unsubscribe } from './bus';
+import { clampShake, clampWorldPoint } from './camera';
 import { createCharacterManager, type CharacterManager } from './character';
 import { normalizeInfoLayer, isLayerTrigger } from './info-layer';
 import { createMissionManager, type MissionManager } from './mission';
 import { createSessionManager, type SessionManager } from './session';
 import type { CoreStore } from './store';
 import { worldStore } from './store';
-import { createTaskManager, type TaskManager } from './task';
 import type { PipelineRunnerPort } from './task';
+import { createTaskManager, type TaskManager } from './task';
 import {
   MAX_CONTROL_GROUP_SLOT,
   MAX_NOTICES,

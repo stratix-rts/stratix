@@ -57,22 +57,6 @@
  *   宿主靠两个 DOM 事件收起覆盖层：onboarding-complete（建档完成）/ onboarding-skipped（用户跳过）。
  */
 
-import { getSkin, randomSkin, resolveAccent, type SkinDefinition, type SkinId } from '../../core/theme/skin-registry';
-import {
-  appearancePartVariant,
-  customAgentIdOf,
-  type AgentKind,
-  type CharacterAppearance,
-  type WorldState,
-} from '../../core/types';
-import type { HudBusAdapter } from '../bridge/bus-adapter';
-import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
-
-import type {
-  AppearanceCategoryInfo,
-  AppearancePreviewPort,
-} from './appearance-preview-port';
-import type { CustomAgentProbeResult, CustomAgentsPort } from './custom-agents-port';
 import {
   CUSTOM_AGENT_OUTPUT_PARSERS,
   CUSTOM_AGENT_PROMPT_PLACEHOLDER,
@@ -82,6 +66,23 @@ import {
   type CustomAgentOutputParser,
   type CustomAgentValidationCode,
 } from '../../core/custom-agent';
+import { getSkin, randomSkin, resolveAccent, type SkinDefinition, type SkinId } from '../../core/theme/skin-registry';
+import {
+  appearancePartVariant,
+  customAgentIdOf,
+  type AgentKind,
+  type CharacterAppearance,
+  type WorldState,
+} from '../../core/types';
+import type { HudBusAdapter } from '../bridge/bus-adapter';
+import { zVar } from '../theme/layer-tokens';
+import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
+
+import type {
+  AppearanceCategoryInfo,
+  AppearancePreviewPort,
+} from './appearance-preview-port';
+import type { CustomAgentProbeResult, CustomAgentsPort } from './custom-agents-port';
 import {
   DETECTION_STATUS_LABELS,
   NAME_ERROR_MESSAGES,
@@ -107,7 +108,6 @@ import {
   type OnboardingStep,
 } from './onboarding-catalog';
 import { PERSONA_PRESETS, presetMatchingKind, presetsForKind, type PersonaPreset } from './persona-presets';
-import { zVar } from '../theme/layer-tokens';
 
 export const ONBOARDING_SCREEN_TAG = 'strat-onboarding-screen';
 

@@ -23,28 +23,19 @@ import {
   T1_AGENT_DETECTION_TARGETS,
   type CustomDetectionTarget,
 } from '../app/services/agent-detector';
-import { createNodeExec } from '../app/services/node-exec';
-import { createTransportFor, createTransportForCustomAgent } from '../app/services/cli-transport';
 import type { CliChatEventEnvelope, CliChatRunRequest } from '../app/services/chat-transport-bridge';
+import { createTransportFor, createTransportForCustomAgent } from '../app/services/cli-transport';
+import { createNodeExec } from '../app/services/node-exec';
+// agent 健康事件表 IPC（@since v3.30，task_054）：DAO 与 game:saveHealthEvent 通道
+// （写入时机在渲染层 health-monitor，这里只做形状校验 + 落库；insert 内部自带建表兑底）。
+import {
+  insertAgentHealthEvent,
+  PERSISTED_AGENT_HEALTH_EVENTS,
+  type AgentHealthEventInsert,
+} from '../app/services/persistence/agent-health-dao';
 // 角色池容量护栏（@since v3.3，task_205 / M2-08）：新角色进库前先过容量判定 ——
 //   超限**拒新**（老行的改档照写），绝不让落库表跨副本无界增长。
 import { filterCharactersWithinCapacity } from '../app/services/persistence/capacity-limits';
-import {
-  ensureGameSaveTables,
-  loadGameSnapshot,
-  upsertCharacters,
-  upsertUnitPositions,
-  type PersistedCharacterRecord,
-  type PersistedUnitPosition,
-} from '../app/services/persistence/game-save-dao';
-// 外部会话引用表 IPC（@since v3.3，task_200 / N4b-1）：session_external_refs 的读写两条通道。
-// 联合键 (external_session_id, instance_id) = design §3.4 R3 的判据（切副本后查不到 ⇒ 不能 resume）。
-import {
-  ensureSessionExternalRefsTable,
-  findSessionExternalRefByCharacter,
-  parseSessionExternalRefInsert,
-  recordSessionExternalRef,
-} from '../app/services/persistence/session-external-ref-dao';
 // 角色对话历史表 IPC（@since v3.15，task_036）：**读侧**两条通道（loadChatMessages /
 // loadEarlierChatMessages）。写侧（saveChatMessage）已迁 service（A3 / task_079）—— 消息落库
 // 由 service 进程的存储件独占写（service/storage.ts，铁律 6）。
@@ -53,36 +44,6 @@ import {
   loadChatMessages,
   loadEarlierChatMessages,
 } from '../app/services/persistence/chat-history-dao';
-// 角色任务表 IPC（@since v3.16，task_037）：**读侧**两条通道（loadTasks / taskStats）。
-// 写侧（saveTask）已迁 service（A3 / task_079）—— 任务全文由 service 侧存储件独占写。
-import {
-  ensureCharacterTasksTable,
-  loadRecentTasks,
-  aggregateTaskStatusCounts,
-} from '../app/services/persistence/task-record-dao';
-// 流水线表 IPC（@since v3.27，task_051）：DAO 与 game:savePipeline 通道。校验从严
-// （IPC 是可信度最低的入口），坏形状一律拒（拒绝即回 {ok:false}，调用方只警告不阻断编排）。
-import {
-  ensurePipelinesTable,
-  upsertPipeline,
-  PERSISTED_PIPELINE_STATUSES,
-  type PersistedPipelineRecord,
-} from '../app/services/persistence/pipeline-record-dao';
-// agent 健康事件表 IPC（@since v3.30，task_054）：DAO 与 game:saveHealthEvent 通道
-// （写入时机在渲染层 health-monitor，这里只做形状校验 + 落库；insert 内部自带建表兑底）。
-import {
-  insertAgentHealthEvent,
-  PERSISTED_AGENT_HEALTH_EVENTS,
-  type AgentHealthEventInsert,
-} from '../app/services/persistence/agent-health-dao';
-// 角色经验事件表 IPC（@since v3.36，task_061，schema v12）：exp_events 的**读侧**两条通道
-// （loadExpEvents 按近窗读 / growthOverview 全场聚合）。写侧（saveExpEvent）已迁 service
-// （A3 / task_079）—— 曲线真相源由 service 进程的存储件独占写（service/storage.ts，铁律 6）。
-import {
-  aggregateCharacterActivity,
-  ensureExpEventsTable,
-  loadExpEventsSince,
-} from '../app/services/persistence/exp-event-dao';
 // 自定义 agent 注册表（@since v3.32，task_056）：custom_agents 表 DAO + 四条 IPC 通道
 //（list / create / delete / probe，见 setupIPC 的 customAgent: 段）。
 import {
@@ -94,6 +55,45 @@ import {
   type CustomAgentDbLike,
   type PersistedCustomAgentRecord,
 } from '../app/services/persistence/custom-agent-dao';
+// 角色经验事件表 IPC（@since v3.36，task_061，schema v12）：exp_events 的**读侧**两条通道
+// （loadExpEvents 按近窗读 / growthOverview 全场聚合）。写侧（saveExpEvent）已迁 service
+// （A3 / task_079）—— 曲线真相源由 service 进程的存储件独占写（service/storage.ts，铁律 6）。
+import {
+  aggregateCharacterActivity,
+  ensureExpEventsTable,
+  loadExpEventsSince,
+} from '../app/services/persistence/exp-event-dao';
+import {
+  ensureGameSaveTables,
+  loadGameSnapshot,
+  upsertCharacters,
+  upsertUnitPositions,
+  type PersistedCharacterRecord,
+  type PersistedUnitPosition,
+} from '../app/services/persistence/game-save-dao';
+// 流水线表 IPC（@since v3.27，task_051）：DAO 与 game:savePipeline 通道。校验从严
+// （IPC 是可信度最低的入口），坏形状一律拒（拒绝即回 {ok:false}，调用方只警告不阻断编排）。
+import {
+  ensurePipelinesTable,
+  upsertPipeline,
+  PERSISTED_PIPELINE_STATUSES,
+  type PersistedPipelineRecord,
+} from '../app/services/persistence/pipeline-record-dao';
+// 外部会话引用表 IPC（@since v3.3，task_200 / N4b-1）：session_external_refs 的读写两条通道。
+// 联合键 (external_session_id, instance_id) = design §3.4 R3 的判据（切副本后查不到 ⇒ 不能 resume）。
+import {
+  ensureSessionExternalRefsTable,
+  findSessionExternalRefByCharacter,
+  parseSessionExternalRefInsert,
+  recordSessionExternalRef,
+} from '../app/services/persistence/session-external-ref-dao';
+// 角色任务表 IPC（@since v3.16，task_037）：**读侧**两条通道（loadTasks / taskStats）。
+// 写侧（saveTask）已迁 service（A3 / task_079）—— 任务全文由 service 侧存储件独占写。
+import {
+  ensureCharacterTasksTable,
+  loadRecentTasks,
+  aggregateTaskStatusCounts,
+} from '../app/services/persistence/task-record-dao';
 import {
   canRegisterMoreCustomAgents,
   isAllowedCustomAgentCmd,

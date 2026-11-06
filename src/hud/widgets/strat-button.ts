@@ -26,8 +26,9 @@
  *   document.body.appendChild(btn);
  */
 
-import { iconSvg, isIconName } from './icon-set';
 import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
+
+import { iconSvg, isIconName } from './icon-set';
 
 export const STRAT_BUTTON_TAG = 'strat-button';
 

@@ -15,11 +15,6 @@
 import { onState, emitCommand } from '../../core/bus';
 import { type SkinId } from '../../core/theme/skin-registry';
 import { createHudBusAdapter } from '../bridge/bus-adapter';
-// 信息三层级（@since v3.4，task_096）：层级状态机 + 三档演示开关。
-import { createInfoLayerController } from '../layers/info-layer';
-import { mountLayerSwitch } from '../layers/layer-switch';
-// 遮挡规则（@since v3.5，task_099）：全屏弹窗登记 → 四角常驻件降对比禁点；ESC 统一路由。
-import { createOcclusionController } from '../layers/occlusion';
 // ⚠️ DEMO（task_034 演示路径，正式接线走 task_035 组合根）：角色聊天抽屉 + 定时器假流。
 // 生产链路（main-entry）不得 import demo-fake-stream。
 import {
@@ -28,7 +23,16 @@ import {
   type StratCharacterChatDrawerElement,
 } from '../components/chat-drawer/chat-drawer';
 import { createDemoOnSend } from '../components/chat-drawer/demo-fake-stream';
+// 信息三层级（@since v3.4，task_096）：层级状态机 + 三档演示开关。
+import { createInfoLayerController } from '../layers/info-layer';
+import { mountLayerSwitch } from '../layers/layer-switch';
+// 遮挡规则（@since v3.5，task_099）：全屏弹窗登记 → 四角常驻件降对比禁点；ESC 统一路由。
+import { createOcclusionController } from '../layers/occlusion';
 import { createMainScreen } from '../screens/main-screen';
+// 像素皮肤的真像素字体（@since v3.8，task_134）：与生产入口同一口径（@font-face 拼进 pixel 源）。
+import { pixelFontFaceCss, pixelFontUrl } from '../theme/pixel-font';
+// 像素皮肤专属视觉层（@since v3.7，task_128）：与生产入口同一口径（拼进 pixel 源）。
+import pixelLayerCss from '../theme/skin-pixel-layer.css?inline';
 import { createThemeController } from '../theme/theme-controller';
 import auroraCss from '../theme/tokens-aurora.css';
 import crimsonCss from '../theme/tokens-crimson.css';
@@ -37,10 +41,6 @@ import forestCss from '../theme/tokens-forest.css';
 import monoCss from '../theme/tokens-mono.css';
 import oceanCss from '../theme/tokens-ocean.css';
 import pixelCss from '../theme/tokens-pixel.css?inline';
-// 像素皮肤专属视觉层（@since v3.7，task_128）：与生产入口同一口径（拼进 pixel 源）。
-import pixelLayerCss from '../theme/skin-pixel-layer.css?inline';
-// 像素皮肤的真像素字体（@since v3.8，task_134）：与生产入口同一口径（@font-face 拼进 pixel 源）。
-import { pixelFontFaceCss, pixelFontUrl } from '../theme/pixel-font';
 import sunsetCss from '../theme/tokens-sunset.css';
 import { defineStratButton } from '../widgets/strat-button';
 

@@ -40,17 +40,17 @@
  * @since v3.3（task_080）；v3.4（task_091）升级为 Z2 事件轨（折叠 / hover 详情 / 点击联动）。
  */
 
-import { MARQUEE_METRICS } from '../../../core/theme/visual-spec';
 import { MOTION_DURATIONS } from '../../../core/theme/motion-spec';
+import { MARQUEE_METRICS } from '../../../core/theme/visual-spec';
 import type { HudCommand } from '../../../core/types';
+import { zVar } from '../../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 import {
   formatRelativeTime,
   marqueeToneColor,
   type MarqueeEntry,
 } from './marquee-catalog';
-import { zVar } from '../../theme/layer-tokens';
-import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 export const MARQUEE_TAG = 'strat-marquee';
 

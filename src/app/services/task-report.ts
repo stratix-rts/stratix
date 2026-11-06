@@ -36,6 +36,7 @@
  */
 
 import type { CharacterView, TaskStatus, WorldState } from '../../core/types';
+
 import type { ChatPersistedMessage } from './chat-service';
 import { formatTaskArtifactsBlock, parseTaskArtifactsJson, type TaskArtifacts } from './task-artifacts';
 import type { TaskPersistRecord } from './task-service';

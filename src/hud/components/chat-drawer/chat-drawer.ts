@@ -54,6 +54,8 @@
 import type { WorldState } from '../../../core/types';
 import type { HudBusAdapter } from '../../bridge/bus-adapter';
 import { enhanceMarkdown, MARKDOWN_CLASS, MARKDOWN_CSS, renderMarkdown } from '../../lib/markdown';
+import { zVar } from '../../theme/layer-tokens';
+import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 import { defineEmptyState, EMPTY_STATE_TAG } from '../empty-state/empty-state';
 import {
   defineTaskOutputPanel,
@@ -72,8 +74,6 @@ import {
   type CharacterChatSessions,
   type StreamBuffer,
 } from './chat-catalog';
-import { zVar } from '../../theme/layer-tokens';
-import { MOTION_REDUCED_CSS } from '../../theme/motion-tokens';
 
 export const CHARACTER_CHAT_DRAWER_TAG = 'strat-character-chat-drawer';
 

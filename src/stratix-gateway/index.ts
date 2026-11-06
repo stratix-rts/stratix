@@ -38,8 +38,8 @@ import { initializeDatabase } from '../stratix-database';
 import { createNocoDBService, type NocoDBServiceOptions } from '../stratix-nocodb';
 import { OrchestrationSync } from '../stratix-orchestration/OrchestrationSync';
 
-import { AgentRuntimeService } from './agent-runtime/AgentRuntimeService';
 import { AgentOrchestrationService } from './agent/AgentOrchestrationService';
+import { AgentRuntimeService } from './agent-runtime/AgentRuntimeService';
 import agentRoutes from './api/routes/agent';
 import agentOrchestrationRoutes from './api/routes/agentOrchestration';
 import agentTaskRoutes from './api/routes/agentTask';

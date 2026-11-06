@@ -7,23 +7,23 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 
-import type { DetectedAgent } from '../core/types';
 import type { CliChatEventEnvelope, CliChatIpcApi, CliChatRunRequest } from '../app/services/chat-transport-bridge';
-import type { PersistedCharacterRecord, PersistedUnitPosition } from '../app/services/persistence/game-save-dao';
-import type { ChatMessageInsert, PersistedChatMessage } from '../app/services/persistence/chat-history-dao';
-import type { PersistedTaskRecord, PersistedTaskStatRow } from '../app/services/persistence/task-record-dao';
-import type { PersistedPipelineRecord } from '../app/services/persistence/pipeline-record-dao';
 import type { AgentHealthEventInsert } from '../app/services/persistence/agent-health-dao';
+import type { ChatMessageInsert, PersistedChatMessage } from '../app/services/persistence/chat-history-dao';
+import type { PersistedCustomAgentRecord } from '../app/services/persistence/custom-agent-dao';
 import type {
   ExpEventInsert,
   PersistedActivityRow,
   PersistedExpEvent,
 } from '../app/services/persistence/exp-event-dao';
-import type { PersistedCustomAgentRecord } from '../app/services/persistence/custom-agent-dao';
+import type { PersistedCharacterRecord, PersistedUnitPosition } from '../app/services/persistence/game-save-dao';
+import type { PersistedPipelineRecord } from '../app/services/persistence/pipeline-record-dao';
 import type {
   PersistedSessionExternalRef,
   SessionExternalRefInsert,
 } from '../app/services/persistence/session-external-ref-dao';
+import type { PersistedTaskRecord, PersistedTaskStatRow } from '../app/services/persistence/task-record-dao';
+import type { DetectedAgent } from '../core/types';
 import type { BakedCharacterSheetMeta } from '../world/appearance/bake-sheet-meta';
 
 /**

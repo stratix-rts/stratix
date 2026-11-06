@@ -43,6 +43,7 @@ import {
   type UnitView,
   type WorldState,
 } from '../../core/types';
+
 // 承接人推荐（@since v3.11，task_155：提示词直发的承接人 = 推荐排序第一位）——
 //   与新建任务对话框的「派发」同一算法（一份择人口径，不各写一份）。
 import { recommendAssignees } from './task-assign-catalog';

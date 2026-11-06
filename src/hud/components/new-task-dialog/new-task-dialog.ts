@@ -31,9 +31,9 @@ import { buildTaskAssignCommand } from '../../panels/agent-catalog';
 import { buildCommand, findCommandSpec } from '../../panels/command-catalog';
 import { PIPELINE_PRESETS, buildPipelineStartCommand } from '../../panels/pipeline-catalog';
 import { recommendAssignees } from '../../panels/task-assign-catalog';
-import type { ToastTone } from '../toast/toast-host';
 import { zVar } from '../../theme/layer-tokens';
 import { MOTION_CLASS, MOTION_COMPONENT_CSS } from '../../theme/motion-tokens';
+import type { ToastTone } from '../toast/toast-host';
 
 export const NEW_TASK_DIALOG_TAG = 'strat-new-task-dialog';
 

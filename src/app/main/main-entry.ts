@@ -97,27 +97,50 @@ import Phaser from 'phaser';
 import { emitCommand, emitState, emitWorldEvent, onState, onWorldEvent } from '../../core/bus';
 import { createCharacterManager } from '../../core/character';
 import { createMissionManager } from '../../core/mission';
+import { expWeightFor } from '../../core/progression';
 import { createCoreRuntime, type UnhandledChannel } from '../../core/runtime';
 import { createSessionManager } from '../../core/session';
-import { expWeightFor } from '../../core/progression';
 import { worldStore } from '../../core/store';
+import { createTaskManager } from '../../core/task';
 import { DEFAULT_INSTANCE_ID, type CharacterAppearance, type DetectedAgent, type HudCommand, type Point, type WorldEvent, type WorldState } from '../../core/types';
 import { createHudBusAdapter } from '../../hud/bridge/bus-adapter';
+// 战场空态覆盖层（@since v3.8，task_136）：0 单位时的「待部署」层（雷达 + 人话 + 两个动作）。
+// 装在 hud-root（画布之上的一层）：按钮要走 HUD 侧的既有能力（向导建档 / 命令行），
+// world 侧没有这条通道（world 只发 WorldEvent）—— 明确不在 world 侧做按钮。
+import { mountBattlefieldEmpty } from '../../hud/components/battlefield-empty/battlefield-empty';
+import { mountCharacterChatDrawer, CHARACTER_CHAT_DRAWER_TAG, type StratCharacterChatDrawerElement } from '../../hud/components/chat-drawer/chat-drawer';
 // ⌘K 命令面板（@since v3.9，task_150）：全应用键盘可达 —— 命令定义在共享注册表
 //   （hud/lib/command-registry.ts），底栏 composer 与本面板共用一份事实源。
 import { mountCommandPalette } from '../../hud/components/command-palette/command-palette';
+// 网关连通性横幅（@since v3.6，task_114）：断连时顶栏下方挂一条全局横幅（首屏第一眼可见）。
+import { mountGatewayBanner } from '../../hud/components/gateway-banner/gateway-banner';
+// 事件跑马灯 + 里程碑大字（@since v3.3，task_080）：左下角最近 5 条事件流 + 每 10 个完成任务
+// 一次的中央金色大字（文案模板与分级配色在 marquee-catalog，纯逻辑）。
+import { mountMarquee, type StratMarqueeElement } from '../../hud/components/marquee/marquee';
+import {
+  MARQUEE_ICONS,
+  marqueeEntryForEvent,
+  milestoneEntryText,
+  resolveTaskTitle,
+  resolveTaskTitleFull,
+  resolveUnitIdForTask,
+  type MarqueeEventContext,
+} from '../../hud/components/marquee/marquee-catalog';
+import { mountMilestone } from '../../hud/components/marquee/milestone';
+// 小地图宿主（@since v3.33，task_057）：右下角战场缩略图（单位点 / 视口框 / 点击跳转）。
+import { mountMinimap } from '../../hud/components/minimap/minimap';
 // 模式状态条（@since v3.6，task_117）：演示模式 / 导演镜头的全局指示（开着的是什么 + 怎么关）。
 import { mountModeStrip, type ModeStripDirectorPort } from '../../hud/components/mode-strip/mode-strip';
+// 新建任务对话框（@since v3.6，task_112）：底栏「新建任务」的落地面板（单任务 / 流水线 / 派发 / 取消）。
+// 与「打开聊天」同一装配口径 —— 命令面板发 DOM 事件，组合根开面板。
+import {
+  mountNewTaskDialog,
+  NEW_TASK_OPEN_EVENT,
+} from '../../hud/components/new-task-dialog/new-task-dialog';
 // 轻引导三步（@since v3.8，task_139）：首开时指一下「从哪开始」（命令行 → 建角色 → 看态势）。
 // 与首启向导分工：向导管建档流程，本组件管三句话指路（两层叠着会互相挡 —— 下面等向导走完）。
 import { mountOnboardingTour } from '../../hud/components/onboarding-tour/onboarding-tour';
 import { ONBOARDING_TOUR_STEPS } from '../../hud/components/onboarding-tour/onboarding-tour-catalog';
-// 信息三层级（@since v3.4，task_096）：HUD 侧层级状态机 + 三档演示开关。
-//   视觉口径与分区映射在 hud/layers/info-layer.ts；真相在 core（WorldState.infoLayer）。
-import { createInfoLayerController } from '../../hud/layers/info-layer';
-import { mountLayerSwitch } from '../../hud/layers/layer-switch';
-// 遮挡规则（@since v3.5，task_099）：全屏弹窗 ↔ 四角常驻件的遮挡关系（模态 / 半模态 / 双关闭）。
-import { createOcclusionController } from '../../hud/layers/occlusion';
 // 当日回放（@since v3.3，task_082）：底栏时间轴 scrubber + 左上角时间戳角标 + 战场重演。
 //   数据流：读取口（app/services/day-replay.ts 读 service 的只读 REST）→ 回放控制器
 //   （hud/components/replay/replay-controller.ts，编排 seek / 60 秒倍速）→
@@ -127,14 +150,24 @@ import { createOcclusionController } from '../../hud/layers/occlusion';
 import { replayEntryText } from '../../hud/components/replay/replay-catalog';
 import { mountReplayClock } from '../../hud/components/replay/replay-clock';
 import { createReplayController } from '../../hud/components/replay/replay-controller';
-// 网关连通性横幅（@since v3.6，task_114）：断连时顶栏下方挂一条全局横幅（首屏第一眼可见）。
-import { mountGatewayBanner } from '../../hud/components/gateway-banner/gateway-banner';
 // 屏幕空间特效（@since v3.3，task_086）：横向扫描光带 + 报错红光晕 —— 从战场可缩放层迁到
 //   HUD 屏幕空间（fixed 定位，不随镜头缩放平移变形）。组件只被驱动，事件订阅与导演模式
 //   的判定都在本文件（组合根），与跑马灯同一装配口径。
 import { mountErrorGlow } from '../../hud/components/screen-fx/error-glow';
 import { mountScanBand } from '../../hud/components/screen-fx/scan-band';
 import { errorGlowTrigger } from '../../hud/components/screen-fx/screen-fx-catalog';
+// 音效服务（@since v3.36，task_060）：hud 侧服务（懒建 AudioContext + WebAudio 合成），
+// 事件→key 映射在它的纯函数 —— 这里只订阅总线接线（见下方「音效反馈」段）。
+import { createSfxService, sfxKeyForEvent } from '../../hud/components/sfx/sfx-service';
+// 快捷键系统（@since v3.34，task_058）：window keydown → 命令 + 帮助浮层（键位表见 hud/shortcuts）。
+import { mountShortcuts } from '../../hud/components/shortcuts/shortcut-manager';
+import { mountToastHost } from '../../hud/components/toast/toast-host';
+// 信息三层级（@since v3.4，task_096）：HUD 侧层级状态机 + 三档演示开关。
+//   视觉口径与分区映射在 hud/layers/info-layer.ts；真相在 core（WorldState.infoLayer）。
+import { createInfoLayerController } from '../../hud/layers/info-layer';
+import { mountLayerSwitch } from '../../hud/layers/layer-switch';
+// 遮挡规则（@since v3.5，task_099）：全屏弹窗 ↔ 四角常驻件的遮挡关系（模态 / 半模态 / 双关闭）。
+import { createOcclusionController } from '../../hud/layers/occlusion';
 // 宿主动作登记口（@since v3.9，task_150）：⌘K 面板要能叫到组合根这一层的能力
 //   （建档向导 / 回放控制器 / 快捷键帮助浮层）—— 它们不落总线契约，走这张动作表登记。
 import { registerAppAction } from '../../hud/lib/app-actions';
@@ -142,6 +175,8 @@ import { registerAppAction } from '../../hud/lib/app-actions';
 import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
 import { mountLobbyPanel } from '../../hud/screens/lobby-panel';
 import { createMainScreen } from '../../hud/screens/main-screen';
+// 恢复 toast 的 kind 显示名（词表单一真相源在 onboarding-catalog，与 agent-panel 同源）。
+import { agentKindLabel } from '../../hud/screens/onboarding-catalog';
 // 演示声音包（@since v3.3，task_083 建 / task_087 升级）：五音（选中 ack / 派活哒 / 完成 /
 //   报错低鸣 / 里程碑琶音）优先回放 **public/sfx/ 下的真实音源**（Freesound CC0），
 //   文件缺失 / 加载失败时回退到 WebAudio 代码合成（保证任何环境都有声）。
@@ -149,28 +184,24 @@ import { createMainScreen } from '../../hud/screens/main-screen';
 //   组合根只订阅总线接线（hud 组件零总线依赖 —— 与 toast-host / sfx-service 同一口径）。
 //   音频根 URL 由组合根算（入口深度的事实源在 app 层：entry-paths 的 ENTRY_PATH_DEPTH）。
 import { createSoundEngine, sfxBaseUrl } from '../../hud/sound-engine';
+import { demoMode } from '../../hud/theme/demo-mode';
 // 特效调色板的热读口（@since v3.3，task_194 / AP-04）：代码路由特效的颜色随皮肤走。
 import { readFxPaletteTokens } from '../../hud/theme/fx-palette-reader';
-import { createThemeController, defaultThemeStorage } from '../../hud/theme/theme-controller';
-import { demoMode } from '../../hud/theme/demo-mode';
-import defaultCss from '../../hud/theme/tokens-default.css?inline';
-import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
-// 像素皮肤专属视觉层（@since v3.7，task_128）：字距 / 无抗锯齿 / 扫描线 / 按压位移 / 图标硬笔。
-// why 拼进 pixel 源而不是单独一张表：主题控制器按 id 整张启停 —— 拼一起才能「切走像素 = 整层消失」，
-// 现代皮肤因此一个像素都不会变（现代源里没有这张表）。
-import pixelLayerCss from '../../hud/theme/skin-pixel-layer.css?inline';
+import { installLayerTokens } from '../../hud/theme/layer-tokens';
+import { installMotionTokens } from '../../hud/theme/motion-tokens';
 // 像素皮肤的真像素字体（@since v3.8，task_134）：Fusion Pixel（OFL，可商用，内嵌于 assets/fonts/）。
 // why @font-face 在运行时拼：像素源是**注入 document 的 <style> 文本**，字体 URL 必须按
 //   文档基址算（dev http / 正式包 file:// 同一条相对规则，见 hud/theme/pixel-font.ts）。
 import { pixelFontFaceCss, pixelFontUrl } from '../../hud/theme/pixel-font';
-import { installLayerTokens } from '../../hud/theme/layer-tokens';
+// 像素皮肤专属视觉层（@since v3.7，task_128）：字距 / 无抗锯齿 / 扫描线 / 按压位移 / 图标硬笔。
+// why 拼进 pixel 源而不是单独一张表：主题控制器按 id 整张启停 —— 拼一起才能「切走像素 = 整层消失」，
+// 现代皮肤因此一个像素都不会变（现代源里没有这张表）。
+import pixelLayerCss from '../../hud/theme/skin-pixel-layer.css?inline';
+import { createThemeController, defaultThemeStorage } from '../../hud/theme/theme-controller';
+import defaultCss from '../../hud/theme/tokens-default.css?inline';
+import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
 import { installVisualTokens } from '../../hud/theme/visual-tokens';
-import { installMotionTokens } from '../../hud/theme/motion-tokens';
 import { defineStratButton } from '../../hud/widgets/strat-button';
-import { mountCharacterChatDrawer, CHARACTER_CHAT_DRAWER_TAG, type StratCharacterChatDrawerElement } from '../../hud/components/chat-drawer/chat-drawer';
-// 音效服务（@since v3.36，task_060）：hud 侧服务（懒建 AudioContext + WebAudio 合成），
-// 事件→key 映射在它的纯函数 —— 这里只订阅总线接线（见下方「音效反馈」段）。
-import { createSfxService, sfxKeyForEvent } from '../../hud/components/sfx/sfx-service';
 import { CharacterComposer } from '../../world/appearance/character-composer';
 // 角色上场的长相裁决（@since v3.8，task_140）：角色没自带外观时按 agent 种类取品牌预设 / 随机合成。
 import { resolveCharacterLook } from '../../world/appearance/character-look';
@@ -182,12 +213,12 @@ import { PartRegistry } from '../../world/appearance/part-registry';
 import { INPUT_FOCUS_KEY } from '../../world/input-focus';
 // 动效降级标志（@since v3.8，task_140）：reduced-motion 时入场直接落位（world 零 DOM，判在 app 层）。
 import { REDUCED_MOTION_KEY } from '../../world/motion';
-import { UNIT_SPRITE_SOURCE_KEY } from '../../world/objects/unit-sprite-source';
 // 站位种子键（@since v3.3，task_185 / M1-11）：**按副本分区** —— 旧全局键只用于一次性迁移，迁完即删。
 import {
   LEGACY_UNIT_POSITION_SEED_KEY,
   migrateLegacyPositionSeed,
 } from '../../world/objects/unit-registry';
+import { UNIT_SPRITE_SOURCE_KEY } from '../../world/objects/unit-sprite-source';
 import { BattlefieldScene } from '../../world/scenes/BattlefieldScene';
 // 大厅场景（@since v3.3，task_186 / M1-12）：workspace 总览的世界层底景，只画背景/氛围（零业务状态）。
 import { LobbyScene } from '../../world/scenes/LobbyScene';
@@ -200,34 +231,7 @@ import { ENTRY_PATH_DEPTH } from '../entry-paths';
 // 代码路由特效源（@since v3.3，task_194 / AP-04）：pixelfx 效果 → world 契约的装配。
 //   动态 import：加载失败不炸启动，只是没有代码源 ⇒ 战场静默回落 sheet 路由。
 import { loadProductionCodeFxSources } from '../fx/code-fx-sources';
-// 当日回放读取口（@since v3.3，task_082）：读 service 的只读 REST（当天 task_run 事件流）。
-import { createDayReplayPort } from '../services/day-replay';
-// 站位种子的归属裁决（@since v3.3，task_185 / M1-11）：单位 → 所属副本（纯翻译，读档侧独有）。
-import { positionSeedOwner } from '../services/persistence/character-record';
-import {
-  createGameSaveCoordinator,
-  gameSaveApi,
-  type RestoreInjection,
-} from '../services/persistence/game-save-coordinator';
-// 外部会话引用端口（@since v3.3，task_200 / M2-03 N4b-1）：session_external_refs 的渲染侧适配器。
-// 联合键 (external_session_id, instance_id) = design §3.4 R3 的判据（切副本后查不到 ⇒ 不能 resume）。
-import {
-  createSessionExternalRefPort,
-  sessionExternalRefApi,
-} from '../services/persistence/session-external-ref-client';
-import { resolveSessionCompressThreshold } from '../services/session-compress-config';
-import { createSessionEventLog } from '../services/session-event-log';
-import {
-  createSessionHistoryPort,
-  DEFAULT_SESSION_HISTORY_BASE_URL,
-  httpBaseFromWorldSyncUrl,
-} from '../services/session-history/session-history';
-import {
-  CHAT_HISTORY_LOAD_LIMIT,
-  chatHistoryApi,
-  chatHistoryEntryToDrawerInput,
-  makeChatMessagePersister,
-} from '../services/persistence/chat-history';
+import { createAgentChatService, resolvePeerTurnTimeoutMs, type AgentChatService } from '../services/agent-chat-service';
 import { createBrowserAppearanceEnvironment } from '../services/appearance-environment';
 import { createPhaserPreviewGame } from '../services/appearance-preview-game';
 import { createAppearancePreviewService } from '../services/appearance-preview-service';
@@ -236,21 +240,23 @@ import {
   characterBakeIpcApi,
   createIpcCharacterBakeStore,
 } from '../services/character-bake-store';
-import { createAgentChatService, resolvePeerTurnTimeoutMs, type AgentChatService } from '../services/agent-chat-service';
-import { createSessionTitleServiceFromEnv } from '../services/session-title';
-import { createSessionReferenceService } from '../services/session-reference';
 import { createChatService } from '../services/chat-service';
-import {
-  createStratixContextProvider,
-  createTopicCachePersister,
-  isGlobalContextEnabled,
-} from '../services/stratix-context';
 import { cliChatIpcApi, createIpcChatTransportFactory } from '../services/chat-transport-bridge';
-import { createProgressionService } from '../services/progression-service';
-import { createTaskService } from '../services/task-service';
-import { formatTaskArtifactsBlock, parseTaskArtifactsJson } from '../services/task-artifacts';
-import { createTaskReportHandler } from '../services/task-report';
-import { taskRecordApi, makeTaskRecordPersister, makeTaskStatsProvider } from '../services/persistence/task-record';
+// 当日回放读取口（@since v3.3，task_082）：读 service 的只读 REST（当天 task_run 事件流）。
+import { createDayReplayPort } from '../services/day-replay';
+// 网关连通性监测（@since v3.6，task_114）：探 /health 判定 service 生死 —— 全局断连横幅的唯一判定方。
+import { createGatewayLinkMonitor } from '../services/gateway-link';
+// agent 健康监测（@since v3.30，task_054）：周期探测防抖判定 + transport exit 审计的单服务。
+import { createHealthMonitor } from '../services/health-monitor';
+import { agentHealthApi, makeAgentHealthPersister } from '../services/persistence/agent-health-record';
+// 站位种子的归属裁决（@since v3.3，task_185 / M1-11）：单位 → 所属副本（纯翻译，读档侧独有）。
+import { positionSeedOwner } from '../services/persistence/character-record';
+import {
+  CHAT_HISTORY_LOAD_LIMIT,
+  chatHistoryApi,
+  chatHistoryEntryToDrawerInput,
+  makeChatMessagePersister,
+} from '../services/persistence/chat-history';
 // 经验事件审计流 + 成长看板（@since v3.36，task_061）：exp_events 表的渲染侧端口
 //（persister 注入 progression-service；growth 口注入 hud 角色屏的「成长」tab）。
 import {
@@ -258,54 +264,51 @@ import {
   makeExpEventPersister,
   makeGrowthStatsPort,
 } from '../services/persistence/exp-record';
-// agent 健康监测（@since v3.30，task_054）：周期探测防抖判定 + transport exit 审计的单服务。
-import { createHealthMonitor } from '../services/health-monitor';
-// 网关连通性监测（@since v3.6，task_114）：探 /health 判定 service 生死 —— 全局断连横幅的唯一判定方。
-import { createGatewayLinkMonitor } from '../services/gateway-link';
-import { agentHealthApi, makeAgentHealthPersister } from '../services/persistence/agent-health-record';
-// 恢复 toast 的 kind 显示名（词表单一真相源在 onboarding-catalog，与 agent-panel 同源）。
-import { agentKindLabel } from '../../hud/screens/onboarding-catalog';
+import {
+  createGameSaveCoordinator,
+  gameSaveApi,
+  type RestoreInjection,
+} from '../services/persistence/game-save-coordinator';
 // 流水线持久化注入件（@since v3.27，task_051）：pipelines 表专用面 + 站任务 pipeline_id 标记。
 import {
   pipelineRecordApi,
   makePipelinePersister,
   makePipelineStampPersister,
 } from '../services/persistence/pipeline-record';
+// 外部会话引用端口（@since v3.3，task_200 / M2-03 N4b-1）：session_external_refs 的渲染侧适配器。
+// 联合键 (external_session_id, instance_id) = design §3.4 R3 的判据（切副本后查不到 ⇒ 不能 resume）。
+import {
+  createSessionExternalRefPort,
+  sessionExternalRefApi,
+} from '../services/persistence/session-external-ref-client';
+import { taskRecordApi, makeTaskRecordPersister, makeTaskStatsProvider } from '../services/persistence/task-record';
 import { createPipelineService } from '../services/pipeline-service';
-import { mountToastHost } from '../../hud/components/toast/toast-host';
-// 新建任务对话框（@since v3.6，task_112）：底栏「新建任务」的落地面板（单任务 / 流水线 / 派发 / 取消）。
-// 与「打开聊天」同一装配口径 —— 命令面板发 DOM 事件，组合根开面板。
-import {
-  mountNewTaskDialog,
-  NEW_TASK_OPEN_EVENT,
-} from '../../hud/components/new-task-dialog/new-task-dialog';
-// 小地图宿主（@since v3.33，task_057）：右下角战场缩略图（单位点 / 视口框 / 点击跳转）。
-import { mountMinimap } from '../../hud/components/minimap/minimap';
-// 战场空态覆盖层（@since v3.8，task_136）：0 单位时的「待部署」层（雷达 + 人话 + 两个动作）。
-// 装在 hud-root（画布之上的一层）：按钮要走 HUD 侧的既有能力（向导建档 / 命令行），
-// world 侧没有这条通道（world 只发 WorldEvent）—— 明确不在 world 侧做按钮。
-import { mountBattlefieldEmpty } from '../../hud/components/battlefield-empty/battlefield-empty';
-// 事件跑马灯 + 里程碑大字（@since v3.3，task_080）：左下角最近 5 条事件流 + 每 10 个完成任务
-// 一次的中央金色大字（文案模板与分级配色在 marquee-catalog，纯逻辑）。
-import { mountMarquee, type StratMarqueeElement } from '../../hud/components/marquee/marquee';
-import { mountMilestone } from '../../hud/components/marquee/milestone';
-import {
-  MARQUEE_ICONS,
-  marqueeEntryForEvent,
-  milestoneEntryText,
-  resolveTaskTitle,
-  resolveTaskTitleFull,
-  resolveUnitIdForTask,
-  type MarqueeEventContext,
-} from '../../hud/components/marquee/marquee-catalog';
-// 快捷键系统（@since v3.34，task_058）：window keydown → 命令 + 帮助浮层（键位表见 hud/shortcuts）。
-import { mountShortcuts } from '../../hud/components/shortcuts/shortcut-manager';
-import { createTaskManager } from '../../core/task';
-import { createUnitSpriteSource } from '../services/unit-sprite-source';
+import { createProgressionService } from '../services/progression-service';
 // 远程 store（@since v3.43，task_083，前后端分离 B3）：Electron 壳的**远程数据源** ——
 //   CoreStore 的远程实现（world-sync 全量快照 → 本地整体覆盖；hud 命令 → command.forward）。
 import { DEFAULT_WORLD_SYNC_URL, createRemoteStore, type RemoteStore } from '../services/remote-store';
+import { resolveSessionCompressThreshold } from '../services/session-compress-config';
+import { createSessionEventLog } from '../services/session-event-log';
+import {
+  createSessionHistoryPort,
+  DEFAULT_SESSION_HISTORY_BASE_URL,
+  httpBaseFromWorldSyncUrl,
+} from '../services/session-history/session-history';
+import { createSessionReferenceService } from '../services/session-reference';
+import { createSessionTitleServiceFromEnv } from '../services/session-title';
+import {
+  createStratixContextProvider,
+  createTopicCachePersister,
+  isGlobalContextEnabled,
+} from '../services/stratix-context';
+import { formatTaskArtifactsBlock, parseTaskArtifactsJson } from '../services/task-artifacts';
+import { createTaskReportHandler } from '../services/task-report';
+import { createTaskService } from '../services/task-service';
+import { createUnitSpriteSource } from '../services/unit-sprite-source';
 
+// 自定义 agent 注册端口（@since v3.32，task_056）：向导扫描步的「+ 添加自定义 agent」表单 /
+// 设置屏的注册管理经它进主进程（IPC 面 = preload 的 customAgents）。非 Electron → null，降级。
+import { customAgentsIpcPort } from './custom-agents-bridge';
 import {
   isOnboardingForced,
   isRemoteModeEnabled,
@@ -318,9 +321,6 @@ import {
 // 输入焦点探针（@since v3.3，task_217 / IX-04）：DOM 侧的事实（world 零 DOM，判在 app 层）。
 import { hasInputFocus } from './input-focus';
 import { createOnboardingHost } from './onboarding-host';
-// 自定义 agent 注册端口（@since v3.32，task_056）：向导扫描步的「+ 添加自定义 agent」表单 /
-// 设置屏的注册管理经它进主进程（IPC 面 = preload 的 customAgents）。非 Electron → null，降级。
-import { customAgentsIpcPort } from './custom-agents-bridge';
 
 function must<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);

@@ -18,11 +18,12 @@
  */
 
 import type { AgentKind } from '../../core/types';
+
+import type { ChatTransportFactory, ChatTransportPort } from './chat-service';
 import type {
   SpawnOptions,
   TransportEvent,
 } from './cli-transport/transport';
-import type { ChatTransportFactory, ChatTransportPort } from './chat-service';
 
 /** 一轮对话的 IPC 请求（渲染层造 runId，主进程按它路由事件与 abort）。 */
 export interface CliChatRunRequest {

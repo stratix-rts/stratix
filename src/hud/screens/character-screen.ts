@@ -64,28 +64,32 @@
  *   尚未接进 main-screen / hud-dev-entry（由 task_019 的屏位路由接线任务统一挂载，避免两个任务同时改同一处壳）。
  */
 
+// 纯函数 / 常量的跨层 import（与 onboarding-catalog 同一例外口径：core/character 的校验真相不另抄一份）。
+import { PERSONA_MAX_LEN } from '../../core/character/persona';
+import { hasDuplicateCharacterName } from '../../core/character/profile';
+import type { CharacterView } from '../../core/types';
 import {
   appearancePartVariant,
   MAX_CHARACTER_NAME_LEN,
   type AppearanceBodyType,
   type WorldState,
 } from '../../core/types';
-import type { CharacterView } from '../../core/types';
-// 纯函数 / 常量的跨层 import（与 onboarding-catalog 同一例外口径：core/character 的校验真相不另抄一份）。
-import { PERSONA_MAX_LEN } from '../../core/character/persona';
-import { hasDuplicateCharacterName } from '../../core/character/profile';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
+// 成长曲线 canvas 组件（纯展示；时序聚合在上面的 growth-catalog，本屏只喂数据）。
+import {
+  defineStratGrowthChart,
+  GROWTH_CHART_TAG,
+  type StratGrowthChartElement,
+} from '../components/growth-chart/growth-chart';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 import { defineStratButton, escapeHtml, STRAT_BUTTON_TAG } from '../widgets/strat-button';
 
+import type { AppearancePreviewPort } from './appearance-preview-port';
 import {
   lockedCategoryBadge,
   mergeUnlockedRoll,
 } from './appearance-unlock-catalog';
-import type { AppearancePreviewPort } from './appearance-preview-port';
-import { cloneAppearance } from './onboarding-catalog';
-import { PERSONA_PRESETS, presetsForKind } from './persona-presets';
-import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 import {
   characterSignature,
   personaSectionSummary,
@@ -111,12 +115,8 @@ import {
   type GrowthStatsPort,
   type GrowthTaskInput,
 } from './growth-catalog';
-// 成长曲线 canvas 组件（纯展示；时序聚合在上面的 growth-catalog，本屏只喂数据）。
-import {
-  defineStratGrowthChart,
-  GROWTH_CHART_TAG,
-  type StratGrowthChartElement,
-} from '../components/growth-chart/growth-chart';
+import { cloneAppearance } from './onboarding-catalog';
+import { PERSONA_PRESETS, presetsForKind } from './persona-presets';
 
 export const CHARACTER_SCREEN_TAG = 'strat-character-screen';
 

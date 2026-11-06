@@ -32,11 +32,11 @@
  */
 
 import { TOPBAR_METRICS } from '../../../core/theme/visual-spec';
+import { zVar } from '../../theme/layer-tokens';
 // 图标组（@since v3.6，task_121）：细条上的两个图标从 emoji（▶ / 🎬）换成 SVG ——
 //   emoji 是字形不是图标，跟线条风对不上；SVG 走 currentColor → 自动继承条目的语义色
 //   （演示 = 主色 / 导演 = 警示色），不另抄一份色值。
 import { iconSvg } from '../../widgets/icon-set';
-import { zVar } from '../../theme/layer-tokens';
 
 export const MODE_STRIP_TAG = 'strat-mode-strip';
 

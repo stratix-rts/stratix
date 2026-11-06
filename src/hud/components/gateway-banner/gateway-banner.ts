@@ -31,10 +31,10 @@ import {
   type GatewayConnectionState,
   type GatewayLinkPort,
 } from '../../bridge/gateway-link-port';
+import { zVar } from '../../theme/layer-tokens';
 // 动效层（@since v3.8，task_138）：横幅从「瞬现」改为「落位」——
 //   入场动效走共享工具类（位移 8px + 淡入，200ms），时长 / 缓动取 --srf-motion-* token。
 import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../../theme/motion-tokens';
-import { zVar } from '../../theme/layer-tokens';
 
 export const GATEWAY_BANNER_TAG = 'strat-gateway-banner';
 

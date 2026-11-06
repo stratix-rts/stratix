@@ -48,6 +48,7 @@ import {
   type PipelineSpec,
 } from '../../core/task';
 import type { CharacterView, WorldEvent, WorldState } from '../../core/types';
+
 import type { TaskPersistRecord } from './task-service';
 import { taskEventToRecord } from './task-service';
 

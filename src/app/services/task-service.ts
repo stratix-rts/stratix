@@ -147,6 +147,7 @@
 import { emitWorldEvent, onWorldEvent } from '../../core/bus';
 import { personaPlanFirst } from '../../core/character/persona';
 import type { SessionManager, SessionTitleService } from '../../core/session';
+import type { TaskManager } from '../../core/task';
 import type {
   AgentKind,
   CharacterTask,
@@ -159,7 +160,7 @@ import type {
   WorldState,
 } from '../../core/types';
 import { MISSION_TITLE_PENDING, NOTICE_TTL_MS, TASK_PLAN_WAIT_MARKER } from '../../core/types';
-import type { TaskManager } from '../../core/task';
+
 import type { SpawnOptions, TransportErrorCode, TransportEvent } from './cli-transport/transport';
 import {
   defaultDispatchCwdProvider,
@@ -175,9 +176,9 @@ import {
   resolveSessionReferences,
   type SessionReferenceService,
 } from './session-reference';
+import { resolveStratixContextBlock, type StratixContextSource } from './stratix-context';
 import { parseTaskArtifacts, serializeTaskArtifacts } from './task-artifacts';
 import { createTaskSessionRecorder } from './task-session-recorder';
-import { resolveStratixContextBlock, type StratixContextSource } from './stratix-context';
 
 // ============================================================================
 // 端口与常量

@@ -98,10 +98,10 @@
  *     标题是**看得见**的，但不再需要用户动手写。
  */
 
-import type { HudCommand, MissionView, WorldState } from '../../core/types';
 // 相位判定（@since v3.11，task_155）：在办任务条要认出「非终态」的任务单 ——
 //   判据只认 core/mission 这一份（hud 不自建相位词表）。
 import { isTerminalPhase } from '../../core/mission';
+import type { HudCommand, MissionView, WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import {
   NEW_TASK_OPEN_EVENT,
@@ -121,16 +121,14 @@ import { zVar } from '../theme/layer-tokens';
 //   命令行提交时输入行微脉冲 —— 全部走共享动效工具类，时长缓动取 --srf-motion-* token。
 import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../theme/motion-tokens';
 
+// 提示词直发的命令构造（@since v3.11，task_155）：一条提示词 = 一条任务。
+import { buildLaunchTaskCommand } from './agent-catalog';
 import type {
   CommandContext,
   CommandScope,
   PanelCommandId,
   ResolvedCommand,
 } from './command-catalog';
-// 提示词直发的命令构造（@since v3.11，task_155）：一条提示词 = 一条任务。
-import { buildLaunchTaskCommand } from './agent-catalog';
-// 相位中文标签（@since v3.11，task_155）：在办任务条上的相位徽标 —— 与任务面板同一份词表。
-import { PHASE_LABELS } from './mission-confirm';
 import {
   buildCommand,
   describeSelection,
@@ -149,6 +147,8 @@ import {
   cliUsageList,
   parseCliInput,
 } from './command-registry';
+// 相位中文标签（@since v3.11，task_155）：在办任务条上的相位徽标 —— 与任务面板同一份词表。
+import { PHASE_LABELS } from './mission-confirm';
 // 提示词 composer（@since v3.9，task_144）：输入面的键位 / IME / 历史 / 自动长高全在那边，
 //   本面板只负责「拿到原文 → 走命令注册表 / 任务通路」。
 import { PromptComposer } from './prompt-composer';

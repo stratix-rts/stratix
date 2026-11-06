@@ -146,6 +146,7 @@ import type {
   SessionRecord,
   WorldState,
 } from '../../core/types';
+
 import {
   buildFirstPrompt,
   isAgentKindInstalled,

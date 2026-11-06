@@ -39,6 +39,8 @@
 import { MAX_TASK_PROMPT_LEN, type AgentKind, type CharacterView, type HudCommand, type WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
+import { agentKindLabel } from '../screens/onboarding-catalog';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 import type {
   AgentPanelAction,
@@ -58,14 +60,6 @@ import {
   buildTaskRejectCommand,
   resolveAgentPanel,
 } from './agent-catalog';
-import {
-  buildQueueEstimateHint,
-  recommendAssignees,
-  resolveAutoTarget,
-  type AssigneeModel,
-  type CharacterTaskStatInput,
-  type TaskStatsProvider,
-} from './task-assign-catalog';
 // 流水线模式（task_051）：目录纯函数 + 实时 feed 注入口。hud 不 import world/app ——
 // 站态读数只经 deps.pipelines 注入面（架构注见 pipeline-catalog 文件头）。
 import {
@@ -77,8 +71,14 @@ import {
   type PipelineFeedInput,
   type PipelineFormInput,
 } from './pipeline-catalog';
-import { agentKindLabel } from '../screens/onboarding-catalog';
-import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
+import {
+  buildQueueEstimateHint,
+  recommendAssignees,
+  resolveAutoTarget,
+  type AssigneeModel,
+  type CharacterTaskStatInput,
+  type TaskStatsProvider,
+} from './task-assign-catalog';
 
 export const AGENT_PANEL_TAG = 'strat-agent-panel';
 

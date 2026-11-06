@@ -20,13 +20,13 @@
  *   让那个开关有真实消费者，而不是一个只翻文字的假控件。
  */
 
+import { CONTROL_ISLAND_METRICS } from '../../../core/theme/visual-spec';
 import { STRATIX_NOTIFICATIONS_TOGGLE_KEY } from '../../../core/types';
+import { zVar } from '../../theme/layer-tokens';
 // 动效层（@since v3.8，task_138）：toast 从「啪一下出现」改为「落位 + 淡入」；
 //   成功类 toast 额外走**签名瞬间**（对勾描边 + scale/brightness 脉冲）——
 //   「成功」不该只是绿边框，应该是一个能被眼睛抓住的瞬间。
 import { MOTION_CLASS, MOTION_COMPONENT_CSS, installMotionTokens } from '../../theme/motion-tokens';
-import { zVar } from '../../theme/layer-tokens';
-import { CONTROL_ISLAND_METRICS } from '../../../core/theme/visual-spec';
 
 export const TOAST_HOST_TAG = 'strat-toast-host';
 

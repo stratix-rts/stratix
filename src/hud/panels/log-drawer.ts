@@ -26,9 +26,9 @@
 import type { WorldState } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';
 import { defineEmptyState, EMPTY_STATE_TAG } from '../components/empty-state/empty-state';
+import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 
 import type { LogEntryView, LogFilter, LogLevel, LogModel, MissionOption } from './log-catalog';
-import { MOTION_REDUCED_CSS } from '../theme/motion-tokens';
 import {
   EMPTY_LOG_FILTER,
   LOG_LEVELS,
