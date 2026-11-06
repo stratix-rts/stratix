@@ -212,6 +212,31 @@ describe('场景交互 → WorldEvent', () => {
     ]);
   });
 
+  test('unitChatOpen 转成 unit.chat.open 事件（双击 agent → 打开该 agent 的单独聊天框 · task_214 / IX-03）', () => {
+    const { port } = createFakePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+    const { events, stop } = collectWorldEvents();
+    stops.push(stop);
+
+    bridge.unitChatOpen('u1');
+
+    // 载荷只带单位 id：单位 → 角色的映射由 core 裁决（world 不解释业务）。
+    expect(events).toEqual([{ type: 'unit.chat.open', unitId: 'u1' }]);
+  });
+
+  test('destroy 之后的迟到 unitChatOpen 被丢弃（不为已死场景再发一次）', () => {
+    const { port } = createFakePort();
+    const bridge = createWorldBridge(port, { now: clock });
+    const { events, stop } = collectWorldEvents();
+    stops.push(stop);
+
+    bridge.destroy();
+    bridge.unitChatOpen('u1');
+
+    expect(events).toEqual([]);
+  });
+
   test('selection.box 原样带上世界坐标矩形', () => {
     const { port } = createFakePort();
     const bridge = createWorldBridge(port, { now: clock });

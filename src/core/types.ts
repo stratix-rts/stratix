@@ -1401,6 +1401,26 @@ export interface ProjectArchivePort {
 // ★ 总线契约：core → 两层广播的完整世界快照
 // ============================================================================
 
+/**
+ * 单独聊天框的目标（@since v3.3，task_214 / IX-03）—— 「现在该打开谁的聊天框」。
+ *
+ * why 是 core 契约里的字段而不是 HUD 本地态：双击 agent 的触发方在 **world**，
+ *   接收方在 **HUD**，而 HUD 的入向只有 state 一条（铁律 1「world 不直调 hud」）。
+ *   真相落在 core ⇒ world 发事件 → core 裁决 → 写这里 → state 广播 → HUD 消费。
+ *   （路径与取舍见 docs/DESIGN-canvas-interactions.md §5.2 扩展点 E-1。）
+ *
+ * why 带 `nonce`：同一角色被连续双击两次时，characterId 没变 ⇒ 只看 characterId
+ *   的消费方会以为「没变化」而不再开框。nonce 单调递增 ⇒ 每次双击都是一次新事实。
+ *
+ * 体积天然有界：单个对象（不是数组），不存在无限增长（perf：广播数据必须有界）。
+ */
+export interface ChatTarget {
+  /** 该打开聊天框的角色 id（单位关联的角色）。 */
+  readonly characterId: string;
+  /** 单调递增的触发序号（同一角色重复触发也能被消费方看见）。 */
+  readonly nonce: number;
+}
+
 export interface WorldState {
   units: UnitView[]; // Agent 单位（位置由世界层自治，此处仅业务态）
   missions: MissionView[]; // 任务及状态机相位
@@ -1515,6 +1535,16 @@ export interface WorldState {
    *   各自一张地图 —— 激活的粒度是**物理副本**。
    */
   activeInstanceId?: ProjectInstanceId | null;
+  /**
+   * @since v3.3（task_214 / IX-03）单独聊天框的目标（画布双击 agent → 打开该 agent 的聊天框）。
+   * 真相在 core：world 发 `unit.chat.open` 事件 → core 裁决（单位在不在场 / 关联哪个角色）→
+   *   写这里 → state 广播 → HUD 聊天抽屉订阅后打开对应角色的会话。
+   * 刻意可选：与 settings / currentScreen / directorEnabled 同理走可选增补 ——
+   *   契约增补不许打破既有 WorldState 构造点（core / hud 单测夹具）的编译；
+   *   读取方缺省时按「没有待打开的聊天框」处理。
+   * 体积天然有界：单个对象（ChatTarget），不存在增长问题（perf：广播数据必须有界）。
+   */
+  chatTarget?: ChatTarget;
 }
 
 // ============================================================================
@@ -1966,6 +1996,16 @@ export interface ReplayBeat {
 
 export type WorldEvent =
   | { type: 'unit.click'; unitId: string; mods: ClickMods }
+  /**
+   * @since v3.3（task_214 / IX-03）画布双击 agent → 打开该 agent 的**单独聊天框**。
+   *   发出方是 world（画布双击命中单位）；消费者是 HUD 聊天抽屉 —— 但**不直接**给 HUD：
+   *   world 不直调 hud（铁律 1），只能发事件给 core，由 core 裁决后写进 WorldState.chatTarget，
+   *   HUD 订阅 state 再开框（路径见 docs/DESIGN-canvas-interactions.md §5.2 扩展点 E-1）。
+   * why 载荷是 unitId 而不是 characterId：单位 → 角色的映射真相在 core（core 裁决，
+   *   world 不解释「这个单位是谁」—— 同 world 桥「只转发不解释」的口径）。
+   * 仪式期输入由 world 侧整次消费（task_187）⇒ 仪式在演时这条事件根本不会发出。
+   */
+  | { type: 'unit.chat.open'; unitId: string }
   /**
    * @since v3.21 框选补全（task_045）：core 不持有坐标，算不出命中集合 —— 命中判定在世界层完成
    *   （UnitRegistry.queryBounds），上报方把结果 id 补在事件上（runtime 对带 id 的框选落选择集）。

@@ -95,7 +95,6 @@ import {
   CameraController,
   DEFAULT_WORLD_BOUNDS,
   clampCameraCenter,
-  isDoubleClick,
   overviewPose,
   rubberBandDisplay,
   rubberBandOffset,
@@ -105,6 +104,8 @@ import {
 } from '../camera';
 import { DirectorController, type DirectorHost } from '../camera/director';
 import type { DirectorEventKind } from '../camera/director-policy';
+// 点击语义判定（@since v3.3，task_214 / IX-03）：单击 = 选中 / 双击 = 打开单独聊天框（纯逻辑，可单测）。
+import { resolveCanvasClick } from '../click-semantics';
 // 动效降级标志（@since v3.3，task_194 / AP-04）：reduced-motion ⇒ 不播代码路由（DESIGN §1.3）。
 import { readReducedMotion } from '../motion';
 import { isWarmHour } from '../objects/ambience-layout';
@@ -959,19 +960,27 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       if (hit) {
         // 点击涟漪 + squash（@since v3.3，task_075）：白圈 200ms 扩散淡出。
         this.unitLayer.pulseClick(hit.id);
+        // 单击 = **选中**（task_214 / IX-03）：unit.click 是选择的锚 —— 右键移动、键盘操作都建立在它之上。
+        // why 每一击都发：第一击就是一次普通单击选中，双击的第一击**照常选中**（不产生第二种选中态）。
         this.bridge.unitClick(hit.id, readModifiers(pointer));
-        // 双击单位 = 跟随镜头（@since v3.3，task_079；跟随中再双击解除）。
+        // 点击语义判定（task_214 / IX-03）：单击 = 选中 / 双击 = 打开该 agent 的单独聊天框。
+        //   双击窗口复用 CAMERA_METRICS.doubleClickWindowMs 同源常量（判定在 click-semantics 纯函数里）。
         const stamp: ClickStamp = {
           unitId: hit.id,
           timeMs: this.time.now,
           x: pointer.x,
           y: pointer.y,
         };
-        if (isDoubleClick(this.lastClick, stamp)) {
-          this.lastClick = null;
+        const decision = resolveCanvasClick(this.lastClick, stamp);
+        this.lastClick = decision.nextStamp;
+        if (decision.action === 'chat-open') {
+          // 双击单位 = 打开该 agent 的**单独聊天框**（task_214 / IX-03）。
+          // why 走事件不直调 HUD：world 不直调 hud（铁律 1）—— 事件 → core 裁决 →
+          //   WorldState.chatTarget → HUD 聊天抽屉订阅后开框（design §5.2 扩展点 E-1）。
+          this.bridge.unitChatOpen(hit.id);
+          // 跟随镜头保留（@since v3.3，task_079；跟随中再双击解除）——
+          //   task_079 的「跟随/解除/回全景可用」不能因双击语义改绑而失效。
           this.toggleFollow(hit.id);
-        } else {
-          this.lastClick = stamp;
         }
       } else {
         // 点空地 = 没有下一次双击的对象（避免隔空双击把镜头带走）。

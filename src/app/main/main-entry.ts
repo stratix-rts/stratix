@@ -432,7 +432,7 @@ async function boot(): Promise<void> {
   // ===== 远程模式：画布交互的世界事件改走转发（@since v3.3，task_156）=====
   //   远程模式**不启动本地 core runtime**（真相在 service，铁律 1）—— 画布交互（点选 / 框选 /
   //   右键移动）走的是 world → core 的 WorldEvent 通道：本地总线零消费者 → 静默丢弃 → 画布全哑。
-  //   故这里把**状态语义**事件（白名单：unit.click / selection.box / unit.move / camera.director）
+  //   故这里把**状态语义**事件（白名单：unit.click / selection.box / unit.move / camera.director / unit.chat.open）
   //   转成 `event.forward` 上行，由 service 侧的 runtime 裁决（落 store → snapshot 回推 → 选中环出现）。
   //   白名单在协议层（FORWARDABLE_WORLD_EVENT_TYPES）：纯视图事件（camera.moved / replay.beat）
   //   不上行 —— service 不需要相机姿态，别拿视图态污染真相。

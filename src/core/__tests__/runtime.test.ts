@@ -136,6 +136,59 @@ describe('WorldEvent → 选择状态机（world → core 那一半）', () => {
   });
 });
 
+describe('WorldEvent → 单独聊天框目标（task_214 / IX-03）', () => {
+  /** 带角色的单位（画布上能双击开聊天框的那种）。 */
+  const UNITS_WITH_CHARACTER: UnitView[] = [
+    { id: 'u1', name: 'Neo', status: 'idle', missionId: null, power: 3, characterId: 'c1' },
+    { id: 'u2', name: 'Ghost', status: 'idle', missionId: null, power: 1, characterId: null },
+  ];
+
+  function chatHarness(): Harness {
+    const store = createStore({ units: UNITS_WITH_CHARACTER });
+    const states: WorldState[] = [];
+    const unhandled: { channel: UnhandledChannel; type: string }[] = [];
+    const offState: Unsubscribe = onState((state) => states.push(state));
+    const runtime = createCoreRuntime({
+      store,
+      onUnhandled: (channel, payload) => unhandled.push({ channel, type: payload.type }),
+    });
+    const stop = runtime.start();
+    return { runtime, store, states, unhandled, stop: () => { stop(); offState(); } };
+  }
+
+  test('unit.chat.open → 裁决出角色并写进 WorldState.chatTarget', () => {
+    const { store, states, stop } = chatHarness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'unit.chat.open', unitId: 'u1' });
+
+    expect(store.getState().chatTarget).toEqual({ characterId: 'c1', nonce: 1 });
+    expect(states).toHaveLength(1);
+    expect(states[0].chatTarget).toEqual({ characterId: 'c1', nonce: 1 });
+  });
+
+  test('同一角色连点两次 → nonce 递增（消费方据此再次开框）', () => {
+    const { store, stop } = chatHarness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'unit.chat.open', unitId: 'u1' });
+    emitWorldEvent({ type: 'unit.chat.open', unitId: 'u1' });
+
+    expect(store.getState().chatTarget).toEqual({ characterId: 'c1', nonce: 2 });
+  });
+
+  test('未关联角色的单位 / 不存在的单位 → 不写目标（不猜角色）', () => {
+    const { store, states, stop } = chatHarness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'unit.chat.open', unitId: 'u2' });
+    emitWorldEvent({ type: 'unit.chat.open', unitId: 'ghost' });
+
+    expect(store.getState().chatTarget).toBeUndefined();
+    expect(states).toHaveLength(0);
+  });
+});
+
 describe('未落地的消息走 onUnhandled（不静默吞掉）', () => {
   test('Phase 2 才接的命令被上报，不改动状态；已接线的 ui.navigate 不再上报', () => {
     const { unhandled, store, states, stop } = harness();

@@ -194,17 +194,24 @@ export interface CommandAckMessage {
  *   **service 侧的 core** 裁决（铁律 2「裁决在 core」—— 本地没有真相，本地裁决就是第二份真相）。
  *   纯视图事件（camera.moved / replay.beat / fx.sound / unit.bubble …）是本机表现，
  *   service 不需要 —— 上行只会拿视图态污染真相（且 camera.moved 每 120ms 一条，纯烧带宽）。
+ *
+ * @since v3.3（task_214 / IX-03）追加 `unit.chat.open`：双击 agent → 打开该 agent 的单独聊天框。
+ *   它同样必须**上行** —— 远程模式下渲染进程**不起本地 core runtime**（真相在 service），
+ *   本地裁决就等于第二份真相（铁律 2）。裁决结果写进 WorldState.chatTarget ⇒ 随 snapshot
+ *   全量回推客户端 ⇒ HUD 聊天抽屉订阅后开框（路径见 design §5.2 扩展点 E-1）。
+ *   ⚠️ 多客户端口径：chatTarget 随 snapshot 广播给**全体**客户端 ⇒ 别人的双击也会让本端开框。
+ *   本期接受该口径（单客户端本地工作台是主场景），不为此改快照语义（那要动协议契约）。
  */
 export type ForwardableWorldEvent = Extract<
   WorldEvent,
-  { type: 'unit.click' | 'selection.box' | 'unit.move' | 'camera.director' }
+  { type: 'unit.click' | 'selection.box' | 'unit.move' | 'camera.director' | 'unit.chat.open' }
 >;
 
 /**
  * 世界事件的**上行白名单**（类型名 → 在册）。
  *
  * why 不是 `Record<WorldEvent['type'], true>`（那等于放行 core 的**全部**事件，含纯视图事件）：
- *   白名单必须显式列出「状态语义」那几条。四个键的类型由上面的 `Extract` 从 core 的 WorldEvent
+ *   白名单必须显式列出「状态语义」那几条。键的类型由上面的 `Extract` 从 core 的 WorldEvent
  *   推导 —— core 改名或改形状会**编译报错**（同 HUD_COMMAND_TYPE_FLAGS 的纪律：契约不静默漂移）。
  */
 const FORWARDABLE_WORLD_EVENT_FLAGS: Readonly<Record<ForwardableWorldEvent['type'], true>> = {
@@ -212,6 +219,7 @@ const FORWARDABLE_WORLD_EVENT_FLAGS: Readonly<Record<ForwardableWorldEvent['type
   'selection.box': true,
   'unit.move': true,
   'camera.director': true,
+  'unit.chat.open': true,
 };
 
 /** 上行白名单的类型名清单（常量，供客户端 / 文档 / 单测对齐）。 */
@@ -220,6 +228,7 @@ export const FORWARDABLE_WORLD_EVENT_TYPES: readonly ForwardableWorldEvent['type
   'selection.box',
   'unit.move',
   'camera.director',
+  'unit.chat.open',
 ] as const;
 
 /**
@@ -603,6 +612,10 @@ export function isForwardableWorldEvent(value: unknown): value is ForwardableWor
       );
     case 'camera.director':
       return typeof value.enabled === 'boolean';
+    // @since v3.3（task_214 / IX-03）双击开聊天框：载荷只带单位 id
+    //   （单位 → 角色的映射由 core 裁决 —— 协议层不解释业务）。
+    case 'unit.chat.open':
+      return isNonEmptyString(value.unitId);
     default:
       return false;
   }

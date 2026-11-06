@@ -208,6 +208,13 @@ export interface WorldScenePort {
 export interface WorldEventSink {
   unitClick(unitId: string, mods: ClickMods): void;
   /**
+   * 双击单位 → 打开该 agent 的**单独聊天框**（@since v3.3，task_214 / IX-03）。
+   * 走 WorldEvent 的 `unit.chat.open`（铁律：世界层不发 HudCommand，也不直调 HUD）——
+   *   core 裁决出该单位关联的角色后写进 WorldState.chatTarget，HUD 聊天抽屉订阅后开框。
+   * 载荷只带 unitId：单位 → 角色的映射真相在 core，world 不解释（见 types.ts 同名事件注释）。
+   */
+  unitChatOpen(unitId: string): void;
+  /**
    * 框选上报（@since v3.21，task_045：命中判定补全）。bounds 原样上报；
    * hitUnitIds 给了就把命中结果一并补在事件上（core 无坐标算不出命中）—— 空数组也是
    * 有意义的选择（拖空框/点空地 = 清空选择）；additive = Shift 加选。
@@ -422,6 +429,12 @@ export function createWorldBridge(
       // 场景已 destroy 后的迟到输入直接丢弃：core 收到的事件必须对应一个活着的场景
       if (destroyed) return;
       emitWorldEvent({ type: 'unit.click', unitId, mods });
+    },
+
+    unitChatOpen(unitId: string): void {
+      // 场景已 destroy 后的迟到输入直接丢弃（同 unitClick 口径）。
+      if (destroyed) return;
+      emitWorldEvent({ type: 'unit.chat.open', unitId });
     },
 
     selectionBox(bounds: Bounds, hitUnitIds?: readonly string[], additive?: boolean): void {

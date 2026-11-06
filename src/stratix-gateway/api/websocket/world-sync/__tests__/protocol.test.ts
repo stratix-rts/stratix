@@ -255,6 +255,15 @@ describe('isEventForwardMessage / isForwardableWorldEvent', () => {
     expect(isForwardableWorldEvent({ type: 'camera.director', enabled: false })).toBe(true);
   });
 
+  it('合法样例 4：unit.chat.open（双击开聊天框 · task_214 / IX-03）', () => {
+    const event = { type: 'unit.chat.open', unitId: 'u1' };
+    expect(isForwardableWorldEvent(event)).toBe(true);
+    expect(isEventForwardMessage({ type: 'event.forward', event })).toBe(true);
+    // 形状不对（缺 id / id 非串）⇒ 拒：事件要原样喂进 core 总线，坏形状会炸在它手里。
+    expect(isForwardableWorldEvent({ type: 'unit.chat.open' })).toBe(false);
+    expect(isForwardableWorldEvent({ type: 'unit.chat.open', unitId: '' })).toBe(false);
+  });
+
   it('非法样例 1：纯视图事件不上行（camera.moved / replay.beat 不在白名单）', () => {
     expect(isForwardableWorldEvent({ type: 'camera.moved', center: { x: 1, y: 2 }, zoom: 1 })).toBe(
       false,
@@ -285,12 +294,13 @@ describe('isEventForwardMessage / isForwardableWorldEvent', () => {
     expect(isEventForwardMessage({ type: 'command.forward', event: click })).toBe(false);
   });
 
-  it('白名单词表：恰好四条状态语义事件', () => {
+  it('白名单词表：恰好五条状态语义事件（task_214 追加 unit.chat.open）', () => {
     expect(FORWARDABLE_WORLD_EVENT_TYPES).toEqual([
       'unit.click',
       'selection.box',
       'unit.move',
       'camera.director',
+      'unit.chat.open',
     ]);
   });
 

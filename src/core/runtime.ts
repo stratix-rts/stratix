@@ -920,6 +920,19 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
           unitIds: [event.unitId],
         });
         return;
+      // @since v3.3(task_214 / IX-03)画布双击 agent → 打开该 agent 的单独聊天框:
+      //   world 发事件(core 无坐标无 DOM,但**认得单位**)→ core 裁决「这个单位关联哪个角色」
+      //   → 写 WorldState.chatTarget → state 广播 → HUD 聊天抽屉订阅后开框。
+      // why 裁决在 core:铁律 2「core 是唯一裁决方」—— 单位→角色的映射是业务事实,
+      //   不该由 world 或 HUD 各自解释一遍(会漂)。
+      // why 未关联角色的单位直接忽略:没有可开的聊天框,**不猜**(不按单位名硬凑角色)。
+      case 'unit.chat.open': {
+        const unit = store.getState().units.find((u) => u.id === event.unitId);
+        const characterId = unit?.characterId ?? null;
+        if (!characterId) return;
+        store.setChatTarget(characterId);
+        return;
+      }
       // @since v3.21 框选闭环(task_045):命中判定在世界侧(core 无坐标),上报方把 id 补在事件上 ——
       // 带 id 才落选择集(空数组 = 拖空框/点空地,明确清空);没 id 维持「未处理」观测口径,
       // 与老调用方(dev 观测/合成事件)兼容。Shift = 加选(add),否则覆盖(set)。

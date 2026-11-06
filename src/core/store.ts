@@ -103,6 +103,14 @@ export interface CoreStore {
    */
   setDetectedAgents(agents: readonly DetectedAgent[]): WorldState;
   /**
+   * @since v3.3（task_214 / IX-03）写「单独聊天框的目标」（WorldState.chatTarget 的落库入口）。
+   * 语义：双击画布上的 agent ⇒ core 裁决出该单位关联的角色 ⇒ 写这里 ⇒ HUD 聊天抽屉订阅后开框。
+   * why 落点带 nonce：同一角色**重复**双击也要再开一次框 —— 只看 characterId 的消费方
+   *   会以为「没变化」而跳过（nonce 单调递增，每次触发都是一次新事实）。
+   * why 每次都广播：聊天框开合是**一次性动作**（不是状态），不广播就没人开框。
+   */
+  setChatTarget(characterId: string): WorldState;
+  /**
    * @since v3.3（task_179 / M1-05）实体集合**整份替换** —— 切副本的落点。
    *
    * 语义（design §7.1 M1-05 行 / §2.2「切副本 = 全量重载，不是增量合并」）：
@@ -348,6 +356,13 @@ export function createStore(initial?: Partial<WorldState>): CoreStore {
       const current = state.detectedAgents ?? [];
       if (sameDetectedAgents(current, agents)) return state;
       return notify({ ...state, detectedAgents: [...agents] });
+    },
+
+    // @since v3.3（task_214 / IX-03）单独聊天框目标：每次触发 nonce +1 ⇒ 必广播。
+    //   why 不做「值没变就不广播」：开框是**动作**不是状态 —— 同一角色连点两次也要再开一次。
+    setChatTarget: (characterId) => {
+      const nonce = (state.chatTarget?.nonce ?? 0) + 1;
+      return notify({ ...state, chatTarget: { characterId, nonce } });
     },
 
     // @since v3.3（task_179 / M1-05）实体集合整份替换（切副本）：五类实体全换 + 清选择/编组。

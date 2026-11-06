@@ -362,11 +362,11 @@ describe('组件：抽屉开合', () => {
   });
 });
 
-describe('组件：点战场单位 → 打开抽屉并切上下文（selection 广播驱动）', () => {
+describe('组件：点战场单位 → 选中（selection 广播驱动）', () => {
   let h: Harness;
   afterEach(() => h?.unmount());
 
-  test('单选关联角色的单位 → 打开 + 头部显示角色名与 kind 徽标', () => {
+  test('单选关联角色的单位 → **只选中**，不顶开抽屉（task_214 / IX-03 · design C-03）', () => {
     h = mountPanel();
     h.emit(makeState({
       units: [unit('u1', 'c1'), unit('u2', null)],
@@ -374,19 +374,32 @@ describe('组件：点战场单位 → 打开抽屉并切上下文（selection �
       selection: { unitIds: ['u1'], previewUnitIds: [], revision: 1 },
     }));
 
-    expect(h.panel.isOpen).toBe(true);
-    expect(h.panel.characterId).toBe('c1');
-    expect(headerOf(h.panel)).toEqual({ name: '铁牛', badge: 'Codex' });
+    // 单击只是「选中」（右击移动 / 键盘操作的锚）—— 抽屉不该顺手滑出来挡住画布。
+    expect(h.panel.isOpen).toBe(false);
+    expect(h.panel.characterId).toBeNull();
   });
 
-  test('同 revision 的后续广播不会把刚关掉的抽屉再顶开', () => {
+  test('抽屉已经开着时，单选跟随选择切上下文（task_052 互聊收尾语义依赖这条）', () => {
+    h = mountPanel();
+    h.panel.open('c1');
+    h.emit(makeState({
+      units: [unit('u2', 'c2')],
+      characters: [character('c1', { name: '铁牛', agentKind: 'codex' }), character('c2', { name: '墨菲' })],
+      selection: { unitIds: ['u2'], previewUnitIds: [], revision: 9 },
+    }));
+
+    expect(h.panel.isOpen).toBe(true);
+    expect(h.panel.characterId).toBe('c2');
+  });
+
+  test('同一目标的第二次广播不会把用户刚关掉的抽屉再顶开', () => {
     h = mountPanel();
     const state = makeState({
       units: [unit('u1', 'c1')],
       selection: { unitIds: ['u1'], previewUnitIds: [], revision: 7 },
     });
     h.emit(state);
-    expect(h.panel.isOpen).toBe(true);
+    expect(h.panel.isOpen).toBe(false);
 
     h.panel.close();
     h.emit(state); // 无关广播（notices 变了但 selection 没变）
@@ -440,13 +453,72 @@ describe('组件：点战场单位 → 打开抽屉并切上下文（selection �
     expect(messagesBoxOf(h.panel).textContent).not.toContain('给 c1 的');
   });
 
-  test('档案缺失的角色：头部名字回落 id，徽标显示未绑定（不编造档案）', () => {
+  test('档案缺失的角色：抽屉打开后头部名字回落 id，徽标显示未绑定（不编造档案）', () => {
     h = mountPanel();
+    h.panel.open('ghost');
     h.emit(makeState({
       units: [unit('u1', 'ghost')],
       selection: { unitIds: ['u1'], previewUnitIds: [], revision: 1 },
     }));
     expect(headerOf(h.panel)).toEqual({ name: 'ghost', badge: '未绑定' });
+  });
+});
+
+describe('组件：画布双击 agent → 打开该 agent 的单独聊天框（task_214 / IX-03）', () => {
+  let h: Harness;
+  afterEach(() => h?.unmount());
+
+  test('chatTarget 变化 → 打开抽屉并切到该角色上下文', () => {
+    h = mountPanel();
+    // 首份 state 是基线（应用启动时的那一份，没有目标）—— 与真实链路同形。
+    h.emit(makeState({ units: [unit('u1', 'c1')] }));
+    h.emit(makeState({
+      units: [unit('u1', 'c1')],
+      characters: [character('c1', { name: '铁牛', agentKind: 'codex' })],
+      chatTarget: { characterId: 'c1', nonce: 1 },
+    }));
+
+    expect(h.panel.isOpen).toBe(true);
+    expect(h.panel.characterId).toBe('c1');
+    expect(headerOf(h.panel)).toEqual({ name: '铁牛', badge: 'Codex' });
+  });
+
+  test('同一目标（nonce 不变）的后续广播不重复开框（用户关掉后不被顶开）', () => {
+    h = mountPanel();
+    h.emit(makeState({ units: [unit('u1', 'c1')] }));
+    const state = makeState({
+      units: [unit('u1', 'c1')],
+      chatTarget: { characterId: 'c1', nonce: 1 },
+    });
+    h.emit(state);
+    expect(h.panel.isOpen).toBe(true);
+
+    h.panel.close();
+    h.emit(state);
+    expect(h.panel.isOpen).toBe(false);
+  });
+
+  test('同一角色连点两次（nonce 递增）→ 再次开框', () => {
+    h = mountPanel();
+    h.emit(makeState({}));
+    h.emit(makeState({ chatTarget: { characterId: 'c1', nonce: 1 } }));
+    expect(h.panel.isOpen).toBe(true);
+
+    h.panel.close();
+    h.emit(makeState({ chatTarget: { characterId: 'c1', nonce: 2 } }));
+    expect(h.panel.isOpen).toBe(true);
+    expect(h.panel.characterId).toBe('c1');
+  });
+
+  test('启动 / 重连时的首份 state 只作基线：上一次的目标不把抽屉顶开', () => {
+    h = mountPanel();
+    h.emit(makeState({ chatTarget: { characterId: 'c1', nonce: 7 } }));
+    expect(h.panel.isOpen).toBe(false);
+
+    // 之后真的有新目标（nonce 变了）⇒ 才开框。
+    h.emit(makeState({ chatTarget: { characterId: 'c2', nonce: 8 } }));
+    expect(h.panel.isOpen).toBe(true);
+    expect(h.panel.characterId).toBe('c2');
   });
 });
 

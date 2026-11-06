@@ -88,6 +88,9 @@ function describe(event: WorldEvent): string {
   switch (event.type) {
     case 'unit.click':
       return `unit.click      ${event.unitId} (shift=${event.mods.shift} ctrl=${event.mods.ctrl})`;
+    // 双击开聊天框（@since v3.3，task_214 / IX-03）：画布双击 agent → 打开该 agent 的单独聊天框。
+    case 'unit.chat.open':
+      return `${event.type.padEnd(15)} ${event.unitId}`;
     case 'selection.box':
       return `selection.box   ${Math.round(event.bounds.width)}×${Math.round(event.bounds.height)} @ ${Math.round(event.bounds.x)},${Math.round(event.bounds.y)}`;
     case 'camera.moved':

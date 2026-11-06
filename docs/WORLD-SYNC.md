@@ -148,7 +148,7 @@ if (snapshot.seq > lastSeq) localStore.merge(snapshot.state);
 | `snapshot` | service → 客户端（广播） | 收到 `hello` 后立即；此后每次状态变更 | 全量世界状态 + 状态版本号 | 用：客户端唯一的读路径。不用于「只想要一小块」—— 那是 REST/MCP |
 | `command.forward` | 客户端 → service | 用户/交互触发写操作 | HudCommand 的信封（含 `commandId` 用于关联回执） | 用：一切写。**不用**：本地纯表现（音效、面板开合）—— 那些不进状态面 |
 | `command.ack` | service → 客户端（点对点） | 每条 `command.forward` 必回一条 | 落点回执：ok / 失败原因 + 核对后的 seq | 用：客户端据此判定「这次写入成没成」。不用：代替 snapshot —— ack 不带全量状态 |
-| `event.forward` | 客户端 → service | 画布交互（点选 / 框选 / 右击移动 / 导演开关） | 世界事件的信封（载荷 = 白名单内的 `WorldEvent`） | 用：**状态语义**世界事件的上行通道（@since v3.3 task_156）。**不用**：纯视图事件（`camera.moved` / `replay.beat` / `fx.sound`）—— service 不需要，别拿视图态污染真相 |
+| `event.forward` | 客户端 → service | 画布交互（点选 / 框选 / 右击移动 / 导演开关 / 双击开聊天框） | 世界事件的信封（载荷 = 白名单内的 `WorldEvent`） | 用：**状态语义**世界事件的上行通道（@since v3.3 task_156）。**不用**：纯视图事件（`camera.moved` / `replay.beat` / `fx.sound`）—— service 不需要，别拿视图态污染真相 |
 | `event.push` | service → 客户端（广播） | service 侧 core 产出裁决产物（首批 `unit.position`） | 世界事件的信封（载荷 = 白名单内的 `WorldEvent`，**原样**喂回客户端本地 core 总线） | 用：把**裁决产物**回灌给客户端（@since v3.3 task_216 / IX-02）。**不用**：上行（那是 `event.forward`）—— 两个白名单互斥 |
 | `error` | service → 客户端（点对点） | 信封级协议错误 | 解不开 / 类型不认识 / 版本不兼容 | 用：协议层故障。不用：业务级失败（业务失败走 `command.ack{ok:false}`） |
 
@@ -184,7 +184,7 @@ if (snapshot.seq > lastSeq) localStore.merge(snapshot.state);
 | 字段 | 类型 | 必填 | 语义 |
 |------|------|------|------|
 | `type` | `"event.forward"` | 是 | 消息型 |
-| `event` | `ForwardableWorldEvent` | 是 | 待裁决的世界事件。**白名单只有四条**（`unit.click` / `selection.box` / `unit.move` / `camera.director`）—— 状态语义事件；纯视图事件不在册（协议层解不开即拒） |
+| `event` | `ForwardableWorldEvent` | 是 | 待裁决的世界事件。**白名单只有五条**（`unit.click` / `selection.box` / `unit.move` / `camera.director` / `unit.chat.open`）—— 状态语义事件；纯视图事件不在册（协议层解不开即拒） |
 
 > **白名单的由来（@since v3.3，task_156）**：远程模式下渲染进程**不起本地 core runtime**（真相在 service），
 > 画布交互走的是 world → core 的 `WorldEvent` 通道 —— 少了这条通道，那些事件进了本地总线却零消费者 →

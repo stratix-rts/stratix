@@ -250,6 +250,10 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
     private _lastState: WorldState | null = null;
     /** 已处理过的选择 revision：无关广播（同 revision）不得把用户刚关的抽屉再顶开。 */
     private _lastSelectionRevision: number | null = null;
+    /** 已处理过的聊天框目标序号（task_214 / IX-03）：同一目标不重复开框（用户关掉后不被顶开）。 */
+    private _lastChatTargetNonce: number | null = null;
+    /** 吃过 state 了吗（task_214 / IX-03）：首份 state 只作基线，不开框。 */
+    private _chatTargetPrimed = false;
     /** 已成功回填（或确认无需回填）历史的角色 id（task_036）：每角色每生命周期至多一次。 */
     private readonly _historyLoaded = new Set<string>();
     private readonly _historyHasEarlier = new Set<string>();
@@ -556,14 +560,36 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
 
     /**
      * 总线状态到达：
-     *   1. selection.revision 变化 → ①单选且单位关联角色 → 打开抽屉并切到该角色会话
-     *      （互聊进行中抑制切走 —— 联合视图是讨论主舞台；setup/ended 相位则先退出互聊再切）；
+     *   1. chatTarget 变化 → 画布双击 agent → 打开该 agent 的**单独聊天框**（task_214 / IX-03）：
+     *      真相在 core（world 不直调 hud —— 铁律 1），本组件只消费；nonce 记账 ⇒
+     *      同一目标不重复开框（用户手动关掉后不被顶开）。
+     *   2. selection.revision 变化 → ①单选且单位关联角色 → **只选中，不顶开抽屉**；
+     *      抽屉已经开着时才跟随选择切上下文（互聊进行中抑制切走 —— 联合视图是讨论主舞台；
+     *      setup/ended 相位则先退出互聊再切）；
      *      ②恰选两个单位且都关联角色 → 互聊候选：开抽屉点亮头部「让它们聊聊」（task_052）；
      *      其余（多点 / 未关联角色 / 点空地）不动抽屉。同 revision 的后续广播全部跳过；
-     *   2. characters 档案变化 → 头部（名字 / kind 徽标 / 互聊标题）跟着刷新。
+     *   3. characters 档案变化 → 头部（名字 / kind 徽标 / 互聊标题）跟着刷新。
      */
     private handleState(state: WorldState): void {
       this._lastState = state;
+      // 画布双击 agent → 打开该 agent 的单独聊天框（@since v3.3，task_214 / IX-03）。
+      //   真相在 core（WorldState.chatTarget）：world 双击 → core 裁决 → 写 chatTarget →
+      //   state 广播 → 本组件消费（world 不直调 hud —— 铁律 1）。
+      // why 看 nonce：同一角色连点两次 characterId 不变，只看 characterId 的消费方会以为「没变化」而跳过。
+      const chatTarget = state.chatTarget;
+      if (!this._chatTargetPrimed) {
+        // 首份 state 只作**基线**：启动 / 重连时不得被上一次双击留下的目标把抽屉顶开
+        //   （目标在状态里是粘着的 —— 远程模式的 snapshot 会一直带着它）。
+        this._chatTargetPrimed = true;
+        this._lastChatTargetNonce = chatTarget?.nonce ?? null;
+      } else if (chatTarget && chatTarget.nonce !== this._lastChatTargetNonce) {
+        this._lastChatTargetNonce = chatTarget.nonce;
+        // 讨论进行中：联合视图是讨论主舞台，不切走（同「单选切走被抑制」口径）。
+        if (this._peerChat?.phase !== 'running') {
+          if (this._peerChat) this.exitPeerChat(); // setup 表单 / 已结束的残留互聊态随目标切换退出
+          this.open(chatTarget.characterId);
+        }
+      }
       if (state.selection.revision !== this._lastSelectionRevision) {
         this._lastSelectionRevision = state.selection.revision;
         const selected = state.selection.unitIds;
@@ -575,7 +601,10 @@ export function defineCharacterChatDrawer(): typeof HTMLElement {
             const characterId = unit?.characterId ?? null;
             if (characterId) {
               if (this._peerChat) this.exitPeerChat(); // setup 表单 / 已结束的残留互聊态随单选切走
-              this.open(characterId);
+              // 单击**不顶开**抽屉（@since v3.3，task_214 / IX-03 · design C-03）：
+              //   单击只是「选中」（右击移动 / 键盘操作的锚），不该顺手把抽屉顶开挡住画布。
+              //   抽屉**已经开着**时才跟随选择切上下文（task_052 的互聊收尾语义依赖这条）。
+              if (this._open) this.open(characterId);
             }
           }
         } else if (selected.length === 2) {
