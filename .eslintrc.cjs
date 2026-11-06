@@ -2,7 +2,7 @@ module.exports = {
   root: true,
   parser: '@typescript-eslint/parser',
   parserOptions: {
-    project: './tsconfig.json',
+    project: ['./tsconfig.eslint.json', './plugins/dsh-bridge/tsconfig.json'],
     tsconfigRootDir: __dirname,
     sourceType: 'module',
   },
@@ -39,6 +39,13 @@ module.exports = {
       'pixelfx/fx/scifi/emp-blast',
       'pixelfx/fx/spawn/poof',
       'pixelfx/fx/ui/confetti',
+      // plugins/dsh-bridge 的三个 dsh 依赖（@since task_223 / QA-03）：
+      //   该插件是**独立 npm 包**（plugins/dsh-bridge/package.json），依赖装在插件自己的 node_modules 里，
+      //   本仓根 node_modules 里没有 ⇒ eslint 的 import 解析器找不到它们 → import/no-unresolved 误报。
+      //   与 pixelfx 同理：core-modules 是**纯 lint 侧**声明（不装包、不改构建、不进产物）。
+      '@deepseek-ai/cordis',
+      '@deepseek-ai/dsh-tools',
+      '@deepseek-ai/schemastery',
     ],
   },
   env: {
@@ -61,6 +68,9 @@ module.exports = {
     '**/*.spec.ts',
     '**/*.test.ts',
     '**/__tests__/**',
+    // tmp/ 是 gitignore 掉的本地草稿区（探针脚本/截图），ESLint 8 不读 .gitignore ⇒ 显式忽略，
+    // 否则 `eslint .` 会因为这些文件不在任何 tsconfig 工程里而报解析错（@since task_223 / QA-03）。
+    'tmp',
   ],
   rules: {
     '@typescript-eslint/no-explicit-any': 'off',
@@ -80,4 +90,46 @@ module.exports = {
     ],
     'import/newline-after-import': 'error',
   },
+  /**
+   * 按目录切语义（@since task_223 / QA-03）。
+   * why 需要 overrides：`eslint .` 会扫全仓，而仓里混着三种**模块语义**不同的代码，
+   * 用同一套 module 语义 lint 它们会误报（不是代码有错，是 lint 的前提错了）：
+   *   ① TS 模块（src / e2e-tests / plugins）—— 默认；
+   *   ② 浏览器全局脚本（tools/texture-generator/generators/**）—— 由 index.html 用
+   *      `<script src>` 按顺序加载，**跨文件共享全局**（PALETTES / lerpColor / createNoise /
+   *      drawRockSmall …）；按 module 语义看，"别的文件里定义的全局"就是 no-undef，
+   *      "给别的脚本调用的函数"就是 no-unused-vars —— 两条都是假阳性。
+   *   ③ Node CLI（tools/texture-generator/generate-textures.js）—— CommonJS require。
+   */
+  overrides: [
+    {
+      files: ['tools/texture-generator/generators/**/*.js'],
+      env: { browser: true },
+      parserOptions: { sourceType: 'script', project: null },
+      globals: {
+        PALETTES: 'readonly',
+        lerpColor: 'readonly',
+        getPalette: 'readonly',
+        createNoise: 'readonly',
+        drawRock: 'readonly',
+        drawRockSmall: 'readonly',
+        drawRockLarge: 'readonly',
+        drawGrassTuft: 'readonly',
+        drawFlower: 'readonly',
+        drawWater: 'readonly',
+        drawCloudShape: 'readonly',
+      },
+      rules: {
+        // 这里的函数是**给别的 <script> 调用的全局**，本文件内没人用是正常的。
+        '@typescript-eslint/no-unused-vars': 'off',
+        // script 语义下的 require 不成组，不适用 import/order。
+        'import/order': 'off',
+      },
+    },
+    {
+      files: ['tools/texture-generator/generate-textures.js'],
+      env: { node: true, browser: true },
+      parserOptions: { sourceType: 'script', project: null },
+    },
+  ],
 };

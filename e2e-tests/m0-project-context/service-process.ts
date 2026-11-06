@@ -39,11 +39,12 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { createStratixService } from '../../src/stratix-gateway/service';
-import { createServiceStorage } from '../../src/stratix-gateway/service/storage';
-import { destroyDatabase, getDatabase } from '../../src/stratix-database';
 import { createProjectContextProvider, SOURCE_DECLARATION } from '../../src/app/services/project-context';
 import { createProjectContextLoader } from '../../src/app/services/project-context-loader';
+import { destroyDatabase, getDatabase } from '../../src/stratix-database';
+import { createStratixService } from '../../src/stratix-gateway/service';
+import { createServiceStorage } from '../../src/stratix-gateway/service/storage';
+
 import { createReportTransportFactory } from './fake-cli';
 
 /** 环境变量入口。 */

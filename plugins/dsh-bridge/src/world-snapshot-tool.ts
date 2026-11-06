@@ -8,8 +8,9 @@
  */
 
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import type { WorldSyncClient } from './world-sync-client.js';
+
 import type { WireCharacter, WireMission, WireUnit } from './protocol.js';
+import type { WorldSyncClient } from './world-sync-client.js';
 
 /** 可空字符串的 schema 节点（oneOf 是 dsh schema DSL 里唯一的联合写法）。 */
 const NULLABLE_STRING = { oneOf: [{ type: 'string' }, { type: 'null' }] } as const;

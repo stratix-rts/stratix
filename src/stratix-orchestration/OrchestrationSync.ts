@@ -5,8 +5,6 @@
  * and AgentMessageRouter events to the WebSocket layer for frontend sync.
  */
 
-import path from 'path';
-
 import { BackgroundAgentService } from './background/BackgroundAgentService';
 import type { BackgroundAgentEvent } from './background/BackgroundAgentService';
 import { AgentMessageRouter } from './messaging/AgentMessageRouter';

@@ -15,7 +15,7 @@
  *   （loadTaskStats / reduceTaskStatRows / makeTaskStatsProvider —— 派发推荐的数据源）。
  */
 
-import type { PersistedTaskRecord, PersistedTaskStatRow, PersistedTaskStatus } from './task-record-dao';
+import type { PersistedTaskRecord, PersistedTaskStatRow } from './task-record-dao';
 
 /** 任务历史加载窗口缺省值（038 的队列可见性量级；与 DAO 的 loadRecentTasks 缺省一致）。 */
 export const TASK_HISTORY_LOAD_LIMIT = 20;
@@ -78,10 +78,6 @@ export function makeTaskRecordPersister(
   };
 }
 
-/**
- * 词表导出给 preload 类型声明用（那边按它收窄 status 入参，形状对齐 DAO 的 CHECK 约束）。
- */
-export type { PersistedTaskStatus };
 
 // ============================================================================
 // 按角色聚合的推荐统计（@since v3.26，task_050）

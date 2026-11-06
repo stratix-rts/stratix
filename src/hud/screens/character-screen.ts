@@ -67,11 +67,11 @@
 // 纯函数 / 常量的跨层 import（与 onboarding-catalog 同一例外口径：core/character 的校验真相不另抄一份）。
 import { PERSONA_MAX_LEN } from '../../core/character/persona';
 import { hasDuplicateCharacterName } from '../../core/character/profile';
-import type { CharacterView } from '../../core/types';
 import {
   appearancePartVariant,
   MAX_CHARACTER_NAME_LEN,
   type AppearanceBodyType,
+  type CharacterView,
   type WorldState,
 } from '../../core/types';
 import type { HudBusAdapter } from '../bridge/bus-adapter';

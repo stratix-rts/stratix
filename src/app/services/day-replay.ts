@@ -23,10 +23,7 @@
 
 import type { DayReplayEntry, DayReplayPort } from '../../hud/components/replay/replay-catalog';
 
-import {
-  DEFAULT_SESSION_HISTORY_BASE_URL,
-  httpBaseFromWorldSyncUrl,
-} from './session-history/session-history';
+import { DEFAULT_SESSION_HISTORY_BASE_URL } from './session-history/session-history';
 
 /** service 的 HTTP 基址缺省值（本机 gateway；dev 下 PORT=7524）。 */
 export const DEFAULT_DAY_REPLAY_BASE_URL = DEFAULT_SESSION_HISTORY_BASE_URL;
@@ -258,5 +255,3 @@ export function createDayReplayPort(options: DayReplayPortOptions = {}): DayRepl
     },
   };
 }
-
-export { httpBaseFromWorldSyncUrl };

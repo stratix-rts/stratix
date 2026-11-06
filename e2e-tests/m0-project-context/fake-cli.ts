@@ -27,8 +27,8 @@
  * @since v3.3，task_172。
  */
 
-import { createCliTransport } from '../../src/app/services/cli-transport/runtime';
 import { createNodeProcessFactory } from '../../src/app/services/cli-transport/node-process';
+import { createCliTransport } from '../../src/app/services/cli-transport/runtime';
 import type { CliAdapter } from '../../src/app/services/cli-transport/transport';
 import type { TaskTransportFactory } from '../../src/app/services/task-service';
 

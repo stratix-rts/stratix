@@ -21,7 +21,6 @@ import { REPLAY_METRICS, VISUAL_PALETTE } from '../../../core/theme/visual-spec'
 import {
   REPLAY_EMPTY_TEXT,
   REPLAY_ERROR_TEXT,
-  REPLAY_ICONS,
   formatReplayClock,
   replayHeatBuckets,
   replayRatio,
@@ -439,4 +438,3 @@ export function mountDayReplay(
   return { element, unmount: () => { element.remove(); } };
 }
 
-export { REPLAY_ICONS };

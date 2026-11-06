@@ -171,11 +171,6 @@ export function parseCliInput(raw: string): CliParseResult {
   return { kind: 'matched', spec, arg, input, suggestion: null };
 }
 
-/** 命令名清单（紧凑一串，用于提示行）。 */
-export function cliCommandNames(): string {
-  return CLI_COMMANDS.map((c) => c.name).join(' · ');
-}
-
 /** 用法清单（一行，含参数写法）—— help 与「未匹配」引导共用同一份。 */
 export function cliUsageList(): string {
   return CLI_COMMANDS.map((c) => c.usage).join(' · ');

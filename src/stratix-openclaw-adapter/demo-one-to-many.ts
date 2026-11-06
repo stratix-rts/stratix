@@ -1,6 +1,6 @@
 import { StratixOpenClawConfig } from '@/stratix-core/stratix-protocol';
 
-import { ConnectionPool, LocalOpenClawAdapter, RemoteOpenClawAdapter } from './index';
+import { ConnectionPool } from './index';
 
 
 async function demoOneToMany() {

@@ -2,7 +2,7 @@
 import { generateId } from '../stratix-core/utils/id';
 
 import { getDatabase } from './StratixDatabase';
-import type { Database, Statement } from './sqlite-adapter';
+import type { Statement } from './sqlite-adapter';
 
 const DEFAULT_LIMIT = 50;
 const DEFAULT_OFFSET = 0;
@@ -45,10 +45,6 @@ interface AuditLogRow {
   target_id: string | null;
   metadata: string | null;
   created_at: number;
-}
-
-interface AuditLogCountRow {
-  total: number;
 }
 
 /**

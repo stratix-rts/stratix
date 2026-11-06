@@ -1,4 +1,4 @@
-import { exec, ExecException, ExecOptions } from 'child_process';
+import { exec } from 'child_process';
 
 import { SkillDefinition, SkillExecutor, ExecutionContext } from '../../types';
 import { SafetyValidator } from '../SafetyValidator';

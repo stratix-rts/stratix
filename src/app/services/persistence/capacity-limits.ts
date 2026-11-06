@@ -30,8 +30,6 @@
 import {
   MAX_CHARACTERS_PER_INSTANCE,
   MAX_CHARACTERS_TOTAL,
-  MAX_SESSION_EVENTS_PER_INSTANCE,
-  MAX_SESSION_EVENTS_PER_SESSION,
 } from '../../../core/capacity';
 import { DEFAULT_INSTANCE_ID, type ProjectInstanceId } from '../../../core/types';
 
@@ -377,6 +375,4 @@ function parsePayload(value: unknown): unknown {
 export {
   MAX_CHARACTERS_PER_INSTANCE,
   MAX_CHARACTERS_TOTAL,
-  MAX_SESSION_EVENTS_PER_INSTANCE,
-  MAX_SESSION_EVENTS_PER_SESSION,
 };

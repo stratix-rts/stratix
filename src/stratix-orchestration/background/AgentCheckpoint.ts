@@ -6,20 +6,6 @@ function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<str
   console[level](`[AgentCheckpoint] ${message}`, ctx);
 }
 
-// Database row interface
-interface AgentBackgroundRow {
-  agent_id: string;
-  status: string;
-  current_zone_id: string | null;
-  current_task_id: string | null;
-  last_heartbeat_at: number | null;
-  last_checkpoint_at: number | null;
-  checkpoint_data: string | null;
-  error_log: string | null;
-  started_at: number | null;
-  stopped_at: number | null;
-}
-
 export class AgentCheckpointManager {
   private static instance: AgentCheckpointManager;
 

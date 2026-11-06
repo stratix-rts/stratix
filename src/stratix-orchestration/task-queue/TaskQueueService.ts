@@ -34,8 +34,6 @@ interface TaskRow {
   completed_at: number | null;
 }
 
-const DEFAULT_TASK_LIMIT = 50;
-const DEFAULT_SEARCH_LIMIT = 20;
 const DEFAULT_PRIORITY = 5;
 const ABANDONED_TASK_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 

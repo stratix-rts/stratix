@@ -22,9 +22,6 @@ import fs from 'fs-extra';
 import initSqlJs from 'sql.js';
 import type { Database as SqlJsDatabase } from 'sql.js';
 
-// Load the WASM file from sql.js package
-const SQL_JS_WASM_PATH = require.resolve('sql.js/dist/sql-wasm.wasm');
-
 let sqlJsReady: Promise<void> | null = null;
 let SqlJsConstructor: any = null;
 

@@ -19,7 +19,7 @@ import { WorkflowExecutor, type EnhancedAgentResponse } from './core/WorkflowExe
 import { MixinComposer } from './mixins/MixinComposer';
 import { SessionRuntime } from './runtime/SessionRuntime';
 import type { SessionContext, TokenUsage, ChatMessage as RuntimeChatMessage } from './runtime/types';
-import { AgentConfig, SoulConfig, SkillResult, EvolutionResult, EvolutionProposal, ChatMessage as AgentChatMessage, ZonePromptContext } from './types';
+import { AgentConfig, SoulConfig, EvolutionResult, EvolutionProposal, ChatMessage as AgentChatMessage, ZonePromptContext } from './types';
 import { EnhancedSoulConfig, ReflectionEntry } from './types/soul';
 import { AgentTemplate, WorkflowDefinition, WorkflowStep } from './types/template';
 

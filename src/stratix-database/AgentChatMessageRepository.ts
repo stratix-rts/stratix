@@ -1,5 +1,5 @@
 import { getDatabase } from './StratixDatabase';
-import type { Database, Statement } from './sqlite-adapter';
+import type { Statement } from './sqlite-adapter';
 
 
 /** Default limit for message queries */

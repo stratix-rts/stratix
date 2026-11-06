@@ -13,7 +13,7 @@
  *   3. 认识 core 类型 —— 记录形状与 DAO 的 AgentHealthEventInsert 同构（结构类型，不跨层 import）。
  */
 
-import type { AgentHealthEventInsert, PersistedAgentHealthEventKind } from './agent-health-dao';
+import type { AgentHealthEventInsert } from './agent-health-dao';
 
 /** preload 的 gameSave 扩展面（@since v3.30 追加一条：game:saveHealthEvent）。 */
 export interface AgentHealthApi {
@@ -52,5 +52,3 @@ export function makeAgentHealthPersister(
   };
 }
 
-/** 词表导出给 preload 类型声明用（那边按它收窄 event 入参，形状对齐 DAO 的 CHECK 约束）。 */
-export type { PersistedAgentHealthEventKind };

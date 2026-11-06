@@ -495,9 +495,6 @@ export const TOPBAR_ITEM_ROLES = Object.freeze([
   'overflow',
 ] as const);
 
-/** 顶栏元素位名（TOPBAR_ITEM_ROLES 的元素类型）。 */
-export type TopbarItemRole = (typeof TOPBAR_ITEM_ROLES)[number];
-
 /**
  * ⋯ 溢出菜单收纳的项（@since v3.4，task_089；§4 功能对照表 A4 / A9 / A10 / A11 / A12；
  *   @since v3.8，task_137：5 项 → 8 项 —— 声音 / 导演 / 演示三个低频开关也收进来）。

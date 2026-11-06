@@ -7,7 +7,6 @@ import {
   OpenClawConnectionRecord,
   OpenClawConnectionsConfig,
   DEFAULT_OPENCLAW_CONFIG,
-  ConnectionPoolStatus,
 } from './types';
 
 const CONFIG_FILENAME = 'openclaw-connections.json';

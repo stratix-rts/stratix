@@ -164,21 +164,6 @@ export function formatRelativeTime(at: number, now: number): string {
 }
 
 /**
- * 渲染签名（判重用）：会话摘要 + 筛选档。
- * why 签名只吃摘要字段：事件本体不进 WorldState（core 铁律），摘要变了才值得重画列表。
- */
-export function sessionsSignature(
-  records: readonly SessionRecord[] | undefined,
-  filter: SessionKindFilter
-): string {
-  const list = records ?? [];
-  const ids = list
-    .map((r) => `${r.id}:${r.status}:${r.title}:${r.lastEventAt}:${r.eventCount}`)
-    .join('|');
-  return `${filter}#${ids}`;
-}
-
-/**
  * 历史条目（抽屉里的一行）—— **已归一**的展示形状。
  * why 要归一：四路读取器各自的原始行形状差别极大（库行 / 事件信封 / 消息投影），
  *   面板只该认一种形状；翻译在读取口那侧做（app 层），面板只画。

@@ -80,6 +80,9 @@ export class ApiClient {
     if (typeof data.success === 'boolean') {
       if (data.success) {
         // Extract the actual data (everything except success)
+        // why 明明不用 success 还要解构出来：这是**属性省略惯用法** —— 靠它把 success 从 rest 里剔除。
+        //   ESLint 的 no-unused-vars 会把 success 报成「未使用」（假阳性）⇒ 保留解构，
+        //   改成 `const { success: _success, ...rest }` 只会让 eslint 更啰嗦，语义一模一样。
         const { success, ...rest } = data;
         // If there's only one key besides success, use that value; otherwise use the whole object
         const keys = Object.keys(rest);

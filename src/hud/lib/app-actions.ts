@@ -82,11 +82,6 @@ export function runAppAction(id: AppActionId): boolean {
   return true;
 }
 
-/** 当前已登记的动作 id 集合（面板渲染灰态时用）。 */
-export function availableAppActions(): ReadonlySet<AppActionId> {
-  return new Set(registrations.keys());
-}
-
 /** 测试与卸载用：清空登记表（单测之间隔离）。 */
 export function resetAppActions(): void {
   registrations.clear();

@@ -7,7 +7,7 @@
 
 import { WebSocketServer, WebSocket } from 'ws';
 
-import { StratixStateSyncEvent, StratixStateSyncEventType, AgentStatusInfo } from '../../../stratix-core/stratix-protocol';
+import { StratixStateSyncEvent, AgentStatusInfo } from '../../../stratix-core/stratix-protocol';
 import ZoneCoordinatorEventEmitter, { type ZoneCoordinatorEventPayload } from '../../../stratix-orchestration/zone/ZoneCoordinatorEvents';
 
 interface ClientInfo {

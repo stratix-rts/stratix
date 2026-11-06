@@ -5,7 +5,7 @@
  * 提供技能执行前后的钩子机制
  */
 
-import { StratixSkillConfig, StratixAgentConfig, StratixCommandData } from '../../stratix-core/stratix-protocol';
+import { StratixSkillConfig, StratixAgentConfig } from '../../stratix-core/stratix-protocol';
 import { ConnectionPool, OpenClawAction } from '../../stratix-openclaw-adapter';
 
 export type SkillType = 'copywriting' | 'development' | 'analysis' | 'custom';

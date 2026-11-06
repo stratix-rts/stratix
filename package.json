@@ -23,6 +23,7 @@
     "test:arch": "jest src/architecture",
     "arch:scan": "tsx scripts/arch-scan.ts",
     "arch:scan:strict": "tsx scripts/arch-scan.ts --strict",
+    "dead:scan": "tsx scripts/dead-code-scan.ts",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",

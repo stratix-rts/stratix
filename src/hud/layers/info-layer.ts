@@ -38,7 +38,6 @@
 
 import {
   DEFAULT_INFO_LAYER,
-  INFO_LAYERS,
   layerL1Opacity,
   layerL2Collapsed,
   layerL2Opacity,
@@ -97,7 +96,6 @@ export const INFO_LAYER_LABELS: Readonly<Record<InfoLayer, string>> = Object.fre
   L3: 'L3 沉浸',
 });
 
-export { INFO_LAYERS };
 
 /**
  * L1 降对比通道的**写入口**（@since v3.5，task_099）—— 别的机制（如「全屏弹窗打开 →

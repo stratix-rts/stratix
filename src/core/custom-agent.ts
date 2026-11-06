@@ -61,9 +61,6 @@ export const MAX_CUSTOM_AGENT_ID_LEN = 32;
  */
 const CUSTOM_AGENT_CMD_ALLOWED_RE = /^[A-Za-z0-9 _\-./:=@%+,]*$/;
 
-/** 注册 id（slug）字符集：小写字母数字与连字符（URL-safe，进 kind 字符串）。 */
-const CUSTOM_AGENT_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
-
 /** 模板占位符（冻结常量：切分与校验共用一份，不许各抄字面量）。 */
 export const CUSTOM_AGENT_PROMPT_PLACEHOLDER = '{prompt}';
 

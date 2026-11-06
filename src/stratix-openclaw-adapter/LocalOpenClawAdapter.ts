@@ -53,7 +53,7 @@ export class LocalOpenClawAdapter implements OpenClawAdapterInterface {
 
   public async getStatus(): Promise<OpenClawStatus> {
     try {
-      const response = await this.http.get('/');
+      await this.http.get('/');
       return {
         connected: true,
         accountId: this.config.accountId,

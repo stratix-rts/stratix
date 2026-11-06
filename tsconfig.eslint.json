@@ -1,0 +1,18 @@
+{
+  "//": "**仅供 ESLint 用的类型工程**（task_223 / QA-03）。why 单独开一个 tsconfig 而不是改 tsconfig.json：tsconfig.json 是**构建**工程（include=src/**/*，rootDir=src，产物进 dist/），改它的 include 会把 e2e-tests 拖进 tsc 构建产物里 —— 那是产品语义变更，不该由 lint 单干。",
+  "//include": "src/**/* —— 与 tsconfig.json 同口径，保证 src 的类型感知 lint 不因换工程而漂移；e2e-tests/**/* —— 仓内 TS 写的端到端脚本（QA-01 / M0-M2 新增），此前因为不在任何 tsconfig 里，`eslint .` 直接报解析错，等于**零 lint 覆盖**。",
+  "//exclude": "继承 tsconfig.json 的 exclude（node_modules / dist / *.test.ts / *.spec.ts）。",
+  "//rootDir": "从 ./src 放宽到 . —— e2e-tests 在 src 之外，rootDir=src 会让 TS 报「文件不在 rootDir 下」。",
+  "//types": "不设 —— 继承 tsconfig.json 的默认（全部 @types 可见）。",
+  "//allowJs": "bin/ 与 tools/ 是**纯 JS**（MCP 入口 + 纹理生成器），仓里没有它们的 TS 工程；allowJs=true + checkJs=false 让 ESLint 能把它们纳入类型工程（可解析、可 lint），同时 TS 侧仍不做类型检查 —— 纯 JS 目录不因 lint 单被拖进 tsc 编译。",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "rootDir": ".",
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["src/**/*", "e2e-tests/**/*", "bin/**/*", "tools/**/*"]
+}

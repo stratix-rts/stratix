@@ -522,22 +522,3 @@ export interface OnboardingIdentity {
   readonly skinId: SkinId;
 }
 
-/** 建档前的一行确认摘要。 */
-export interface OnboardingSummaryRow {
-  readonly kind: AgentKind;
-  readonly label: string;
-  readonly name: string;
-  readonly skinId: SkinId;
-}
-
-/** 把身份清单摊平成确认摘要。 */
-export function resolveSummaryRows(
-  identities: readonly OnboardingIdentity[]
-): OnboardingSummaryRow[] {
-  return identities.map((identity) => ({
-    kind: identity.kind,
-    label: identity.label,
-    name: identity.name,
-    skinId: identity.skinId,
-  }));
-}

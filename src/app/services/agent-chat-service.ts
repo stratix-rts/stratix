@@ -154,7 +154,7 @@ import {
   type ChatTransportFactory,
   type ChatTransportPort,
 } from './chat-service';
-import type { TransportEvent, TransportErrorCode } from './cli-transport/transport';
+import type { TransportErrorCode } from './cli-transport/transport';
 import { defaultExpWeight } from './exp-config';
 import {
   resolveSessionReferences,

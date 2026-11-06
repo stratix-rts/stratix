@@ -51,12 +51,12 @@ import { toSessionEventView } from '../../src/app/services/persistence/session-r
 import { sessionCompressThresholdFromEnv } from '../../src/app/services/session-compress-config';
 import { createSessionReferenceService } from '../../src/app/services/session-reference';
 import { createSessionTitleService } from '../../src/app/services/session-title';
-import { worldStore } from '../../src/core/store';
 import { createSessionManager, type TitleProvider } from '../../src/core/session';
+import { worldStore } from '../../src/core/store';
 import { startGatewayService } from '../../src/stratix-gateway';
 import { createServiceStorage } from '../../src/stratix-gateway/service/storage';
-
 import { createFakeTransportFactory } from '../service-resident/fake-cli';
+
 import { createSwitchableTransportFactory, type PeerCliMode } from './peer-cli';
 
 /** HTTP / MCP / world-sync 端口（默认走备用端口，绝不碰 7523 / 7524 / 9222）。 */

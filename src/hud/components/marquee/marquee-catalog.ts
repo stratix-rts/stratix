@@ -23,7 +23,7 @@
  */
 
 import { MARQUEE_METRICS, VISUAL_PALETTE } from '../../../core/theme/visual-spec';
-import type { CharacterTask, HudCommand, MissionView, UnitView, WorldEvent } from '../../../core/types';
+import type { CharacterTask, MissionView, UnitView, WorldEvent } from '../../../core/types';
 
 /** 跑马灯条目的分级（四级，与 DEMO-PLAN §6 的「完成绿 / 报错红 / 派活蓝 / 里程碑金」一一对应）。 */
 export type MarqueeKind = 'dispatch' | 'complete' | 'error' | 'milestone';
@@ -179,14 +179,6 @@ export function resolveUnitIdForTask(
     if (onMission) return onMission.id;
   }
   return candidates[0].id;
-}
-
-/**
- * focus.unit 命令构造（@since v3.4，task_091）—— HUD → core 的唯一合法出口。
- * 本文件只**构造**命令，派发由调用方经 bus-adapter 完成（同 command-catalog.ts 口径）。
- */
-export function focusUnitCommand(unitId: string): HudCommand {
-  return { type: 'focus.unit', unitId };
 }
 
 /**

@@ -401,7 +401,7 @@ class OpenClawProxyManager extends EventEmitter {
   }
 
   destroy(): void {
-    for (const [id, entry] of this.pool.entries()) {
+    for (const entry of this.pool.values()) {
       if (entry.heartbeatTimer) clearInterval(entry.heartbeatTimer);
       if (entry.reconnectTimer) clearTimeout(entry.reconnectTimer);
       if (entry.ws) {

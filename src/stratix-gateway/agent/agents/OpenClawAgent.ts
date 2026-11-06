@@ -94,7 +94,7 @@ export class OpenClawAgent implements AgentInterface {
         this.currentTaskId = pendingTask.id;
         console.log(`[OpenClawAgent] Claiming task ${pendingTask.id}: ${pendingTask.description}`);
         
-        const sessionId = await this.lraClient.claimTask(this.effectiveInstancePath, pendingTask.id);
+        await this.lraClient.claimTask(this.effectiveInstancePath, pendingTask.id);
 
         await this.lraClient.setTaskStatus(this.effectiveInstancePath, pendingTask.id, 'in_progress');
 

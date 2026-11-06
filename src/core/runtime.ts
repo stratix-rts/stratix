@@ -82,8 +82,7 @@ import { createMissionManager, type MissionManager } from './mission';
 import { createSessionManager, type SessionManager } from './session';
 import type { CoreStore } from './store';
 import { worldStore } from './store';
-import type { PipelineRunnerPort } from './task';
-import { createTaskManager, type TaskManager } from './task';
+import { createTaskManager, type PipelineRunnerPort, type TaskManager } from './task';
 import {
   MAX_CONTROL_GROUP_SLOT,
   MAX_NOTICES,
@@ -1086,9 +1085,3 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
     get running() { return stop !== null; },
   };
 }
-
-/**
- * 默认单例:应用根(dev 入口 / 未来的 Electron 渲染入口)启动它一次即可。
- * 单测请用 createCoreRuntime({ store: createStore() }) 隔离,构造本身没有副作用。
- */
-export const coreRuntime: CoreRuntime = createCoreRuntime();

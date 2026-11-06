@@ -33,16 +33,3 @@ export function setDraftTitle(value: string): void {
   current = value;
   for (const listener of Array.from(listeners)) listener(current);
 }
-
-/** 订阅草稿变化；返回退订闭包。 */
-export function subscribeDraftTitle(listener: (value: string) => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
-/** 清空草稿（⌘K 面板的「清空任务草稿」走这条）。 */
-export function clearDraftTitle(): void {
-  setDraftTitle('');
-}

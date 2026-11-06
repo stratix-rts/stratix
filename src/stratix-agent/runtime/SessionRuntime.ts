@@ -15,7 +15,6 @@ import type {
   TurnMetadata,
   ChatMessage,
   TokenUsage,
-  TranscriptEntry,
 } from './types';
 
 // ============================================

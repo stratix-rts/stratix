@@ -99,13 +99,11 @@ import {
   isAllowedCustomAgentCmd,
   validateCustomAgentDraft,
   MAX_CUSTOM_AGENTS,
-  type CustomAgentOutputParser,
   type CustomAgentValidationCode,
 } from '../core/custom-agent';
 import {
   AGENT_KINDS,
   MAX_EXTERNAL_SESSION_ID_LEN,
-  buildCustomAgentKind,
   customAgentIdOf,
   isBindableAgentKind,
   type AgentKind,
@@ -283,7 +281,7 @@ function createWindow() {
   });
 
   // 捕获渲染进程 console 日志到主进程 (只打印 error 级别)
-  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+  mainWindow.webContents.on('console-message', (event, level, message, _line, _sourceId) => {
     if (level >= 3) { // 0=verbose, 1=info, 2=warn, 3=error
       console.log(`[Renderer error]: ${message}`);
     }

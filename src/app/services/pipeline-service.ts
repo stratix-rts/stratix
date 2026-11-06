@@ -39,13 +39,13 @@
  */
 
 import { emitWorldEvent, onWorldEvent, type Unsubscribe } from '../../core/bus';
-import type { TaskManager } from '../../core/task';
 import {
   renderPipelineStepPrompt,
   resolvePipelineStepCharacter,
   validatePipelineIssue,
   validatePipelineSpec,
   type PipelineSpec,
+  type TaskManager,
 } from '../../core/task';
 import type { CharacterView, WorldEvent, WorldState } from '../../core/types';
 

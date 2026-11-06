@@ -48,9 +48,6 @@ export const INSTANCE_SCOPED_TABLES = [
   'unit_positions',
 ] as const;
 
-/** 带副本维度的表名（联合类型）。 */
-export type InstanceScopedTable = (typeof INSTANCE_SCOPED_TABLES)[number];
-
 /**
  * 读口选项（@since v3.3，task_198）：按副本过滤。
  *

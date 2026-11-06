@@ -1,5 +1,4 @@
 import AgentCheckpointManager from './AgentCheckpoint';
-import type { AgentCheckpointData } from './AgentProcess';
 
 export type AgentStatusCallback = (agentId: string, status: string, error?: string) => void;
 
@@ -53,6 +52,9 @@ export class BackgroundAgentService {
   async startAgent(
     agentId: string,
     zoneId?: string,
+    // TODO(task_223 QA-03 死代码分诊 D-3)：options 目前**完全没被读**（autoRestart / maxRestarts
+    //   两个字段都没接）—— 保留参数是为了不改调用方签名（public API），但这是**契约未兑现**：
+    //   调用方以为传了 autoRestart 就生效，实际被忽略。处置：另开单把 autoRestart 接进重启循环。
     options: { autoRestart?: boolean; maxRestarts?: number } = {}
   ): Promise<boolean> {
     const existing = this.processes.get(agentId);

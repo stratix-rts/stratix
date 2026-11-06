@@ -429,11 +429,6 @@ export const APP_COMMANDS: readonly AppCommandSpec[] = Object.freeze([
   },
 ]);
 
-/** 命令 id → 目录项（查不到返回 undefined）。 */
-export function findAppCommand(id: string): AppCommandSpec | undefined {
-  return APP_COMMANDS.find((c) => c.id === id);
-}
-
 /** 命令行绑定表（composer 的词表来源 —— 收编自 task_113 的五条 CLI 命令）。 */
 export const CLI_BINDINGS: readonly CliBinding[] = Object.freeze(
   APP_COMMANDS

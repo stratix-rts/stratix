@@ -1,7 +1,7 @@
 
 import { AgentMessageStore } from './AgentMessageStore';
 import { ConversationConstraints } from './ConversationConstraints';
-import { AgentMessage, MessageReference, MessageEventCallback } from './MessageTypes';
+import { MessageReference, MessageEventCallback } from './MessageTypes';
 
 export interface RouteResult {
   success: boolean;

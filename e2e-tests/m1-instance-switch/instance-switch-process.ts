@@ -51,6 +51,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { positionSeedOwner } from '../../src/app/services/persistence/character-record';
 import {
   createInstanceRegistryWithDefaultSandbox,
   publishProjectInstances,
@@ -59,7 +60,6 @@ import {
   nodeProcessCwd,
   nodeProcessGitBranch,
 } from '../../src/app/services/persistence/default-sandbox-node';
-import { positionSeedOwner } from '../../src/app/services/persistence/character-record';
 import {
   createGameSaveCoordinator,
   type GameSaveApi,
@@ -439,7 +439,7 @@ async function runSeedPhase(harness: Harness): Promise<Record<string, unknown>> 
 
   // ===== ③ 进默认沙盒（真实命令链路）=====
   emitCommand({ type: 'project.enter', instanceId: DEFAULT_INSTANCE_ID });
-  let cursor = await waitForProjectChanged(DEFAULT_INSTANCE_ID, 0);
+  const cursor = await waitForProjectChanged(DEFAULT_INSTANCE_ID, 0);
 
   // ===== ④ 造单位：建角色（= 战场上多一个 agent 单位）=====
   // 出队守门读 detectedAgents（真相源 = store；生产由探测器写入）。

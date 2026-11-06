@@ -253,11 +253,3 @@ export function createDemoModeController(deps: DemoModeDeps = {}): DemoModeContr
  * why 单例：开关状态是**跨面板**的展示态，做成多份必然对不上（面板以为开着、顶栏以为关着）。
  */
 export const demoMode: DemoModeController = createDemoModeController();
-
-/**
- * 工程件是否应当显示（演示模式下工程件一律隐藏）。
- * 组件用它决定「这一块要不要渲染」—— 组件自己判断，不靠 CSS 事后隐藏。
- */
-export function engineeringVisible(): boolean {
-  return !demoMode.enabled;
-}

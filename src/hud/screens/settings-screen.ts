@@ -246,10 +246,6 @@ export function resolvePreferences(): Readonly<Record<PreferenceId, boolean>> {
   return values;
 }
 
-export function resolveSettings(themeId: ThemeId): SettingsScreenModel {
-  return { themeId, preferences: resolvePreferences(), pending: null };
-}
-
 /**
  * 渲染判重签名（O(偏好项数)，纯字符串拼接）。
  * 只含影响本屏显示的东西：四个偏好开关的当前值。单位 / 任务 / 日志变动一律不触发本屏重绘。

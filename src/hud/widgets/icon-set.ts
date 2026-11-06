@@ -311,11 +311,6 @@ export function setActiveIconSet(setId?: string | null): void {
   activeIconSetId = resolveIconSet(setId).id;
 }
 
-/** 当前图标集 id。 */
-export function getActiveIconSetId(): string {
-  return activeIconSetId;
-}
-
 /** 当前图标集（= 新建图标时的缺省来源）。 */
 export function getActiveIconSet(): IconSet {
   return resolveIconSet(activeIconSetId);

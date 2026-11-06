@@ -26,18 +26,17 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { DEFAULT_INSTANCE_ID, type ProjectInstanceId } from '../../src/core/types';
-import { CAPACITY_LIMITS } from '../../src/core/capacity';
-import { Database } from '../../src/stratix-database/sqlite-adapter';
-
+import {
+  createN4bFixtureDb,
+} from '../../src/app/__tests__/persistence/helpers/n4b-fixture';
 import {
   countCharacters,
-  countInstanceCharacters,
   countInstanceSessionEvents,
   countSessionEventsForSession,
   filterCharactersWithinCapacity,
   readCharacterCapacity,
 } from '../../src/app/services/persistence/capacity-limits';
+import { ensureExpEventsTable } from '../../src/app/services/persistence/exp-event-dao';
 import {
   ensureGameSaveTables,
   loadCharacters,
@@ -45,14 +44,13 @@ import {
   type PersistedCharacterRecord,
   type SqliteDatabaseLike,
 } from '../../src/app/services/persistence/game-save-dao';
-import { ensureExpEventsTable } from '../../src/app/services/persistence/exp-event-dao';
-import { createSqliteInstanceDataSource } from '../../src/app/services/persistence/instance-loader-node';
 import {
   executeInstanceAttribution,
   previewInstanceAttribution,
   previewInstanceAttributionRollback,
   rollbackInstanceAttribution,
 } from '../../src/app/services/persistence/instance-attribution-migration';
+import { createSqliteInstanceDataSource } from '../../src/app/services/persistence/instance-loader-node';
 import {
   runN4bMigration,
   runN4bRollback,
@@ -60,17 +58,17 @@ import {
 } from '../../src/app/services/persistence/n4b-migration';
 import { createNodeArchiveAppender } from '../../src/app/services/persistence/project-archive-node';
 import { materializeInstanceRoster } from '../../src/app/services/persistence/roster-materializer';
-import { createSessionEventArchiver } from '../../src/app/services/persistence/session-event-archive';
 import { ensureSessionsTable, upsertSessionRecord } from '../../src/app/services/persistence/session-dao';
-import { ensureSessionExternalRefsTable } from '../../src/app/services/persistence/session-external-ref-dao';
+import { createSessionEventArchiver } from '../../src/app/services/persistence/session-event-archive';
 import {
   appendSessionEvent,
   ensureSessionEventsTable,
 } from '../../src/app/services/persistence/session-event-dao';
+import { ensureSessionExternalRefsTable } from '../../src/app/services/persistence/session-external-ref-dao';
 import { ensureCharacterTasksTable, upsertTask } from '../../src/app/services/persistence/task-record-dao';
-import {
-  createN4bFixtureDb,
-} from '../../src/app/__tests__/persistence/helpers/n4b-fixture';
+import { CAPACITY_LIMITS } from '../../src/core/capacity';
+import { DEFAULT_INSTANCE_ID } from '../../src/core/types';
+import { Database } from '../../src/stratix-database/sqlite-adapter';
 
 /** 副本 A 的实例 id。 */
 const INSTANCE_A = 'wsp_m2_a';

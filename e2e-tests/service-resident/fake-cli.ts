@@ -20,8 +20,8 @@
  * @since task_084（service-split C1）。
  */
 
-import { createCliTransport } from '../../src/app/services/cli-transport/runtime';
 import { createNodeProcessFactory } from '../../src/app/services/cli-transport/node-process';
+import { createCliTransport } from '../../src/app/services/cli-transport/runtime';
 import type { CliAdapter } from '../../src/app/services/cli-transport/transport';
 import type { TaskTransportFactory } from '../../src/app/services/task-service';
 

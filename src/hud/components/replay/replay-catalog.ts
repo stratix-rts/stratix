@@ -21,7 +21,7 @@
  * @since v3.3（task_082）。
  */
 
-import { REPLAY_METRICS, VISUAL_PALETTE } from '../../../core/theme/visual-spec';
+import { REPLAY_METRICS } from '../../../core/theme/visual-spec';
 
 /** 回放条目的一拍是什么（与 core/types 的 ReplayBeatKind 同一词表，去掉 reset —— reset 是控制流不是内容）。 */
 export type DayReplayKind = 'spawn' | 'work' | 'done' | 'error';
@@ -61,31 +61,6 @@ export const REPLAY_EMPTY_TEXT = '今天还没有任务记录 · 跑一条任务
  */
 export const REPLAY_ERROR_TEXT = '回放服务未连接，稍后重试';
 
-/** 分级 → 图标（零资产：字形，不引图标库、不加图片文件）。 */
-export const REPLAY_ICONS: Readonly<Record<DayReplayKind, string>> = Object.freeze({
-  spawn: '📋',
-  work: '⚙️',
-  done: '✅',
-  error: '⚠️',
-});
-
-/**
- * 分级 → 语义色键（键名即 core/theme/visual-spec.ts 的 VISUAL_PALETTE 键）。
- * why 用键不用色值：色值只在唯一事实源一处。
- */
-const REPLAY_TONE_KEYS: Readonly<Record<DayReplayKind, 'unit' | 'progress' | 'success' | 'danger'>> =
-  Object.freeze({
-    spawn: 'unit',
-    work: 'progress',
-    done: 'success',
-    error: 'danger',
-  });
-
-/** 分级 → CSS 颜色表达式（`var(--srf-visual-*, 兜底色)`）；token 由 hud/theme/visual-tokens.ts 注入。 */
-export function replayToneColor(kind: DayReplayKind): string {
-  const key = REPLAY_TONE_KEYS[kind];
-  return `var(--srf-visual-${key}, ${VISUAL_PALETTE[key]})`;
-}
 
 /** 时间轴的活跃时段（首末事件之间）。没有条目 → null（空态，不画条）。 */
 export interface ReplaySpan {

@@ -7,7 +7,7 @@
 import type { SkillCategory, SkillProvider } from '../stratix-agent/types';
 
 import { getDatabase } from './StratixDatabase';
-import type { Database, Statement } from './sqlite-adapter';
+import type { Statement } from './sqlite-adapter';
 
 const XP_PER_LEVEL = 100;
 const MAX_LEVEL = 5;
@@ -88,12 +88,6 @@ interface ZoneContextRow {
   zone_id: string;
   context_json: string;
   updated_at: number;
-}
-
-interface AgentZoneBindingRow {
-  zone_id: string;
-  agent_id: string;
-  joined_at: number;
 }
 
 function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<string, unknown>): void {

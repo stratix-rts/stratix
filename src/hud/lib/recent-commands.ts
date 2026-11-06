@@ -27,15 +27,6 @@ export interface RecentCommandsStorage {
   setItem(key: string, value: string): void;
 }
 
-/** 内存存储（单测用；也是 localStorage 不可用时的降级宿主）。 */
-export function createMemoryStorage(initial: Record<string, string> = {}): RecentCommandsStorage {
-  const map = new Map(Object.entries(initial));
-  return {
-    getItem: (key) => map.get(key) ?? null,
-    setItem: (key, value) => { map.set(key, value); },
-  };
-}
-
 /** 读当前浏览器的 localStorage；不可用（隐私模式 / 非浏览器）→ null。 */
 export function browserStorage(): RecentCommandsStorage | null {
   try {

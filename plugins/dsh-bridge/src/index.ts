@@ -16,11 +16,12 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis';
-import z from '@deepseek-ai/schemastery';
-// 值导入：既拿到 defineTool，也把 `ctx.tools` 的 Context 类型增补带进来。
 import { defineTool } from '@deepseek-ai/dsh-tools';
-import { WorldSyncClient } from './world-sync-client.js';
+import z from '@deepseek-ai/schemastery';
+
+// 值导入：既拿到 defineTool，也把 `ctx.tools` 的 Context 类型增补带进来。
 import { createWorldSnapshotTool } from './world-snapshot-tool.js';
+import { WorldSyncClient } from './world-sync-client.js';
 
 /** Cordis 插件名（诊断标签）。 */
 export const name = 'stratix-dsh-bridge';

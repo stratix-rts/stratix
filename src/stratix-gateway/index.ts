@@ -107,7 +107,6 @@ export interface GatewayServiceInstance {
 
 let defaultApp: express.Application | null = null;
 let defaultServer: http.Server | null = null;
-let statusSyncServiceInstance: StatusSyncService | null = null;
 
 /**
  * 启动 Gateway 服务
@@ -553,7 +552,6 @@ export async function startGatewayService(
   if (mode === 'standalone') {
     defaultApp = app;
     defaultServer = server;
-    statusSyncServiceInstance = statusSyncService;
   }
   
   // 返回服务实例

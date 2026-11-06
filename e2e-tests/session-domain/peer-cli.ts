@@ -21,11 +21,10 @@
  * @since v3.2a S7（task_097）。
  */
 
-import { createCliTransport } from '../../src/app/services/cli-transport/runtime';
-import { createNodeProcessFactory } from '../../src/app/services/cli-transport/node-process';
-import type { CliAdapter } from '../../src/app/services/cli-transport/transport';
 import type { ChatTransportFactory } from '../../src/app/services/chat-service';
-
+import { createNodeProcessFactory } from '../../src/app/services/cli-transport/node-process';
+import { createCliTransport } from '../../src/app/services/cli-transport/runtime';
+import type { CliAdapter } from '../../src/app/services/cli-transport/transport';
 import { FAKE_CLI_MARKER } from '../service-resident/fake-cli';
 
 /**
