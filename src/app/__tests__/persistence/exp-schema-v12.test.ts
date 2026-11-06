@@ -49,7 +49,7 @@ describe('schema v12 迁移：exp_events 表（真实 sql.js 文件库）', () =
     expect(
       raw.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='exp_events'").all()
     ).toHaveLength(1);
-    expect(versionOf(raw)).toBe(16); // 目标 schema 已到 v16（task_200 的 session_external_refs 是其后一步，v12 的 exp_events 仍在迁移链里）
+    expect(versionOf(raw)).toBe(17); // 目标 schema 已到 v17（task_206 的 tasks.project_id 退役是其后一步，v12 的 exp_events 仍在迁移链里）
 
     insertExpEvent(raw, { characterId: 'ch-1', delta: 50, reason: 'task_completed', level: null, createdAt: 1 });
     insertExpEvent(raw, { characterId: 'ch-1', delta: 0, reason: 'level_up', level: 2, createdAt: 2 });
@@ -81,7 +81,7 @@ describe('schema v12 迁移：exp_events 表（真实 sql.js 文件库）', () =
     expect(versionOf(raw)).toBe(11);
 
     db.initialize(); // 版本号低于目标 → 重跑迁移链
-    expect(versionOf(raw)).toBe(16); // 目标 schema 已到 v16（task_200 的 session_external_refs 是其后一步，v12 的 exp_events 仍在迁移链里）
+    expect(versionOf(raw)).toBe(17); // 目标 schema 已到 v17（task_206 的 tasks.project_id 退役是其后一步，v12 的 exp_events 仍在迁移链里）
     expect(raw.prepare('SELECT COUNT(*) AS n FROM characters').get()).toMatchObject({ n: 1 });
     expect(raw.prepare('SELECT COUNT(*) AS n FROM character_tasks').get()).toMatchObject({ n: 1 });
     expect(raw.prepare('SELECT COUNT(*) AS n FROM character_chat_messages').get()).toMatchObject({ n: 1 });
@@ -98,7 +98,7 @@ describe('schema v12 迁移：exp_events 表（真实 sql.js 文件库）', () =
 
     const reopened = await openAndInitialize(dir);
     const raw = reopened.getDatabase();
-    expect(versionOf(raw)).toBe(16); // 目标 schema 已到 v16（task_200 的 session_external_refs 是其后一步，v12 的 exp_events 仍在迁移链里）
+    expect(versionOf(raw)).toBe(17); // 目标 schema 已到 v17（task_206 的 tasks.project_id 退役是其后一步，v12 的 exp_events 仍在迁移链里）
     expect(
       raw.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_exp_events_character_time'").all()
     ).toHaveLength(1);

@@ -9,7 +9,7 @@ import { AgentInterface, AgentState, ProjectChannelMessage } from './types';
 
 export class OpenClawAgent implements AgentInterface {
   private agentConfig: StratixAgentConfig;
-  private projectPath: string;
+  private instancePath: string;
   private zoneId: string;
   private lraClient: LRAClient;
   private adapter: OpenClawAdapterInterface;
@@ -24,12 +24,12 @@ export class OpenClawAgent implements AgentInterface {
   
   constructor(
     agentConfig: StratixAgentConfig,
-    projectPath: string,
+    instancePath: string,
     zoneId: string,
     lraClient: LRAClient
   ) {
     this.agentConfig = agentConfig;
-    this.projectPath = projectPath;
+    this.instancePath = instancePath;
     this.zoneId = zoneId;
     this.lraClient = lraClient;
     
@@ -41,15 +41,15 @@ export class OpenClawAgent implements AgentInterface {
   }
 
   /**
-   * Override the project path for worktree isolation.
+   * Override the working directory (e.g. worktree isolation).
    * Must be called before start().
    */
   setWorkingDirectory(dir: string): void {
     this._workDirOverride = dir;
   }
 
-  private get effectiveProjectPath(): string {
-    return this._workDirOverride ?? this.projectPath;
+  private get effectiveInstancePath(): string {
+    return this._workDirOverride ?? this.instancePath;
   }
 
   getState(): AgentState {
@@ -81,7 +81,7 @@ export class OpenClawAgent implements AgentInterface {
         
         if (this.shouldStop) break;
         
-        const tasks = await this.lraClient.listTasks(this.effectiveProjectPath);
+        const tasks = await this.lraClient.listTasks(this.effectiveInstancePath);
         const pendingTask = tasks.find(t => t.status === 'pending');
         
         if (!pendingTask) {
@@ -93,19 +93,19 @@ export class OpenClawAgent implements AgentInterface {
         this.currentTaskId = pendingTask.id;
         console.log(`[OpenClawAgent] Claiming task ${pendingTask.id}: ${pendingTask.description}`);
         
-        const sessionId = await this.lraClient.claimTask(this.effectiveProjectPath, pendingTask.id);
+        const sessionId = await this.lraClient.claimTask(this.effectiveInstancePath, pendingTask.id);
 
-        await this.lraClient.setTaskStatus(this.effectiveProjectPath, pendingTask.id, 'in_progress');
+        await this.lraClient.setTaskStatus(this.effectiveInstancePath, pendingTask.id, 'in_progress');
 
         this.startHeartbeat(pendingTask.id);
 
         try {
           await this.processTask(pendingTask);
-          await this.lraClient.setTaskStatus(this.effectiveProjectPath, pendingTask.id, 'completed');
+          await this.lraClient.setTaskStatus(this.effectiveInstancePath, pendingTask.id, 'completed');
           console.log(`[OpenClawAgent] Task ${pendingTask.id} completed`);
         } catch (taskError) {
           console.error(`[OpenClawAgent] Task ${pendingTask.id} failed:`, taskError);
-          await this.lraClient.setTaskStatus(this.effectiveProjectPath, pendingTask.id, 'failed');
+          await this.lraClient.setTaskStatus(this.effectiveInstancePath, pendingTask.id, 'failed');
         } finally {
           this.stopHeartbeat();
           this.currentTaskId = null;
@@ -121,9 +121,9 @@ export class OpenClawAgent implements AgentInterface {
   }
   
   private async processTask(task: LraTask): Promise<void> {
-    const prompt = `You are working on task: ${task.description}\n\nProject context: ${this.effectiveProjectPath}\n\nPlease complete this task and save any output files.`;
+    const prompt = `You are working on task: ${task.description}\n\nProject context: ${this.effectiveInstancePath}\n\nPlease complete this task and save any output files.`;
     await this.executeWithBudget(prompt, task.id);
-    await this.lraClient.publish(this.effectiveProjectPath, task.id);
+    await this.lraClient.publish(this.effectiveInstancePath, task.id);
   }
 
   private async executeWithBudget(prompt: string, taskId: string): Promise<string> {
@@ -164,7 +164,7 @@ export class OpenClawAgent implements AgentInterface {
   private startHeartbeat(taskId: string): void {
     this.heartbeatInterval = setInterval(async () => {
       try {
-        await this.lraClient.heartbeat(this.effectiveProjectPath, taskId);
+        await this.lraClient.heartbeat(this.effectiveInstancePath, taskId);
       } catch (error) {
         console.error('[OpenClawAgent] Heartbeat failed:', error);
       }
@@ -186,7 +186,7 @@ export class OpenClawAgent implements AgentInterface {
     // 取消订阅提及消息
     
     if (this.currentTaskId) {
-      await this.lraClient.setTaskStatus(this.effectiveProjectPath, this.currentTaskId, 'pending');
+      await this.lraClient.setTaskStatus(this.effectiveInstancePath, this.currentTaskId, 'pending');
     }
     
     await this.adapter.disconnect();

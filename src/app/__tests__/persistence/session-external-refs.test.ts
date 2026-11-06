@@ -138,7 +138,7 @@ describe('M2-03：N4b-1 session_external_refs 表（task_200）', () => {
     it('StratixDatabase 全新库：表同库就位、版本落 16', async () => {
       const db = await openAndInitialize(dir);
       const raw2 = db.getDatabase();
-      expect(versionOf(raw2)).toBe(16);
+      expect(versionOf(raw2)).toBe(17);
       expect(
         columnInfo(raw2, SESSION_EXTERNAL_REFS_TABLE).map((c) => String(c.name))
       ).toEqual([
@@ -371,7 +371,7 @@ describe('M2-03：N4b-1 session_external_refs 表（task_200）', () => {
 
       const second = await openAndInitialize(dir);
       const raw2 = second.getDatabase();
-      expect(versionOf(raw2)).toBe(16);
+      expect(versionOf(raw2)).toBe(17);
       expect(listSessionExternalRefs(raw2)).toHaveLength(1);
       second.close();
     });
@@ -389,7 +389,7 @@ describe('M2-03：N4b-1 session_external_refs 表（task_200）', () => {
 
       const db = await openAndInitialize(dir);
       const raw = db.getDatabase();
-      expect(versionOf(raw)).toBe(16);
+      expect(versionOf(raw)).toBe(17);
       // 存量行一个字节都没动
       const row = raw
         .prepare('SELECT external_session_id FROM characters WHERE id = ?')

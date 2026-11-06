@@ -103,7 +103,22 @@ const DEFAULT_FILENAME = 'stratix.db';
  *   ⇒ id 重写与副本归属彻底解耦（`characters.externalSessionId` 列退化为只读兼容镜像）。
  * DDL 与 app/services/persistence/session-external-ref-dao.ts 的 ensure* 同构同步改。
  */
-const TARGET_SCHEMA_VERSION = 16;
+/**
+ * v17（@since v3.3，task_206 / M2-09）：编排层 `tasks` 表的 `project_id` 列**退役** ——
+ *   该列改**可空**（`project_id TEXT`），新代码**不读不写**它；**物理删列留 M3**。
+ * 权威依据：docs/DESIGN-project-map.md §1.3.1.1 三条裁决第 1 条
+ *   （「不复用：`tasks.project_id` —— 新代码不得写入这四处的语义」）
+ *   + 裁决 2（编排层 `projectPath` 收编到 instance 维度 ⇒ 编排层不再有 project 维）。
+ * why 要**重建表**而不是加列：SQLite 的**列约束不可 ALTER**（NOT NULL 改不掉）
+ *   ⇒ 与 character_tasks 的 CHECK 重建同一手法（建新表 → INSERT SELECT → DROP → RENAME）。
+ * why 改可空是退役的前提：约束不改的话，INSERT 不带该列会被 NOT NULL 拒掉
+ *   ⇒ 新代码仍被迫写它（那就不是退役，只是嘴上说说）。
+ * why **搬**存量值而不是删列：物理退役留 M3；且该列本就是**写进去就没再读过**的死数据
+ *   （`rowToTask` 从不映射它）⇒ 搬过去零信息损失。
+ * ⚠️ 迁移链顺序：本条排在 `migrateTasks()`（character_tasks 那一族）之后 —— 两者表名近但
+ *   **不是同一张表**（`tasks` = agent 平台队列 / zone 形状；`character_tasks` = 游戏存档域）。
+ */
+const TARGET_SCHEMA_VERSION = 17;
 
 /**
  * 六张带副本维度的表（design §1.3.2 步 N1 的表清单）。
@@ -264,6 +279,10 @@ export class StratixDatabase {
     this.migrateGameSaveTables();
     this.migrateCharacterChatMessages();
     this.migrateTasks();
+    // v17（task_206）：编排层 tasks.project_id 退役（列改可空，新代码不读写）。
+    // 排在 migrateTasks 之后：两者管的是**不同的表**（tasks = agent 平台队列 / zone 形状；
+    // character_tasks = 游戏存档域），只是表名近 —— 不放一起免得读串。
+    this.migrateAgentTasksProjectId();
     this.migratePipelines();
     this.migrateAgentHealthEvents();
     this.migrateCustomAgents();
@@ -427,6 +446,67 @@ export class StratixDatabase {
       this.db.exec('ALTER TABLE character_tasks ADD COLUMN mission_id TEXT');
       log('info', 'Added mission_id column to character_tasks (task_076)');
     }
+  }
+
+  /**
+   * 编排层 `tasks` 表的 `project_id` 列退役（@since v3.3，task_206 / M2-09）——
+   *   **重建表**把该列改成可空（详见文件头 v17 注）。
+   *
+   * why 重建而不是「加列」：本单要改的是**列约束**（NOT NULL → 可空），SQLite 改不了约束
+   *   （只能重建表）—— 与 character_tasks 的 CHECK 重建同一手法。
+   * why 幂等靠**读 PRAGMA** 而不是读版本号：列约束本身就是「迁没迁过」的事实
+   *   （新库建表即带可空列 ⇒ 直过；老库 NOT NULL ⇒ 重建一次）。
+   */
+  private migrateAgentTasksProjectId(): void {
+    const tables = this.getTableNames();
+    if (!tables.has('tasks')) return;
+
+    const columns = this.db.prepare('PRAGMA table_info(tasks)').all() as Array<{
+      name?: string;
+      notnull?: number;
+    }>;
+    const projectId = columns.find((column) => column.name === 'project_id');
+    if (!projectId) return; // 老库被手工删过该列 ⇒ 无可迁
+    if (projectId.notnull === 0) return; // 已可空（新库 / 已迁过）⇒ 幂等直过
+
+    this.db.exec(`
+      CREATE TABLE tasks_v17 (
+        task_id TEXT PRIMARY KEY,
+        zone_id TEXT NOT NULL,
+        project_id TEXT,
+        name TEXT NOT NULL,
+        description TEXT,
+        type TEXT NOT NULL CHECK (type IN ('coding', 'writing', 'analysis', 'research', 'general')),
+        priority INTEGER DEFAULT 5 CHECK (priority BETWEEN 1 AND 10),
+        status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'assigned', 'in_progress', 'completed', 'failed', 'cancelled')),
+        assigned_agent_id TEXT,
+        dependencies TEXT DEFAULT '[]',
+        context TEXT,
+        result TEXT,
+        error TEXT,
+        created_at INTEGER NOT NULL,
+        assigned_at INTEGER,
+        started_at INTEGER,
+        completed_at INTEGER,
+        FOREIGN KEY (zone_id) REFERENCES zones(zone_id) ON DELETE CASCADE
+      );
+      INSERT INTO tasks_v17 (
+        task_id, zone_id, project_id, name, description, type, priority, status,
+        assigned_agent_id, dependencies, context, result, error,
+        created_at, assigned_at, started_at, completed_at
+      )
+      SELECT
+        task_id, zone_id, project_id, name, description, type, priority, status,
+        assigned_agent_id, dependencies, context, result, error,
+        created_at, assigned_at, started_at, completed_at
+      FROM tasks;
+      DROP TABLE tasks;
+      ALTER TABLE tasks_v17 RENAME TO tasks;
+      CREATE INDEX IF NOT EXISTS idx_tasks_zone_id ON tasks(zone_id);
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority DESC);
+    `);
+    log('info', 'Migrated tasks.project_id to nullable (deprecated, task_206)');
   }
 
   /**
@@ -1134,7 +1214,10 @@ export class StratixDatabase {
       CREATE TABLE IF NOT EXISTS tasks (
         task_id TEXT PRIMARY KEY,
         zone_id TEXT NOT NULL,
-        project_id TEXT NOT NULL,
+        -- ⚠️ deprecated（@since v3.3，task_206 / M2-09）：编排层的「项目 id」语义已退役 ——
+        --    新代码**不读不写**（design §1.3.1.1 裁决 1），副本维度统一到 instance。
+        --    列改可空是为了让「不写它」在约束上成立；物理删列留 M3。
+        project_id TEXT,
         name TEXT NOT NULL,
         description TEXT,
         type TEXT NOT NULL CHECK (type IN ('coding', 'writing', 'analysis', 'research', 'general')),

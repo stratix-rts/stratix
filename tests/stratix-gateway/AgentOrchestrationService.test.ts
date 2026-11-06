@@ -1,6 +1,10 @@
 /**
  * AgentOrchestrationService Unit Tests
  * Tests agent lifecycle management, task routing, and error handling
+ *
+ * @since v3.3（task_206 / M2-09）：工作目录走**实例维度** —— startAgent 收 `instanceId`，
+ * 路径由**实例注册表**（注入的解析口）解析，旧的「调用方自带 projectPath」链路已退役。
+ * 本文件注入一个假解析口（id ⇒ 固定路径），不碰真注册表。
  */
 
 // Mock fetch for Node.js 16
@@ -134,6 +138,14 @@ function getPrivateProperty<T>(service: AgentOrchestrationService, prop: string)
 // Store the registered executor for error handling tests
 let capturedExecutor: ((task: AgentTask, agentId: string | undefined, signal: AbortSignal) => Promise<unknown>) | null = null;
 
+/**
+ * 实例维度的测试常量（task_206 / M2-09）：
+ *   `TEST_INSTANCE_ID` = 副本 id（注册表里的稳定 id），`TEST_INSTANCE_PATH` = 该副本的项目根。
+ *   假解析口把 id 译成 path —— 编排层只认「给我 id 我还你路径」这一件事。
+ */
+const TEST_INSTANCE_ID = 'inst-test';
+const TEST_INSTANCE_PATH = '/test/path';
+
 describe('AgentOrchestrationService', () => {
   let service: AgentOrchestrationService;
 
@@ -144,6 +156,11 @@ describe('AgentOrchestrationService', () => {
     capturedExecutor = null;
 
     service = AgentOrchestrationService.getInstance();
+
+    // 实例路径解析口（注册表为准的假件）—— 组合根生产接线在 src/stratix-gateway/index.ts
+    service.setInstancePathResolver((instanceId) =>
+      instanceId === TEST_INSTANCE_ID ? TEST_INSTANCE_PATH : undefined
+    );
 
     jest.clearAllMocks();
 
@@ -215,7 +232,7 @@ describe('AgentOrchestrationService', () => {
         abort: jest.fn().mockResolvedValue(undefined),
       });
 
-      await service.startAgent('agent-router-test', '/test/path', 'project-1');
+      await service.startAgent('agent-router-test', TEST_INSTANCE_ID, 'project-1');
 
       expect(mockRouterDispatch).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -242,14 +259,14 @@ describe('AgentOrchestrationService', () => {
       agents.set('agent-dup', mockAgent);
 
       await expect(
-        service.startAgent('agent-dup', '/test/path', 'project-1')
+        service.startAgent('agent-dup', TEST_INSTANCE_ID, 'project-1')
       ).rejects.toThrow('Agent agent-dup is already working');
     });
 
     it('should skip start if no agent config registered', async () => {
       // This should warn and skip rather than throw
       await expect(
-        service.startAgent('nonexistent-agent', '/test/path', 'project-1')
+        service.startAgent('nonexistent-agent', TEST_INSTANCE_ID, 'project-1')
       ).resolves.not.toThrow();
     });
 
@@ -264,7 +281,7 @@ describe('AgentOrchestrationService', () => {
       service.registerAgentConfig('agent-no-config', configWithoutLLM as StratixAgentConfig);
 
       await expect(
-        service.startAgent('agent-no-config', '/test/path', 'project-1')
+        service.startAgent('agent-no-config', TEST_INSTANCE_ID, 'project-1')
       ).resolves.not.toThrow();
     });
 
@@ -274,7 +291,7 @@ describe('AgentOrchestrationService', () => {
       });
       service.registerAgentConfig('agent-openclaw', config);
 
-      await service.startAgent('agent-openclaw', '/test/path', 'project-1');
+      await service.startAgent('agent-openclaw', TEST_INSTANCE_ID, 'project-1');
 
       const agents = getPrivateProperty<Map<string, AgentInterface>>(service, 'agents');
       const agentStates = getPrivateProperty<Map<string, AgentState>>(service, 'agentStates');
@@ -298,7 +315,7 @@ describe('AgentOrchestrationService', () => {
       // Keep openClawConfig from createAgentConfig so hasOpenClaw is true
       service.registerAgentConfig('agent-stratix', config);
 
-      await service.startAgent('agent-stratix', '/test/path', 'project-1');
+      await service.startAgent('agent-stratix', TEST_INSTANCE_ID, 'project-1');
 
       const agents = getPrivateProperty<Map<string, AgentInterface>>(service, 'agents');
       const agentStates = getPrivateProperty<Map<string, AgentState>>(service, 'agentStates');

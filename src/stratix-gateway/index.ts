@@ -39,6 +39,7 @@ import { createNocoDBService, type NocoDBServiceOptions } from '../stratix-nocod
 import { OrchestrationSync } from '../stratix-orchestration/OrchestrationSync';
 
 import { AgentRuntimeService } from './agent-runtime/AgentRuntimeService';
+import { AgentOrchestrationService } from './agent/AgentOrchestrationService';
 import agentRoutes from './api/routes/agent';
 import agentOrchestrationRoutes from './api/routes/agentOrchestration';
 import agentTaskRoutes from './api/routes/agentTask';
@@ -181,6 +182,15 @@ export async function startGatewayService(
     cwd: nodeProcessCwd(),
     branch: nodeProcessGitBranch(),
   });
+  // 编排链的**实例维度**接线（@since v3.3，task_206 / M2-09）：agent 的工作目录 =
+  //   **实例注册表查到的 path**（不再由调用方自带 projectPath —— 该链路已退役）。
+  //   与 cli-transport 的 `SpawnOptions.cwd` 同源 ⇒ `instance.path` 是唯一事实源
+  //   （design §1.3.1.1 裁决 2：M2 把两条链路统一到 instance 维度）。
+  //   why 放在组合根：注册表是**进程里唯一一份**（boot / 归档 / 容量守门共用），
+  //   编排服务是单例且在路由 import 时就建好 ⇒ 只能在此后注入解析口。
+  AgentOrchestrationService.getInstance().setInstancePathResolver(
+    createInstanceRootResolver(instanceRegistry)
+  );
   // 容量守门（@since v3.3，task_205 / M2-08）：会话事件超限时**滚动归档最老**到 `history/`。
   //   守门件放在这一层（组合根之外）—— 存储件拿到它，写入路径追加完事件就问一次「要不要搬走」。
   const sessionEventGuard = createSessionEventArchiver({

@@ -99,7 +99,7 @@ function pipelineRecord(patch: Partial<PersistedPipelineRecord> = {}): Persisted
 
 /** 迁移终点的共同断言：pipeline_id 列在位、pipelines 表在位、站快照与流水线行可写可读。 */
 function expectV8Shape(db: StratixDatabase): void {
-  expect(versionOf(db)).toBe(16); // v16（task_200）起目标 schema 是 16（session_external_refs）
+  expect(versionOf(db)).toBe(17); // v17（task_206）起目标 schema 是 17（tasks.project_id 退役）
   expect(columns(db, 'character_tasks')).toEqual(expect.arrayContaining(['artifacts', 'plan', 'pipeline_id']));
   expect(columns(db, 'pipelines').length).toBeGreaterThan(0);
 

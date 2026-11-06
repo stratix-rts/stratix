@@ -240,7 +240,8 @@ CREATE TABLE IF NOT EXISTS zone_coordinators (
 CREATE TABLE IF NOT EXISTS tasks (
   task_id TEXT PRIMARY KEY,
   zone_id TEXT NOT NULL,
-  project_id TEXT NOT NULL,
+  -- deprecated (task_206 / M2-09): 新代码不读不写；物理删列留 M3
+  project_id TEXT,
   name TEXT NOT NULL,
   description TEXT,
   type TEXT NOT NULL CHECK (type IN ('coding', 'writing', 'analysis', 'research', 'general')),

@@ -11,12 +11,11 @@ import { AgentInterface, AgentState } from './types';
 
 export class LLMAgent implements AgentInterface {
   private agentConfig: StratixAgentConfig;
-  private projectPath: string;
   private zoneId: string;
   private lraClient: LRAClient;
   private adapter: OpenClawAdapterInterface;
   private _workDirOverride: string | undefined;
-  private _effectiveProjectPath: string;
+  private _effectiveInstancePath: string;
 
   private shouldStop = false;
   private isPaused = false;
@@ -27,12 +26,12 @@ export class LLMAgent implements AgentInterface {
   
   constructor(
     agentConfig: StratixAgentConfig,
-    projectPath: string,
+    instancePath: string,
     zoneId: string,
     lraClient: LRAClient
   ) {
     this.agentConfig = agentConfig;
-    this.effectiveProjectPath = projectPath;
+    this.effectiveInstancePath = instancePath;
     this.zoneId = zoneId;
     this.lraClient = lraClient;
     
@@ -44,19 +43,19 @@ export class LLMAgent implements AgentInterface {
   }
 
   /**
-   * Override the project path for worktree isolation.
+   * Override the working directory (e.g. worktree isolation).
    * Must be called before start().
    */
   setWorkingDirectory(dir: string): void {
     this._workDirOverride = dir;
   }
 
-  private get effectiveProjectPath(): string {
-    return this._workDirOverride ?? this._effectiveProjectPath;
+  private get effectiveInstancePath(): string {
+    return this._workDirOverride ?? this._effectiveInstancePath;
   }
 
-  private set effectiveProjectPath(value: string) {
-    this._effectiveProjectPath = value;
+  private set effectiveInstancePath(value: string) {
+    this._effectiveInstancePath = value;
   }
 
   getState(): AgentState {
@@ -117,7 +116,7 @@ export class LLMAgent implements AgentInterface {
         }
 
         // Priority 2: Check LRA tasks (original behavior)
-        const tasks = await this.lraClient.listTasks(this.effectiveProjectPath);
+        const tasks = await this.lraClient.listTasks(this.effectiveInstancePath);
         const pendingTask = tasks.find(t => t.status === 'pending');
 
         if (!pendingTask) {
@@ -128,17 +127,17 @@ export class LLMAgent implements AgentInterface {
         this.currentTaskId = pendingTask.id;
         console.log(`[LLMAgent] Processing LRA task ${pendingTask.id}`);
 
-        await this.lraClient.claimTask(this.effectiveProjectPath, pendingTask.id);
-        await this.lraClient.setTaskStatus(this.effectiveProjectPath, pendingTask.id, 'in_progress');
+        await this.lraClient.claimTask(this.effectiveInstancePath, pendingTask.id);
+        await this.lraClient.setTaskStatus(this.effectiveInstancePath, pendingTask.id, 'in_progress');
 
         this.startHeartbeat(pendingTask.id);
 
         try {
           await this.processTask(pendingTask);
-          await this.lraClient.setTaskStatus(this.effectiveProjectPath, pendingTask.id, 'completed');
+          await this.lraClient.setTaskStatus(this.effectiveInstancePath, pendingTask.id, 'completed');
         } catch (taskError) {
           console.error(`[LLMAgent] Task failed:`, taskError);
-          await this.lraClient.setTaskStatus(this.effectiveProjectPath, pendingTask.id, 'failed');
+          await this.lraClient.setTaskStatus(this.effectiveInstancePath, pendingTask.id, 'failed');
         } finally {
           this.stopHeartbeat();
           this.currentTaskId = null;
@@ -155,9 +154,9 @@ export class LLMAgent implements AgentInterface {
   
   private async processTask(task: LraTask): Promise<void> {
     const soul = this.agentConfig.soul?.identity || 'You are a helpful assistant.';
-    const prompt = `${soul}\n\nTask: ${task.description}\n\nProject: ${this.effectiveProjectPath}`;
+    const prompt = `${soul}\n\nTask: ${task.description}\n\nProject: ${this.effectiveInstancePath}`;
     await this.executeWithBudget(prompt, task.id);
-    await this.lraClient.publish(this.effectiveProjectPath, task.id);
+    await this.lraClient.publish(this.effectiveInstancePath, task.id);
   }
 
   private async executeWithBudget(prompt: string, taskId: string): Promise<string> {
@@ -201,7 +200,7 @@ export class LLMAgent implements AgentInterface {
   private async processZoneTask(task: { taskId: string; zoneId: string; name: string; description?: string; type?: string }): Promise<void> {
     const soul = this.agentConfig.soul?.identity || 'You are a helpful assistant.';
     const taskDescription = task.description || task.name;
-    const prompt = `${soul}\n\nZone Task: ${task.name}\n\nDescription: ${taskDescription}\n\nZone: ${task.zoneId}\nProject: ${this.effectiveProjectPath}\n\nPlease complete this task and report the results.`;
+    const prompt = `${soul}\n\nZone Task: ${task.name}\n\nDescription: ${taskDescription}\n\nZone: ${task.zoneId}\nProject: ${this.effectiveInstancePath}\n\nPlease complete this task and report the results.`;
 
     const content = await this.executeWithBudget(prompt, task.taskId);
 
@@ -225,7 +224,7 @@ export class LLMAgent implements AgentInterface {
   private startHeartbeat(taskId: string): void {
     this.heartbeatInterval = setInterval(async () => {
       try {
-        await this.lraClient.heartbeat(this.effectiveProjectPath, taskId);
+        await this.lraClient.heartbeat(this.effectiveInstancePath, taskId);
       } catch (error) {
         console.error('[LLMAgent] Heartbeat failed:', error);
       }
@@ -244,7 +243,7 @@ export class LLMAgent implements AgentInterface {
     this.stopHeartbeat();
     
     if (this.currentTaskId) {
-      await this.lraClient.setTaskStatus(this.effectiveProjectPath, this.currentTaskId, 'pending');
+      await this.lraClient.setTaskStatus(this.effectiveInstancePath, this.currentTaskId, 'pending');
     }
     
     await this.adapter.disconnect();

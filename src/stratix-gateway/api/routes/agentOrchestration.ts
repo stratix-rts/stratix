@@ -45,20 +45,39 @@ router.post('/register', async (req: Request, res: Response): Promise<void> => {
   }
 });
 
+/**
+ * 启动 agent（@since v3.3，task_206 / M2-09：**instance 维度**）。
+ *
+ * 请求体：`agentId` + `instanceId` + `zoneId`。
+ *   工作目录**不再由调用方给路径** —— 由 `instanceId` 查**实例注册表**取该副本的项目根
+ *   （design §1.3.1.1 裁决 2：编排层 `projectPath` 映射收编到 instance 维度）。
+ * 旧的 `projectPath` 字段**已退役**：仍传它 ⇒ 400 并说清该改传什么（不做静默兜底 ——
+ *   静默兜底会让「路径来源」这件事又出现第二个真相源，正是本单要消灭的）。
+ */
 router.post('/start', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { agentId, projectPath, zoneId } = req.body;
-    
-    if (!agentId || !projectPath || !zoneId) {
+    const { agentId, instanceId, zoneId, projectPath } = req.body;
+
+    if (!agentId || !zoneId) {
       res.status(400).json({
         success: false,
-        error: 'Missing required fields: agentId, projectPath, zoneId'
+        error: 'Missing required fields: agentId, zoneId'
       });
       return;
     }
-    
-    await orchestrator.startAgent(agentId, projectPath, zoneId);
-    
+
+    if (!instanceId) {
+      res.status(400).json({
+        success: false,
+        error: projectPath
+          ? 'projectPath 已退役（task_206 / M2-09）：请传 instanceId，工作目录由实例注册表解析'
+          : 'Missing required field: instanceId'
+      });
+      return;
+    }
+
+    await orchestrator.startAgent(agentId, instanceId, zoneId);
+
     res.json({
       success: true,
       message: `Agent ${agentId} started`

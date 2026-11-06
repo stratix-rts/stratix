@@ -109,7 +109,7 @@ describe('StratixDatabase schema v9（characters.context_enabled，task_053）',
     const dir = tempDir();
     try {
       const db = await openAndInitialize(dir);
-      expect(versionOf(db)).toBe(16); // v9 断言 +1：新库随目标 schema 走（v16 = task_200 session_external_refs）
+      expect(versionOf(db)).toBe(17); // v9 断言 +1：新库随目标 schema 走（v17 = task_206 tasks.project_id 退役）
       const cols = columns(db, 'characters');
       expect(cols).toContain('context_enabled');
       // 缺省即开：直接塞一行（走原生 SQL 绕过 DAO 证明 DDL 默认值本身）
@@ -145,7 +145,7 @@ describe('StratixDatabase schema v9（characters.context_enabled，task_053）',
       raw.close();
 
       const db = await openAndInitialize(dir);
-      expect(versionOf(db)).toBe(16); // v9 断言 +1：新库随目标 schema 走（v16 = task_200 session_external_refs）
+      expect(versionOf(db)).toBe(17); // v9 断言 +1：新库随目标 schema 走（v17 = task_206 tasks.project_id 退役）
       expect(columns(db, 'characters')).toContain('context_enabled');
       const row = db.getDatabase()
         .prepare('SELECT context_enabled FROM characters WHERE id = ?')

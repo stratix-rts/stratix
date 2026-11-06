@@ -404,7 +404,7 @@ describe('M2-01：六表 instance_id 列 + 沙盒 COALESCE 语义（task_198）'
       const db = await openAndInitialize(dir);
       opened = db;
       const raw = db.getDatabase();
-      expect(versionOf(raw)).toBe(16);
+      expect(versionOf(raw)).toBe(17);
       for (const table of INSTANCE_SCOPED_TABLES) {
         expect(columnInfo(raw, table).some((c) => String(c.name) === 'instance_id')).toBe(true);
       }
@@ -440,7 +440,7 @@ describe('M2-01：六表 instance_id 列 + 沙盒 COALESCE 语义（task_198）'
       expect(versionOf(raw)).toBe(13);
 
       db.initialize(); // 版本号低于目标 → 重跑迁移链
-      expect(versionOf(raw)).toBe(16);
+      expect(versionOf(raw)).toBe(17);
       for (const table of INSTANCE_SCOPED_TABLES) {
         expect(columnInfo(raw, table).some((c) => String(c.name) === 'instance_id')).toBe(true);
       }
@@ -481,7 +481,7 @@ describe('M2-01：六表 instance_id 列 + 沙盒 COALESCE 语义（task_198）'
       const reopened = await openAndInitialize(dir);
       opened = reopened;
       const raw = reopened.getDatabase();
-      expect(versionOf(raw)).toBe(16);
+      expect(versionOf(raw)).toBe(17);
       for (const table of INSTANCE_SCOPED_TABLES) {
         expect(columnInfo(raw, table).filter((c) => String(c.name) === 'instance_id')).toHaveLength(1);
       }

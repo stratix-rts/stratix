@@ -1,3 +1,11 @@
+/**
+ * 编排层任务队列（agent 平台的 `tasks` 表 —— 与游戏存档域的 `character_tasks` **不是同一张表**）。
+ *
+ * ⚠️ `tasks.project_id` 已退役（@since v3.3，task_206 / M2-09）：
+ *   编排层不再有「项目」维（副本维统一到 instance），新代码**不读不写**该列；
+ *   物理删列留 M3。权威依据：docs/DESIGN-project-map.md §1.3.1.1 三条裁决第 1 条。
+ */
+
 import { getDatabase } from '../../stratix-database';
 
 import { TaskItem, TaskContext, TaskResult, TaskEvent, TaskEventCallback } from './TaskItem';
@@ -10,7 +18,6 @@ function log(level: 'info' | 'warn' | 'error', message: string, ctx?: Record<str
 interface TaskRow {
   task_id: string;
   zone_id: string;
-  project_id: string;
   name: string;
   description: string | null;
   type: 'coding' | 'writing' | 'analysis' | 'research' | 'general';
@@ -81,11 +88,10 @@ export class TaskQueueService {
     };
 
     db.prepare(`
-      INSERT INTO tasks (task_id, zone_id, project_id, name, description, type, priority, status, dependencies, context, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+      INSERT INTO tasks (task_id, zone_id, name, description, type, priority, status, dependencies, context, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
     `).run(
       taskId,
-      zoneId,
       zoneId,
       name,
       options.description || null,

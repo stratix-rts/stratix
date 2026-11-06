@@ -254,7 +254,6 @@ describe('TaskQueueService', () => {
         get: jest.fn().mockReturnValue({
           task_id: 'task-1',
           zone_id: 'zone-1',
-          project_id: 'project-1',
           name: 'Task 1',
           description: null,
           type: 'coding',
@@ -289,7 +288,6 @@ describe('TaskQueueService', () => {
         get: jest.fn().mockReturnValue({
           task_id: 'dep-task',
           zone_id: 'zone-1',
-          project_id: 'project-1',
           name: 'Dep Task',
           description: null,
           type: 'coding',
@@ -318,7 +316,6 @@ describe('TaskQueueService', () => {
         get: jest.fn().mockReturnValue({
           task_id: 'unsatisfied-task',
           zone_id: 'zone-1',
-          project_id: 'project-1',
           name: 'Unsatisfied Task',
           description: null,
           type: 'coding',
@@ -386,7 +383,6 @@ describe('TaskQueueService', () => {
           {
             task_id: 'pending-1',
             zone_id: 'zone-1',
-            project_id: 'project-1',
             name: 'Pending 1',
             description: null,
             type: 'coding',
@@ -419,7 +415,6 @@ describe('TaskQueueService', () => {
           {
             task_id: 'low-priority',
             zone_id: 'zone-1',
-            project_id: 'project-1',
             name: 'Low Priority',
             description: null,
             type: 'coding',
@@ -438,7 +433,6 @@ describe('TaskQueueService', () => {
           {
             task_id: 'high-priority',
             zone_id: 'zone-1',
-            project_id: 'project-1',
             name: 'High Priority',
             description: null,
             type: 'coding',
@@ -548,7 +542,6 @@ describe('TaskQueueService', () => {
         get: jest.fn().mockReturnValue({
           task_id: 'delete-task',
           zone_id: 'zone-1',
-          project_id: 'project-1',
           name: 'Delete Task',
           description: null,
           type: 'coding',
