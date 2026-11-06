@@ -625,6 +625,54 @@ describe('world 通道 → 场景：camera.center 转发（小地图跳转）', 
 });
 
 // ============================================================================
+// world 通道 → 场景：unit.focus 转发（@since v3.3，task_218 / IX-05）
+// HUD agent 卡片「聚焦」→ core 转发同名事件 → syncUnitFocus（场景把镜头对到该单位）。
+// 与 focus.unit 的分工：那条描边 + 弧线（不动镜头），这条只动镜头。
+// ============================================================================
+
+describe('world 通道 → 场景：unit.focus 转发（agent 卡片「聚焦」，task_218）', () => {
+  function createFocusPort() {
+    const calls: string[] = [];
+    const port: WorldScenePort = {
+      syncUnits: () => {},
+      syncSelection: () => {},
+      syncUnitFocus: (unitId) => calls.push(unitId),
+    };
+    return { port, calls };
+  }
+
+  test('core 转发的 unit.focus 递给 syncUnitFocus（带单位 id）', () => {
+    const { port, calls } = createFocusPort();
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    emitWorldEvent({ type: 'unit.focus', unitId: 'u-neo' });
+
+    expect(calls).toEqual(['u-neo']);
+  });
+
+  test('port 不实现 syncUnitFocus（可选钩子）：安静跳过，不炸不报', () => {
+    const { port } = createFakePort(); // 老桩：没有 syncUnitFocus
+    const bridge = createWorldBridge(port, { now: clock });
+    stops.push(() => bridge.destroy());
+
+    expect(() => {
+      emitWorldEvent({ type: 'unit.focus', unitId: 'u1' });
+    }).not.toThrow();
+  });
+
+  test('destroy 之后不再转发（场景已死，不为它挪镜头）', () => {
+    const { port, calls } = createFocusPort();
+    const bridge = createWorldBridge(port, { now: clock });
+
+    bridge.destroy();
+    emitWorldEvent({ type: 'unit.focus', unitId: 'u-neo' });
+
+    expect(calls).toHaveLength(0);
+  });
+});
+
+// ============================================================================
 // world 通道 → 场景：unit.speaking 转发（@since v3.37，task_062）
 // chat 流式期间 app 层发出的说话标志位 → syncUnitSpeaking（场景头顶「···」气泡起止）。
 // ============================================================================

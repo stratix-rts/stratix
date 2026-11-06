@@ -144,6 +144,9 @@ function describe(event: WorldEvent): string {
     // 单位联动（@since v3.4，task_091）：HUD 事件轨条目点击 → core 转发给 world，看一眼点的是谁。
     case 'focus.unit':
       return `${event.type.padEnd(15)} ${event.unitId}`;
+    // 单位聚焦（@since v3.3，task_218 / IX-05）：HUD agent 卡片「聚焦」→ core 转发给 world，看一眼要聚焦谁。
+    case 'unit.focus':
+      return `${event.type.padEnd(15)} ${event.unitId}`;
     // 音效钩子（@since v3.3，task_077）：只发事件不做音频（声音包 v3.3-10 消费）。
     case 'fx.sound':
       return `${event.type.padEnd(15)} ${event.cue}`;

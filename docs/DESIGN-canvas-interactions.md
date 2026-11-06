@@ -193,7 +193,7 @@ pointerup(右键短按)
 | 小地图点单位 | `unit.select` | `hud/components/minimap/minimap.ts:343` | ✅ |
 | 小地图点地面 | `camera.center` | `minimap.ts:367` | ✅ `core/runtime.ts:669` |
 | agent 卡片「选中」 | `unit.select` | `hud/panels/agent-catalog.ts:496`/`:500` | ✅ |
-| agent 卡片「聚焦」 | `unit.focus` | `agent-catalog.ts:498` | ❌ **死命令** —— `core/runtime.ts` 无 `case 'unit.focus'` ⇒ 落 `reportUnhandled`（`core/runtime.ts:911`），**点了没反应** |
+| agent 卡片「聚焦」 | `unit.focus` | `agent-catalog.ts:498` | ✅ **@since v3.3（task_218 / IX-05 落地）** —— 原为**死命令**（core 无 `case` ⇒ 落 `reportUnhandled`，点了没反应）；现由 core 转发同名 WorldEvent → world 侧解析坐标并把镜头对到该单位（见 §4 IX-05 实施口径） |
 | 快捷键 | `unit.select` / `unit.group.*` / `camera.center` | `shortcut-manager.ts:184-202` | ✅ |
 | 顶栏「🎬 导演」 | `camera.director` | `hud/screens/main-screen.ts:876` | ✅ |
 | 里程碑 / 回放占用 | `hud.layer.hold` | `hud/components/marquee/milestone.ts:229` | ✅ |
@@ -303,7 +303,7 @@ pointerup(右键短按)
 | **C-07** | **仪式期输入消费 vs 正常交互** | `consumeCeremonyInput` 吃掉 pointerdown/up/wheel/ESC/任意键（`BattlefieldScene.ts:857`/`:923`/`:1050`/`:1247`/`:1262`） | 仪式期间点击**既不选中也不开抽屉**（符合 task_187） | **不变**；但注意：若 §5 的「双击开聊天框」走 WorldEvent，**仪式期不得发出该事件**（在 world 侧判定，不在 core 侧） |
 | **C-08** | **右键短按 vs 右键拖动的分流** | 阈值 4px（`BattlefieldScene.ts:155`）；拖动即平移 | 抖手 5px ⇒ 变成平移而不是移动指令 | **本期不变**（阈值可调常量，后续单议） |
 | **C-09** | **小地图点击 vs 画布点击** | 小地图点单位 ⇒ `unit.select`；点地面 ⇒ `camera.center`（`minimap.ts:343`/`:367`） | 小地图点单位**不**开聊天框（与画布双击语义不同源） | 建议统一：小地图**双击**单位也开聊天框（§4 IX-03 附带项）；**本期不改** |
-| **C-10** | **`unit.focus` 死命令** | HUD agent 卡片「聚焦」发 `unit.focus`（`agent-catalog.ts:498`），**core 无 case** ⇒ 落 `reportUnhandled`（`core/runtime.ts:911`） | 点了没反应（静默失败） | **两条路二选一**（§4 IX-05）：① core 落地 `unit.focus` ⇒ 转发为 `camera.center`（与 `focus.unit` 的「描边+弧线」区分：前者动镜头、后者做联动）；② 删命令、HUD 改发 `camera.center`。**推荐 ①**（保留卡片语义完整） |
+| **C-10** | **`unit.focus` 死命令** | HUD agent 卡片「聚焦」发 `unit.focus`（`agent-catalog.ts:498`），**core 无 case** ⇒ 落 `reportUnhandled`（`core/runtime.ts:911`） | 点了没反应（静默失败） | **两条路二选一**（§4 IX-05）：① core 落地 `unit.focus` ⇒ 转发为 `camera.center`（与 `focus.unit` 的「描边+弧线」区分：前者动镜头、后者做联动）；② 删命令、HUD 改发 `camera.center`。**推荐 ①**（保留卡片语义完整） —— ✅ **已按 ① 落地**（task_218）：core 转发同名 WorldEvent，坐标解析在 world 侧（core 不持有坐标），见 §4 IX-05 实施口径 |
 | **C-11** | **`camera.moved` 每 120ms 上行** | 远程模式**不上行**（白名单不含，纯视图事件） | 无 | 记录：视图事件不上行是**刻意**的（省带宽），不要为「顺手修移动」把它加进白名单 |
 
 ---
@@ -351,6 +351,31 @@ pointerup(右键短按)
 | **范围** | core 落地 `unit.focus`（推荐：转发为 `camera.center`，把镜头对到该单位 —— 卡片「聚焦」的本来语义），或删除命令 + HUD 改发 `camera.center`。**推荐前者**：保留「聚焦=动镜头」与「联动=描边+弧线」（`focus.unit`）的分工（`core/types.ts:1543-1556` 已写明这个分工） |
 | **验收** | ① agent 卡片点「聚焦」⇒ 镜头对到该单位（可见）；② `reportUnhandled` 里不再出现 `unit.focus`；③ `unit.focus` 与 `focus.unit` 行为**不混淆**（前者动镜头、后者描边 + 弧线）；④ core 单测覆盖 |
 | **依赖** | 无 |
+
+#### IX-05 实施口径（task_218 落地，2026-11-07）：**走 ① core 落地**，但**不在 core 转发成 `camera.center`**
+
+> 落地于 task_218。**与上表「转发为 camera.center」的字面写法有出入**，此处写明实际选择与理由 —— 后续读者按本节为准。
+
+**实际做法**：保留 `HudCommand unit.focus`（**不删**）→ core 接线（`core/runtime.ts`）转发**同名 WorldEvent** `unit.focus` 到 world 通道 → world 桥接层转给场景钩子 `syncUnitFocus` → 场景按 `unitId` 查出单位，**一次性把镜头对到它身上**（不开跟随；手动优先 ⇒ 导演让位）。
+
+**为什么不在 core 直接改写成 `camera.center`**：
+
+| 理由 | 说明 |
+|---|---|
+| **core 不持有坐标** | `UnitView` 明文「**不含位置** —— 位置由世界层自治，core 与 HUD 都不持有坐标真相」（`core/types.ts`）。core 手里只有 `unitId`，**无从**把它换算成世界点 ⇒ 「转发为 camera.center」在 core 里**做不到**（除非把坐标塞进契约，那是破坏性变更）。 |
+| **坐标解析只能在 world** | 单位坐标真相在世界的 `UnitRegistry`（`BattlefieldScene` 的 `this.units`）⇒ unitId → 世界点的换算只能在场景里做。 |
+| **两段式铁律不破** | 命令 hud → core、事件 core → world —— 与 `camera.center` / `focus.unit` 同一口径；HUD 绝不直接调 world。 |
+
+**与 `focus.unit` 的分工（验收③，不混淆）**：
+
+| 命令 | 语义 | 消费者 | 动镜头？ |
+|---|---|---|---|
+| `unit.focus` | **相机动作**：把镜头对到该单位（一次性跳转） | world 场景 `syncUnitFocus` | ✅ 是 |
+| `focus.unit` | **单位联动**：描边高亮 + 左下→中屏引导弧线 | world 场景 `syncFocusUnit`（task_092） | ❌ 否 |
+
+**为什么保留命令（书面保留理由，替代「删命令 + HUD 改发 camera.center」）**：卡片「聚焦」的本来语义就是「把镜头对到这个单位」；而 §3 另一条路（删命令、HUD 改发 `camera.center`）**走不通** —— HUD 侧同样没有坐标（坐标在 world），HUD 无从发出带坐标的 `camera.center`。⇒ `unit.focus` 是这条交互的**唯一合法载体**，删了就得把坐标泄漏进契约。
+
+**已知边界（不在本单范围）**：远程模式（客户端不起本地 runtime）下，`unit.focus` 经协议上行到 service 侧的 core → service 侧 world 通道；**相机位姿的下行事件白名单目前只有 `unit.position`**（`world-sync/protocol.ts`）⇒ 客户端镜头不会跟着动。这与既有的 `camera.center` / `focus.unit` 是**同一个结构性缺口**（相机类命令都缺下行通道），不在 IX-05 范围内，另议。
 
 ### IX-06 · 右击移动的「agent 语义」是否成立（**OPEN，需用户裁决**）
 
@@ -503,7 +528,7 @@ world 现在**不知道**「聊天框正开着、用户在打字」⇒ 它的 ES
 | R15 | `src/core/theme/visual-spec.ts:609` | `doubleClickWindowMs: 320` | ✅ |
 | R16 | `src/core/types.ts:228` | `UnitView` 定义起点（**不含坐标**） | ✅ |
 | R17 | `src/hud/components/shortcuts/shortcut-manager.ts:243` | `window.addEventListener('keydown', …)` | ✅ |
-| R18 | `src/hud/panels/agent-catalog.ts:498` | 发 `unit.focus`（core 无 case ⇒ 死命令） | ✅ |
+| R18 | `src/hud/panels/agent-catalog.ts:498` | 发 `unit.focus`（**@since task_218 / IX-05 已接线**：core 转发同名 WorldEvent → world 侧把镜头对到该单位；此前 core 无 case ⇒ 死命令） | ✅ |
 | R19 | `src/app/main/main-entry.ts:1365` | 小地图位置表吃**本地** `unit.position` | ✅ |
 | R20 | `src/world/objects/unit-layer.ts:666` | `applyUnitPosition`（tween 动画的落点） | ✅ |
 
@@ -517,7 +542,7 @@ world 现在**不知道**「聊天框正开着、用户在打字」⇒ 它的 ES
 | O2 | **「双击 = 开聊天框」是否接受取消「单选自动开抽屉」**（C-03） | 接受（否则双击规格无意义） | IX-03 |
 | O3 | **跟随镜头的去处**（C-02） | 双击空白地面 = 回全景 | IX-03 |
 | O4 | **右击移动的 agent 语义**（IX-06） | 本期保持纯表现语义，气泡文案去掉 agent 口吻 | IX-06 |
-| O5 | **`unit.focus` 落地方式**（C-10） | core 落地并转发为 `camera.center` | IX-05 |
+| O5 | **`unit.focus` 落地方式**（C-10） | core 落地并转发为 `camera.center` → ✅ **已裁决并落地**（task_218）：保留命令，core 转发同名 WorldEvent，**坐标解析在 world 侧**（core 不持有坐标 ⇒ 转发成 camera.center 做不到，见 §4 IX-05 实施口径） | IX-05 |
 | O6 | **下行事件通道的协议形态**（IX-02） | 新增 `event.push` 消息型；是否同时纳入 `docs/WORLD-SYNC.md` 的对外契约 | IX-02 |
 | O7 | **多客户端下 `unit.position` 广播** | 位置是共享真相 ⇒ 广播给全部客户端（与快照一致） | IX-02 |
 

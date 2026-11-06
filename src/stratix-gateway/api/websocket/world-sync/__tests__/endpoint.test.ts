@@ -143,13 +143,16 @@ describe('world-sync 端点（task_082）', () => {
 
   it('③ 无人接管命令超时 → internal_error ack（绝不假装成功）', async () => {
     const store = createStore();
-    runtimeStops.push(startRuntime(store)); // runtime 不接 unit.focus → 命令没人接管
+    runtimeStops.push(startRuntime(store)); // runtime 不接 cache.clear → 命令没人接管
     const { endpoint } = makeEndpoint({ store, ackTimeoutMs: 60 });
     const { client, server } = createDuplexPair();
     endpoint.accept(server);
     client.send(hello('electron-1'));
 
-    client.send(forward('cmd-lost', { type: 'unit.focus', unitId: 'u-1' }));
+    // 例子换成 cache.clear：core runtime **没有**这条命令的 case（落 default → 未处理）。
+    // why 不再用 unit.focus：自 task_218 / IX-05 起它已被 core 接管（转发 world 通道），
+    //   再拿它当「没人接管」的例子就名不副实了。
+    client.send(forward('cmd-lost', { type: 'cache.clear' }));
     await wait(160);
 
     const acks = client.messagesOfType<CommandAckMessage>('command.ack');

@@ -1567,8 +1567,19 @@ export type HudCommand =
   /**
    * @since v3.2 相机聚焦到某个单位（合并旧 AgentPanel 侧栏的「定位/聚焦」语义）。
    *   为什么单开一条而不是复用 ui.navigate：相机由世界层自治、契约里没有相机字段，
-   *   但「聚焦某个单位」是 HUD 侧对世界的合法表达 —— core 只做转发与审计（phase 2 落地），
+   *   但「聚焦某个单位」是 HUD 侧对世界的合法表达 —— core 只做转发与审计，
    *   最终由 world 层消费；HUD 绝不直接调 world（铁律）。
+   *
+   * @since v3.3（task_218 / IX-05）**接线落地**（此前是**死命令**：core 无 case ⇒ 落
+   *   reportUnhandled，HUD 卡片点「聚焦」点了没反应）：core 收到后以**同名 WorldEvent**
+   *   转发到 world 通道，消费者是**世界场景** —— 场景按 unitId 查单位，把镜头对到它身上。
+   *   why 不在 core 直接改写成 camera.center：core **不持有坐标**（UnitView 明文「不含位置」，
+   *   位置真相在世界层）⇒ core 无从把 unitId 换算成世界点；坐标解析只能在 world 侧做。
+   *   与 focus.unit 的分工（两者语义正交、不混淆）：**unit.focus = 动镜头**（相机动作）；
+   *   **focus.unit = 描边 + 引导弧线**（单位联动，不动镜头）。
+   *   保留理由（书面）：卡片「聚焦」的本来语义就是「把镜头对到这个单位」，且与
+   *   focus.unit 的联动语义互补 —— 删掉它就得让 HUD 改发 camera.center，而 HUD 侧
+   *   同样没有坐标（坐标在 world），那条路走不通 ⇒ 本命令是这条交互的**唯一合法载体**。
    */
   | { type: 'unit.focus'; unitId: string }
   /**
@@ -2187,6 +2198,16 @@ export type WorldEvent =
    *   core / hud 都不知道屏幕坐标）。
    */
   | { type: 'focus.unit'; unitId: string }
+  /**
+   * @since v3.3（task_218 / IX-05）单位聚焦事件 —— HudCommand `unit.focus` 经 core 转发的
+   *   **同名事件**（与 camera.center / focus.unit 同一两段式：命令是 hud → core 的意向，
+   *   事件是 core → world 的落位指令；同名不同向）。
+   *   消费者是**世界场景**：按 unitId 查出单位，把镜头一次性对到它身上（**不开跟随**）。
+   *   core 状态机不消费（相机位姿不进 WorldState —— 契约里没有相机字段）——
+   *   runtime 的 handleWorldEvent 显式接地（同 focus.unit 惯例，不进 onUnhandled）。
+   *   payload 只携单位 id（坐标由 world 自己解析 —— core / hud 都不持有坐标真相）。
+   */
+  | { type: 'unit.focus'; unitId: string }
   /**
    * @since v3.3（task_077）音效钩子事件（**预留**）：战场在关键动作上发一声 cue，
    *   声音包（v3.3-10 / DEMO-PLAN §10「Web Audio 代码合成」）据此发声。

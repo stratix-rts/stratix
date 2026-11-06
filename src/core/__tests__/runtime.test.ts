@@ -697,6 +697,73 @@ describe('world 事件：camera.center 回环接地（task_057）', () => {
 });
 
 // ============================================================================
+// unit.focus（@since v3.3，task_218 / IX-05）：HUD agent 卡片「聚焦」—— 此前是**死命令**
+// （core 无 case ⇒ 落 reportUnhandled，点了没反应）。现在 core 接线：命令 → 同名
+// WorldEvent 转发到 world 通道（消费者是场景：按 unitId 查单位并把镜头对过去）。
+// core 不改写成 camera.center —— core 不持有坐标（UnitView 明文「不含位置」），
+// unitId → 世界点的换算只能在 world 侧做。
+// ============================================================================
+
+describe('HudCommand unit.focus：命令 → world 通道转发（task_218 / IX-05）', () => {
+  test('转发同名 WorldEvent（事件名同名，方向不同：命令 hud → core，事件 core → world）', () => {
+    const { states, stop } = harness();
+    cleanups.push(stop);
+
+    const events: WorldEvent[] = [];
+    const off = onWorldEvent((event) => events.push(event));
+    cleanups.push(off);
+
+    emitCommand({ type: 'unit.focus', unitId: 'u1' });
+
+    expect(events.find((event) => event.type === 'unit.focus')).toEqual({
+      type: 'unit.focus',
+      unitId: 'u1',
+    });
+    // 不改任何状态：聚焦是**相机动作**，相机位姿不进 WorldState（契约里没有相机字段）。
+    expect(states).toHaveLength(0);
+  });
+
+  test('不再落 unhandled（此前是死命令的核心症状）、也不改任何状态', () => {
+    const { states, unhandled, stop } = harness();
+    cleanups.push(stop);
+
+    const events: WorldEvent[] = [];
+    const off = onWorldEvent((event) => events.push(event));
+    cleanups.push(off);
+
+    emitCommand({ type: 'unit.focus', unitId: 'u-neo' });
+
+    expect(unhandled).toHaveLength(0);
+    expect(states).toHaveLength(0);
+    expect(events.filter((event) => event.type === 'unit.focus')).toHaveLength(1);
+  });
+
+  test('与 focus.unit 不混淆：本条只动镜头，不做单位联动（不发 focus.unit）', () => {
+    const { stop } = harness();
+    cleanups.push(stop);
+
+    const events: WorldEvent[] = [];
+    const off = onWorldEvent((event) => events.push(event));
+    cleanups.push(off);
+
+    emitCommand({ type: 'unit.focus', unitId: 'u1' });
+
+    expect(events.filter((event) => event.type === 'focus.unit')).toHaveLength(0);
+  });
+});
+
+describe('world 事件：unit.focus 回环接地（task_218 / IX-05）', () => {
+  test('不被当作未处理事件上报（消费者在世界场景，经桥接层转发）', () => {
+    const { unhandled, stop } = harness();
+    cleanups.push(stop);
+
+    emitWorldEvent({ type: 'unit.focus', unitId: 'u1' });
+
+    expect(unhandled).toHaveLength(0);
+  });
+});
+
+// ============================================================================
 // camera.moved 接地（@since v3.33，task_066）：world 场景相机回调发出（桥接层合并窗口后
 // 上报），消费者是 app 层 main-entry 的小地图视口同步订阅（按 center + zoom 换算视口
 // 矩形喂 minimap.setViewport）。WorldState 契约里没有相机字段，core 状态机不消费 ——

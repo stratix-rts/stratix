@@ -27,6 +27,8 @@
  *     标志位广播）→ syncUnitSpeaking，场景驱动头顶「···」气泡起止；
  *     @since v3.4（task_092）：再转发 focus.unit（HUD 事件轨条目点击经 core 转发的同名事件）
  *     → syncFocusUnit，场景驱动被点单位的描边高亮与引导弧线；
+ *     @since v3.3（task_218 / IX-05）：再转发 unit.focus（HUD agent 卡片「聚焦」经 core
+ *     转发的同名事件）→ syncUnitFocus，场景把镜头对到该单位；
  *   - world 通道 → 场景（@since v3.3，task_161）：level.up（app 层 progression-service 广播的
  *     角色升级事件）→ syncLevelUp，场景在该角色所在单位脚下播升级光环（sheet 动画特效）。
  * 输出：端口回调（渲染侧）+ bus 的 world 通道（业务侧）。
@@ -183,6 +185,17 @@ export interface WorldScenePort {
    * payload 只携单位 id（弧线的屏幕坐标由 world 按自己的相机状态换算）。
    */
   syncFocusUnit?(unitId: string): void;
+  /**
+   * 单位聚焦钩子（@since v3.3，task_218 / IX-05）：world 通道上的 unit.focus
+   * （HUD agent 卡片「聚焦」经 core 转发的同名事件）转发进场景 —— 把镜头对到该单位。
+   * 可选成员：不实现不破编译（同 syncFocusUnit 惯例）。
+   * why 走 world 通道：聚焦是**相机动作**（相机位姿不进 WorldState）—— 两段式：
+   *   命令 hud → core，事件 core → world（总线铁律）。
+   * why 由 world 解析坐标：core / hud 都不持有坐标真相（位置归世界层自治）⇒
+   *   unitId → 世界点只能在这里换算（core 转成 camera.center 反而做不到）。
+   * 与 syncFocusUnit 不混淆：本条**动镜头**，syncFocusUnit 描边 + 弧线（不动镜头）。
+   */
+  syncUnitFocus?(unitId: string): void;
   /**
    * 角色升级钩子（@since v3.3，task_161）：world 通道上的 level.up 转发进场景 ——
    * 升级时在**该角色所在的单位**脚下播一条治疗光环（sheet 动画）。
@@ -408,6 +421,10 @@ export function createWorldBridge(
       // 单位联动（task_092）：HUD 事件轨条目点击 → core 转发 → 战场描边 + 引导弧线。
       case 'focus.unit':
         port.syncFocusUnit?.(event.unitId);
+        break;
+      // 单位聚焦（task_218 / IX-05）：core 转发来的「镜头对到该单位」指令 → 场景解析坐标并移镜头。
+      case 'unit.focus':
+        port.syncUnitFocus?.(event.unitId);
         break;
       // 角色升级（task_161）：app 层 progression-service 广播 → 战场在该角色脚下播升级光环。
       case 'level.up':

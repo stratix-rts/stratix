@@ -15,6 +15,8 @@
  *     单位层头顶「···」说话气泡）
  *   - core/bus 的 world 通道上的 focus.unit（@since v3.4，task_092，转发到 syncFocusUnit）
  *     —— HUD 事件轨条目点选 → 被点单位描边高亮（霓虹 + 呼吸）+ 左下事件轨到中屏的引导弧线；
+ *   - core/bus 的 world 通道上的 unit.focus（@since v3.3，task_218，转发到 syncUnitFocus）
+ *     —— HUD agent 卡片「聚焦」→ 镜头一次性对到该单位（只动镜头，不做描边联动）；
  *   - core/bus 的 world 通道上的 camera.director（@since v3.3，task_081，转发到 syncDirectorMode）
  *     —— 导演模式开合：镜头接管 + 中屏取景框标识（task_092 的 L3 提示）；
  *   - core/bus 的 state 通道上的 missions + tasks（@since v3.3，task_078，转发到 syncTasks，
@@ -761,6 +763,31 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     if (!outcome.changed) return;
     // 描边高亮跟着焦点走（outcome.unitId 为 null = 已取消 → 描边褪掉）。
     this.unitLayer.setFocused(outcome.unitId);
+  }
+
+  /**
+   * 单位聚焦（@since v3.3，task_218 / IX-05；由桥接层转发 world 通道的 unit.focus）。
+   *
+   * HUD agent 卡片点「聚焦」⇒ **把镜头对到该单位**（一次性跳转，不开跟随）。
+   * 与 syncFocusUnit（focus.unit）的分工不混淆：本条只**动镜头**；描边 + 引导弧线
+   * 归 focus.unit（那是单位联动，不碰相机）。
+   *
+   * why 坐标解析在这里：core / hud 都不持有坐标真相（位置归世界层自治）⇒ unitId → 世界点
+   * 的换算只能在战场侧做（core 转成 camera.center 反而做不到 —— 它手里没有坐标）。
+   *
+   * 找不到单位（离场 / 不在当前副本）⇒ 不动镜头（**不猜**位置）。
+   */
+  syncUnitFocus(unitId: string): void {
+    const unit = this.units.get(unitId);
+    if (!unit) return;
+    // 手动优先（task_081）：用户主动点了「聚焦」⇒ 导演让位。
+    this.releaseDirector();
+    // 聚焦是一次性跳转 ⇒ 解除跟随（跟随态下镜头会继续追着旧目标跑，与「对到它身上」矛盾）。
+    this.releaseFollow();
+    this.tweenCameraTo({
+      center: { x: unit.position.x, y: unit.position.y },
+      zoom: this.view.current.zoom,
+    });
   }
 
   /**

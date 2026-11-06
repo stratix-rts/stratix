@@ -99,11 +99,13 @@ async function main(): Promise<void> {
   console.log(`[smoke-world-sync] ② forward → ack ok(seq=${okAck.seq}) + 状态落地 ok`);
 
   // ③ 没人接管的命令 → internal_error（不假装成功）
+  //   例子用 cache.clear：core runtime 没有这条命令的 case ⇒ 无人接管。
+  //   （不再用 unit.focus —— 自 task_218 / IX-05 起它已被 core 接管。）
   socket.send(
     JSON.stringify({
       type: 'command.forward',
       commandId: 'smoke-cmd-2',
-      command: { type: 'unit.focus', unitId: 'u-none' },
+      command: { type: 'cache.clear' },
     })
   );
   await delay(6000);

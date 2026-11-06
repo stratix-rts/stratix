@@ -57,6 +57,10 @@
  * @since v3.4(task_091)追加 focus.unit 命令接线:HUD 事件轨(Z2)条目点击 → 同名 WorldEvent
  *   转发到 world 通道(消费者是世界层:单位描边高亮 + 引导弧线);core 只转发不写 WorldState
  *   (联动是瞬态表现,同 camera.shake 口径);world 通道回环的 focus.unit 显式接地。
+ * @since v3.3(task_218 / IX-05)追加 unit.focus 命令接线:HUD agent 卡片「聚焦」→ 同名
+ *   WorldEvent 转发到 world 通道(消费者是世界场景:按 unitId 查单位并把镜头对过去)。
+ *   此前该命令**无人接管**(死命令,落 reportUnhandled);现在接线。core 不改写成
+ *   camera.center —— core 不持有坐标(unitId → 世界点只能 world 侧解析)。
  * @since v3.3(task_177 / M1-03)追加 project.enter 命令接线:**core 一手裁决的纯逻辑**
  *   (inspect → 存在？未归档？路径在？ → load → 写 activeInstanceId → 广播 project.changed);
  *   失败 ⇒ 拒绝(activeInstanceId 保持不变)+ 广播 project.enter.failed。
@@ -698,6 +702,17 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         emitWorldEvent({ type: 'focus.unit', unitId: command.unitId });
         return;
       }
+      // @since v3.3(task_218 / IX-05)agent 卡片「聚焦」→ unit.focus:此前是**死命令**
+      //   (core 无 case ⇒ 落 reportUnhandled,点了没反应)。现在 core 接线:转发同名
+      //   WorldEvent 到 world 通道,消费者是世界场景 —— 场景按 unitId 查单位并把镜头对过去。
+      // why 不在 core 改写成 camera.center:core **不持有坐标**(UnitView 明文「不含位置」,
+      //   位置真相在世界层)⇒ unitId → 世界点的换算只能在 world 侧做;core 只做转发(同
+      //   focus.unit / camera.shake 两段式口径)。与 focus.unit 不混淆:本条动镜头,
+      //   focus.unit 描边 + 引导弧线(不动镜头)。
+      case 'unit.focus': {
+        emitWorldEvent({ type: 'unit.focus', unitId: command.unitId });
+        return;
+      }
       // @since v3.3 任务域:命令翻译只在 core/mission 里有一份(manager 负责转状态机动作 + 写库 + 报错)
       // @since v3.38(task_077):可选 brief / dependsOn 透传 —— 缺省即裸任务,既有构造点零改动。
       case 'mission.create':
@@ -1003,6 +1018,11 @@ export function createCoreRuntime(options: CoreRuntimeOptions = {}): CoreRuntime
         //   单位联动指令,消费者是世界层(task_092) -- core 发出后又在 world 通道上回到
         //   本订阅一次,这里显式接地(同 camera.shake 惯例,不进 onUnhandled)。
         if (event.type === 'focus.unit') return;
+        // unit.focus(@since v3.3,task_218 / IX-05):同名 WorldEvent 是 handleCommand 转发出去的
+        //   单位聚焦指令,消费者是世界场景(bridge 转发 syncUnitFocus → 镜头对到该单位) --
+        //   core 发出后又在 world 通道上回到本订阅一次,这里显式接地(同 focus.unit 惯例,
+        //   不进 onUnhandled)。
+        if (event.type === 'unit.focus') return;
         if (event.type === 'camera.moved') return;
         if (event.type === 'exp.gained') return;
         if (event.type === 'level.up') return;
