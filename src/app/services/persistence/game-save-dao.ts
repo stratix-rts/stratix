@@ -19,8 +19,21 @@
  * 表结构与 src/stratix-database/StratixDatabase.ts 的 createTables/migrate 保持同构
  * （那边管 schema_version 迁移，这边管 IF NOT EXISTS 兜底：DAO 单独在旧库/测试库上也能就位）。
  *
- * @since v3.12，task_033。
+ * ============ 副本维度：instance_id 列（@since v3.3，task_198 / M2-01）============
+ * 两张表各加一列 `instance_id`（**可空、无 DEFAULT**）—— design §1.3.2 步 N1。
+ * 口径（步 N2）：旧行 `instance_id IS NULL` **语义** = 默认沙盒实例（DEFAULT_INSTANCE_ID）；
+ * 查询按 `COALESCE(instance_id, 'wsp_sandbox')` 命中，**落库不改写**旧行。
+ * why 列加在 DDL 末尾：与 ALTER ADD 落地的列序一致（新建库与老库升级后形状逐列相同）。
+ * why 谓词与加列不写在这里：口径只有一份出处（instance-scope.ts），本文件只调用它。
+ *
+ * @since v3.12，task_033；v3.3（task_198）两表加 instance_id 列 + 读口按副本过滤。
  */
+
+import {
+  ensureInstanceIdColumn,
+  instanceScopeWhere,
+  type InstanceReadOptions,
+} from './instance-scope';
 
 /** characters 表名（与 StratixDatabase 里的 DDL 同名 —— 改一处必须同步另一处）。 */
 export const CHARACTERS_TABLE = 'characters';
@@ -102,19 +115,24 @@ export function ensureGameSaveTables(db: SqliteDatabaseLike): void {
       external_session_id TEXT,
       context_enabled INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      instance_id TEXT
     );
     CREATE TABLE IF NOT EXISTS ${UNIT_POSITIONS_TABLE} (
       character_id TEXT PRIMARY KEY,
       x REAL NOT NULL,
       y REAL NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      instance_id TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_characters_kind ON ${CHARACTERS_TABLE}(kind);
   `);
   // v9 兜底（task_053）：旧库（v8 及以前的 characters 表）补 context_enabled。
   // DEFAULT 1：存量行一律归「开」—— 缺省即开的开关语义，迁移不猜旧档案偏好。
   ensureContextEnabledColumn(db);
+  // v14 兜底（task_198）：旧库补 instance_id 列（可空、无 DEFAULT ⇒ 存量行原样留 NULL）。
+  ensureInstanceIdColumn(db, CHARACTERS_TABLE);
+  ensureInstanceIdColumn(db, UNIT_POSITIONS_TABLE);
 }
 
 /** 旧 characters 表补 context_enabled 列（存在性探测 → ALTER ADD；幂等）。 */
@@ -169,12 +187,23 @@ export function upsertCharacters(db: SqliteDatabaseLike, records: readonly Persi
   }
 }
 
-/** 全量读角色档案（按创建时间升序 —— 恢复后的顺序与建档顺序一致，HUD 列表不跳变）。 */
-export function loadCharacters(db: SqliteDatabaseLike): PersistedCharacterRecord[] {
+/**
+ * 全量读角色档案（按创建时间升序 —— 恢复后的顺序与建档顺序一致，HUD 列表不跳变）。
+ *
+ * @param options.instanceId 给了 ⇒ 只读该副本的行（`COALESCE(instance_id, 'wsp_sandbox')` 命中，
+ *   步 N2 口径：默认沙盒命中旧行即 NULL 行，其它副本只命中自己标了 id 的行）。
+ */
+export function loadCharacters(
+  db: SqliteDatabaseLike,
+  options: InstanceReadOptions = {}
+): PersistedCharacterRecord[] {
+  const scope = instanceScopeWhere(options.instanceId);
   const rows = db
-    .prepare(`SELECT id, name, kind, persona, level, exp, appearance, body_type, skin_id, external_session_id, context_enabled, created_at
-              FROM ${CHARACTERS_TABLE} ORDER BY created_at ASC, id ASC`)
-    .all() as Array<Record<string, unknown>>;
+    .prepare(
+      `SELECT id, name, kind, persona, level, exp, appearance, body_type, skin_id, external_session_id, context_enabled, created_at
+              FROM ${CHARACTERS_TABLE} ${scope.sql} ORDER BY created_at ASC, id ASC`
+    )
+    .all(...scope.params) as Array<Record<string, unknown>>;
   return rows.map((row) => ({
     id: String(row.id),
     name: String(row.name),
@@ -214,11 +243,19 @@ export function upsertUnitPositions(
   }
 }
 
-/** 全量读单位站位。 */
-export function loadUnitPositions(db: SqliteDatabaseLike): PersistedUnitPosition[] {
+/**
+ * 全量读单位站位。
+ *
+ * @param options.instanceId 给了 ⇒ 只读该副本的行（步 N2 的 COALESCE 命中口径）。
+ */
+export function loadUnitPositions(
+  db: SqliteDatabaseLike,
+  options: InstanceReadOptions = {}
+): PersistedUnitPosition[] {
+  const scope = instanceScopeWhere(options.instanceId);
   const rows = db
-    .prepare(`SELECT character_id, x, y FROM ${UNIT_POSITIONS_TABLE}`)
-    .all() as Array<Record<string, unknown>>;
+    .prepare(`SELECT character_id, x, y FROM ${UNIT_POSITIONS_TABLE} ${scope.sql}`)
+    .all(...scope.params) as Array<Record<string, unknown>>;
   return rows.map((row) => ({
     characterId: String(row.character_id),
     x: Number(row.x),
@@ -226,10 +263,17 @@ export function loadUnitPositions(db: SqliteDatabaseLike): PersistedUnitPosition
   }));
 }
 
-/** 一次取齐恢复快照（渲染层 loadSnapshot 的后端）。 */
-export function loadGameSnapshot(db: SqliteDatabaseLike): GameSaveSnapshot {
+/**
+ * 一次取齐恢复快照（渲染层 loadSnapshot 的后端）。
+ *
+ * @param options.instanceId 给了 ⇒ 角色与站位都只取该副本的行（步 N2 口径）。
+ */
+export function loadGameSnapshot(
+  db: SqliteDatabaseLike,
+  options: InstanceReadOptions = {}
+): GameSaveSnapshot {
   return {
-    characters: loadCharacters(db),
-    unitPositions: loadUnitPositions(db),
+    characters: loadCharacters(db, options),
+    unitPositions: loadUnitPositions(db, options),
   };
 }

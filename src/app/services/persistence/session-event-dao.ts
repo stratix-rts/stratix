@@ -26,9 +26,18 @@
  *   （那边管 schema_version v13 迁移，这边 IF NOT EXISTS 兜底）。
  *
  * @since v3.43，task_092（schema v13）。
+ *
+ * ============ 副本维度：instance_id 列（@since v3.3，task_198 / M2-01）============
+ * session_events 表加一列 `instance_id`（可空、无 DEFAULT）—— design §1.3.2 步 N1；
+ * 读口按 `COALESCE(instance_id, 'wsp_sandbox')` 命中（步 N2）。**落库不改写**旧行。
  */
 
 import type { SqliteDatabaseLike } from './game-save-dao';
+import {
+  ensureInstanceIdColumn,
+  instanceScopeWhere,
+  type InstanceReadOptions,
+} from './instance-scope';
 
 /** session_events 表名（与 StratixDatabase 的 DDL 同名 —— 两处同步改）。 */
 export const SESSION_EVENTS_TABLE = 'session_events';
@@ -55,7 +64,7 @@ export interface SessionEventInsert {
 }
 
 /** 事件分页参数：beforeSeq 是游标（取该序号**之前**的一段）；limit 缺省 50。 */
-export interface SessionEventPageOptions {
+export interface SessionEventPageOptions extends InstanceReadOptions {
   /** 游标：只取 seq < beforeSeq 的事件；缺省 = 取最新的一段。 */
   readonly beforeSeq?: number;
   readonly limit?: number;
@@ -69,6 +78,7 @@ const SESSION_EVENTS_DDL = `
     type TEXT NOT NULL,
     payload TEXT NOT NULL DEFAULT '{}',
     created_at INTEGER NOT NULL,
+    instance_id TEXT,
     PRIMARY KEY (session_id, seq)
   )`;
 
@@ -81,6 +91,8 @@ export function ensureSessionEventsTable(db: SqliteDatabaseLike): void {
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_session_events_created_at ON ${SESSION_EVENTS_TABLE}(created_at)`
   );
+  // v14 兑底（task_198）：旧库补 instance_id 列（可空、无 DEFAULT ⇒ 存量行原样留 NULL）。
+  ensureInstanceIdColumn(db, SESSION_EVENTS_TABLE);
 }
 
 /**
@@ -122,17 +134,21 @@ export function listSessionEvents(
     typeof options.beforeSeq === 'number' && Number.isFinite(options.beforeSeq)
       ? Math.floor(options.beforeSeq)
       : null;
+  // 副本过滤（task_198，步 N2）：与 seq 游标同一套 WHERE 条件。
+  const scope = instanceScopeWhere(options.instanceId, 'AND ');
   const rows = db
     .prepare(
       `SELECT session_id, seq, type, payload, created_at
        FROM ${SESSION_EVENTS_TABLE}
-       WHERE session_id = ?${beforeSeq === null ? '' : ' AND seq < ?'}
+       WHERE session_id = ?${beforeSeq === null ? '' : ' AND seq < ?'}${scope.sql}
        ORDER BY seq DESC
        LIMIT ?`
     )
-    .all(...(beforeSeq === null ? [sessionId, limit] : [sessionId, beforeSeq, limit])) as Array<
-    Record<string, unknown>
-  >;
+    .all(
+      ...(beforeSeq === null
+        ? [sessionId, ...scope.params, limit]
+        : [sessionId, beforeSeq, ...scope.params, limit])
+    ) as Array<Record<string, unknown>>;
   // DESC 取窗口后反转为正序：查询按 seq 切片，展示始终「从旧到新」。
   return rows.map(mapEventRow).reverse();
 }
@@ -152,19 +168,21 @@ export function listSessionEventsFrom(
   db: SqliteDatabaseLike,
   sessionId: string,
   afterSeq: number,
-  limit: number
+  limit: number,
+  options: InstanceReadOptions = {}
 ): PersistedSessionEvent[] {
   ensureSessionEventsTable(db);
   const bounded = clampLimit(limit);
+  const scope = instanceScopeWhere(options.instanceId, 'AND ');
   const rows = db
     .prepare(
       `SELECT session_id, seq, type, payload, created_at
        FROM ${SESSION_EVENTS_TABLE}
-       WHERE session_id = ? AND seq > ?
+       WHERE session_id = ? AND seq > ?${scope.sql}
        ORDER BY seq ASC
        LIMIT ?`
     )
-    .all(sessionId, Math.floor(afterSeq), bounded) as Array<Record<string, unknown>>;
+    .all(sessionId, Math.floor(afterSeq), ...scope.params, bounded) as Array<Record<string, unknown>>;
   return rows.map(mapEventRow);
 }
 

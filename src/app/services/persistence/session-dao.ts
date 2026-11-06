@@ -27,11 +27,22 @@
  * schema_version v13 迁移，这边 IF NOT EXISTS 兜底 —— DAO 单独在测试库 / 极端旧库上也能就位）。
  *
  * @since v3.43，task_092（schema v13）。
+ *
+ * ============ 副本维度：instance_id 列（@since v3.3，task_198 / M2-01）============
+ * sessions 表加一列 `instance_id`（可空、无 DEFAULT）—— design §1.3.2 步 N1；
+ * 读口按 `COALESCE(instance_id, 'wsp_sandbox')` 命中（步 N2）：默认沙盒命中旧行，
+ * 其它副本只命中自己标了 id 的行。**落库不改写**旧行。
  */
 
 import type { SessionKind, SessionStatus } from '../../../core/types';
 
 import type { SqliteDatabaseLike } from './game-save-dao';
+import {
+  ensureInstanceIdColumn,
+  instanceScopeCondition,
+  instanceScopeWhere,
+  type InstanceReadOptions,
+} from './instance-scope';
 
 /** sessions 表名（与 StratixDatabase 的 DDL 同名 —— 两处同步改）。 */
 export const SESSIONS_TABLE = 'sessions';
@@ -88,7 +99,7 @@ export interface PersistedSessionRecord {
  * 列表过滤条件（kind / status 可选；limit / offset 分页）。
  * why 不做成「全必填」：面板要「全部会话」视图（两个过滤都不给 = 不过滤）。
  */
-export interface SessionListFilter {
+export interface SessionListFilter extends InstanceReadOptions {
   readonly kind?: SessionKind;
   readonly status?: SessionStatus;
   /** 条数上限；缺省 50（与聊天窗口同量级）。 */
@@ -109,7 +120,8 @@ const SESSIONS_DDL = `
     created_at INTEGER NOT NULL,
     last_event_at INTEGER NOT NULL,
     closed_at INTEGER,
-    event_count INTEGER NOT NULL DEFAULT 0
+    event_count INTEGER NOT NULL DEFAULT 0,
+    instance_id TEXT
   )`;
 
 /**
@@ -124,6 +136,8 @@ export function ensureSessionsTable(db: SqliteDatabaseLike): void {
     `CREATE INDEX IF NOT EXISTS idx_sessions_kind_status ON ${SESSIONS_TABLE}(kind, status)`
   );
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON ${SESSIONS_TABLE}(created_at)`);
+  // v14 兑底（task_198）：旧库补 instance_id 列（可空、无 DEFAULT ⇒ 存量行原样留 NULL）。
+  ensureInstanceIdColumn(db, SESSIONS_TABLE);
 }
 
 /**
@@ -165,15 +179,20 @@ export function upsertSessionRecord(db: SqliteDatabaseLike, record: PersistedSes
  * 读一条会话摘要；库里没有返回 null（**不编造**）。
  * why id 走参数绑定：id 是外部来源的字符串，拼 SQL 即注入面。
  */
-export function getSessionRecord(db: SqliteDatabaseLike, id: string): PersistedSessionRecord | null {
+export function getSessionRecord(
+  db: SqliteDatabaseLike,
+  id: string,
+  options: InstanceReadOptions = {}
+): PersistedSessionRecord | null {
   ensureSessionsTable(db);
+  const scope = instanceScopeWhere(options.instanceId, 'AND ');
   const row = db
     .prepare(
       `SELECT id, kind, title, participants, status, ref_id, created_at, last_event_at, closed_at, event_count
        FROM ${SESSIONS_TABLE}
-       WHERE id = ?`
+       WHERE id = ?${scope.sql}`
     )
-    .get(id) as Record<string, unknown> | undefined;
+    .get(id, ...scope.params) as Record<string, unknown> | undefined;
   return row ? mapSessionRow(row) : null;
 }
 
@@ -201,6 +220,12 @@ export function listSessionRecords(
   if (filter.status) {
     conditions.push('status = ?');
     params.push(filter.status);
+  }
+  // 副本过滤（task_198，步 N2）：与 kind/status 同一套条件数组 ⇒ 口径不会分叉。
+  const scope = instanceScopeCondition(filter.instanceId);
+  if (scope.sql !== '') {
+    conditions.push(scope.sql);
+    params.push(...scope.params);
   }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const rows = db
@@ -235,6 +260,12 @@ export function countSessionRecords(db: SqliteDatabaseLike, filter: SessionListF
   if (filter.status) {
     conditions.push('status = ?');
     params.push(filter.status);
+  }
+  // 副本过滤（task_198）：与 listSessionRecords 同一套条件 ⇒ 计数与取页口径一致。
+  const scope = instanceScopeCondition(filter.instanceId);
+  if (scope.sql !== '') {
+    conditions.push(scope.sql);
+    params.push(...scope.params);
   }
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const row = db

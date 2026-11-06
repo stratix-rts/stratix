@@ -22,10 +22,20 @@
  *   schema_version v12 迁移，这边 IF NOT EXISTS 兜底 —— DAO 单独在测试库 / 极端旧库上也能就位）。
  *
  * @since v3.36，task_061（schema v12）。
+ *
+ * ============ 副本维度：instance_id 列（@since v3.3，task_198 / M2-01）============
+ * exp_events 表加一列 `instance_id`（可空、无 DEFAULT）—— design §1.3.2 步 N1；
+ * 读口按 `COALESCE(instance_id, 'wsp_sandbox')` 命中（步 N2）。**落库不改写**旧行。
  */
 
 import { ensureCharacterChatMessagesTable } from './chat-history-dao';
 import { CHARACTERS_TABLE, ensureGameSaveTables, type SqliteDatabaseLike } from './game-save-dao';
+import {
+  ensureInstanceIdColumn,
+  instanceScopeCondition,
+  instanceScopeWhere,
+  type InstanceReadOptions,
+} from './instance-scope';
 import { CHARACTER_TASKS_TABLE, ensureCharacterTasksTable } from './task-record-dao';
 
 /** exp_events 表名（与 StratixDatabase 的迁移 DDL 同名 —— 两处同步改）。 */
@@ -71,7 +81,8 @@ const EXP_EVENTS_DDL = `
     delta INTEGER NOT NULL,
     reason TEXT NOT NULL CHECK (reason IN ('task_completed', 'task_failed', 'chat_round', 'level_up')),
     level INTEGER,
-    created_at INTEGER NOT NULL
+    created_at INTEGER NOT NULL,
+    instance_id TEXT
   )`;
 
 /** 就位兜底：老库 / 测试库上单独调用也能建表（幂等）。索引按「单角色近窗读取」的查询形状建。 */
@@ -80,6 +91,8 @@ export function ensureExpEventsTable(db: SqliteDatabaseLike): void {
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_exp_events_character_time ON ${EXP_EVENTS_TABLE}(character_id, created_at)`
   );
+  // v14 兑底（task_198）：旧库补 instance_id 列（可空、无 DEFAULT ⇒ 存量行原样留 NULL）。
+  ensureInstanceIdColumn(db, EXP_EVENTS_TABLE);
 }
 
 /** 插入一条经验事件（append-only：本表没有 update 语义，历史就是历史）。 */
@@ -94,16 +107,23 @@ export function insertExpEvent(db: SqliteDatabaseLike, insert: ExpEventInsert): 
  * 读某角色自 sinceMs 起（含）的经验事件（created_at 升序 —— 曲线 / 热力按时间正序消费）。
  * 建档前的角色（无行）返回空数组：空态由调用方渲染引导语，这里不编数据。
  */
-export function loadExpEventsSince(db: SqliteDatabaseLike, characterId: string, sinceMs: number): PersistedExpEvent[] {
+export function loadExpEventsSince(
+  db: SqliteDatabaseLike,
+  characterId: string,
+  sinceMs: number,
+  options: InstanceReadOptions = {}
+): PersistedExpEvent[] {
   ensureExpEventsTable(db);
+  // 副本过滤（task_198，步 N2）：默认沙盒命中旧行（instance_id IS NULL）。
+  const scope = instanceScopeWhere(options.instanceId, 'AND ');
   const rows = db
     .prepare(
       `SELECT id, character_id, delta, reason, level, created_at
        FROM ${EXP_EVENTS_TABLE}
-       WHERE character_id = ? AND created_at >= ?
+       WHERE character_id = ? AND created_at >= ?${scope.sql}
        ORDER BY created_at ASC, id ASC`
     )
-    .all(characterId, sinceMs) as Array<Record<string, unknown>>;
+    .all(characterId, sinceMs, ...scope.params) as Array<Record<string, unknown>>;
   return rows.map((row) => ({
     id: Number(row.id ?? 0),
     characterId: String(row.character_id),
@@ -136,12 +156,25 @@ export interface PersistedActivityRow {
  * 全场活跃度聚合：character_chat_messages ∪ character_tasks ∪ exp_events 三源按角色计数。
  * why UNION ALL 而不是三张表三查再拼：一次 GROUP BY 在 SQL 侧收拢，行映射只有一份
  * （三查拼装要三份口径注释，必然漂移）。三源表可能各自缺席（极旧库）—— ensure 全部幂等就位。
+ *
+ * @param options.instanceId 给了 ⇒ 只聚合该副本的行（步 N2 的 COALESCE 命中口径）。
  */
-export function aggregateCharacterActivity(db: SqliteDatabaseLike): PersistedActivityRow[] {
+export function aggregateCharacterActivity(
+  db: SqliteDatabaseLike,
+  options: InstanceReadOptions = {}
+): PersistedActivityRow[] {
   ensureGameSaveTables(db);
   ensureCharacterChatMessagesTable(db);
   ensureCharacterTasksTable(db);
   ensureExpEventsTable(db);
+  // 副本过滤（task_198，步 N2）：三处过滤 —— ① 外层 characters（LEFT JOIN 的左表）；
+  // ② UNION 的 task 分支；③ UNION 的 exp 分支。
+  // why chat 分支**不**按 instance_id 过滤：character_chat_messages 不在本单的六表范围里
+  //   （它没有 instance_id 列）⇒ 对话行靠 character_id 归属，而 character id 唯一
+  //   （N4b 之后更是副本内唯一）⇒ 外层 characters 一过滤，对话计数就随之归到正确的副本。
+  const scope = instanceScopeCondition(options.instanceId);
+  const taskScope = instanceScopeCondition(options.instanceId);
+  const expScope = instanceScopeCondition(options.instanceId);
   const rows = db
     .prepare(
       `SELECT c.id AS character_id, c.created_at AS created_at,
@@ -159,15 +192,20 @@ export function aggregateCharacterActivity(db: SqliteDatabaseLike): PersistedAct
          FROM (
            SELECT character_id, created_at AS at_ms, 'chat' AS src FROM character_chat_messages
            UNION ALL
-           SELECT character_id, created_at, 'task' FROM ${CHARACTER_TASKS_TABLE}
+           SELECT character_id, created_at, 'task' FROM ${CHARACTER_TASKS_TABLE}${taskScope.sql === '' ? '' : ` WHERE ${taskScope.sql}`}
            UNION ALL
-           SELECT character_id, created_at, 'exp' FROM ${EXP_EVENTS_TABLE}
+           SELECT character_id, created_at, 'exp' FROM ${EXP_EVENTS_TABLE}${expScope.sql === '' ? '' : ` WHERE ${expScope.sql}`}
          ) merged
          GROUP BY character_id
        ) u ON u.character_id = c.id
+       ${scope.sql === '' ? '' : `WHERE ${scope.sql}`}
        ORDER BY c.created_at ASC, c.id ASC`
     )
-    .all() as Array<Record<string, unknown>>;
+    .all(
+      ...taskScope.params,
+      ...expScope.params,
+      ...scope.params
+    ) as Array<Record<string, unknown>>;
   return rows.map((row) => ({
     characterId: String(row.character_id),
     chatCount: Number(row.chat_count ?? 0),

@@ -53,8 +53,16 @@
  *   在 pipelines 表的 steps JSON 里，本列只是「这条任务属于哪条线」的最小归属键，
  *   不冗余存站相位（同一真相只在 pipelines 表）。
  *   v3.36（task_076）增可空 mission_id 列（不增 schema_version），随每次任务快照 upsert / 读回。
+ *   v3.3（task_198）增可空 instance_id 列（副本维度；design §1.3.2 步 N1）+ 读口按副本过滤
+ *   （步 N2 的 COALESCE 命中口径）。⚠️ 该列与 artifacts / plan 的处置**不同**：
+ *   它**带数据**（行归属哪个副本）⇒ 重建迁移必须把它**搬过去**（见下方 rebuild 的 DDL 注释）。
  */
 
+import {
+  ensureInstanceIdColumn,
+  instanceScopeWhere,
+  type InstanceReadOptions,
+} from './instance-scope';
 import type { SqliteDatabaseLike } from './game-save-dao';
 
 /** character_tasks 表名（与 StratixDatabase 里的 DDL 同名 —— 改一处必须同步另一处）。
@@ -130,7 +138,9 @@ export interface PersistedTaskStatRow {
   readonly avgDurationMs: number | null;
 }
 
-/** 建表 DDL（六态 CHECK + artifacts + plan + pipeline_id + mission_id）—— 与 StratixDatabase 的 DDL 同构，两处同步改。 */
+/** 建表 DDL（六态 CHECK + artifacts + plan + pipeline_id + mission_id + instance_id）
+ *  —— 与 StratixDatabase 的 DDL 同构，两处同步改。
+ *  why instance_id 放最后：与 ALTER ADD 落地的列序一致（新建库与老库升级后形状逐列相同）。 */
 const CHARACTER_TASKS_DDL = `
   CREATE TABLE IF NOT EXISTS ${CHARACTER_TASKS_TABLE} (
     id TEXT PRIMARY KEY,
@@ -144,7 +154,8 @@ const CHARACTER_TASKS_DDL = `
     artifacts TEXT NOT NULL DEFAULT '',
     plan TEXT NOT NULL DEFAULT '',
     pipeline_id TEXT NOT NULL DEFAULT '',
-    mission_id TEXT
+    mission_id TEXT,
+    instance_id TEXT
   )`;
 
 /** 五态重建的临时表名（task_047，v4 → v5）。 */
@@ -169,6 +180,10 @@ function hasFiveStatusCheck(db: SqliteDatabaseLike): boolean {
  * 四态老表 → 五态重建迁移（task_047）：SQLite 的 CHECK 不可 ALTER，只能重建表
  * （见文件头「status CHECK 五态迁移」的方案取舍）。幂等：已是五态或表不存在时 no-op。
  * 数据零丢失：INSERT SELECT 全字段搬运（老词表四态都是新词表的子集，无冲突行）。
+ *
+ * ⚠️ instance_id 一并搬运（@since v3.3，task_198）：与 artifacts / plan 不同，
+ *   instance_id **带数据**（这行属于哪个副本）⇒ 重建丢它 = 副本归属被静默抹平。
+ *   前置条件：调用方已先 ensureInstanceIdColumn（列不在就炸，与 artifacts 同一纪律）。
  */
 function migrateTaskStatusCheckToFive(db: SqliteDatabaseLike): void {
   const tables = db
@@ -186,11 +201,12 @@ function migrateTaskStatusCheckToFive(db: SqliteDatabaseLike): void {
       output TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL,
       started_at INTEGER,
-      ended_at INTEGER
+      ended_at INTEGER,
+      instance_id TEXT
     );
     INSERT INTO ${CHARACTER_TASKS_MIGRATION_TABLE}
-      (id, character_id, prompt, status, output, created_at, started_at, ended_at)
-      SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at
+      (id, character_id, prompt, status, output, created_at, started_at, ended_at, instance_id)
+      SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, instance_id
       FROM ${CHARACTER_TASKS_TABLE};
     DROP TABLE ${CHARACTER_TASKS_TABLE};
     ALTER TABLE ${CHARACTER_TASKS_MIGRATION_TABLE} RENAME TO ${CHARACTER_TASKS_TABLE};
@@ -215,6 +231,10 @@ function hasSixStatusCheck(db: SqliteDatabaseLike): boolean {
  * 扩词表只有重建一条路。**前置条件：artifacts 列已就位**（ensureArtifactsColumn 先行 ——
  * INSERT SELECT 要搬运它）。幂等：已是六态或表不存在时 no-op。数据零丢失：五态词表是
  * 六态子集；plan 列是新表才有，老行落缺省 ''。
+ *
+ * ⚠️ instance_id 一并搬运（@since v3.3，task_198）：同 migrateTaskStatusCheckToFive ——
+ *   该列带数据（行属于哪个副本），重建丢它 = 副本归属被静默抹平。
+ *   前置条件：ensureInstanceIdColumn 先行（列不在就炸，与 artifacts 同一纪律）。
  */
 function migrateTaskStatusCheckToSix(db: SqliteDatabaseLike): void {
   const tables = db
@@ -234,11 +254,12 @@ function migrateTaskStatusCheckToSix(db: SqliteDatabaseLike): void {
       started_at INTEGER,
       ended_at INTEGER,
       artifacts TEXT NOT NULL DEFAULT '',
-      plan TEXT NOT NULL DEFAULT ''
+      plan TEXT NOT NULL DEFAULT '',
+      instance_id TEXT
     );
     INSERT INTO ${CHARACTER_TASKS_V7_MIGRATION_TABLE}
-      (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts)
-      SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts
+      (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, instance_id)
+      SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, instance_id
       FROM ${CHARACTER_TASKS_TABLE};
     DROP TABLE ${CHARACTER_TASKS_TABLE};
     ALTER TABLE ${CHARACTER_TASKS_V7_MIGRATION_TABLE} RENAME TO ${CHARACTER_TASKS_TABLE};
@@ -282,13 +303,15 @@ function ensureMissionIdColumn(db: SqliteDatabaseLike): void {
 
 /**
  * 建表 + 索引（幂等，旧库新库都能直接调）：
- * 老库全谱就位 —— 四态重建五态（047）→ CREATE IF NOT EXISTS（新库直接建六态全列表）→
+ * 老库全谱就位 —— 补 instance_id 列（task_198；重建要搬它 ⇒ 必须最先）→ 四态重建五态（047）→ CREATE IF NOT EXISTS（新库直接建六态全列表）→
  * 补 artifacts 列（048，六态重建的前置）→ 五态重建六态（049）→ 补 plan 列（兑底）。
  * 与 StratixDatabase 的 DDL 同构；那边负责 schema_version 迁移记录（v7），这里是 DAO 自立兑底。
  * upsert 语义（core 会按相位推进同一条任务：queued → running → awaiting → 终态）要求
  * id 冲突时全字段覆盖。
  */
 export function ensureCharacterTasksTable(db: SqliteDatabaseLike): void {
+  // instance_id 先行（task_198）：两次重建的 INSERT SELECT 都要搬它（列带数据，不能丢）。
+  ensureInstanceIdColumn(db, CHARACTER_TASKS_TABLE);
   migrateTaskStatusCheckToFive(db);
   db.exec(`
     ${CHARACTER_TASKS_DDL};
@@ -357,21 +380,27 @@ export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord):
  * 读某角色最近 limit 条任务（按 created_at 倒序取窗口后反转为时间正序 —— 与
  * loadChatMessages 同一口径：窗口是「尾部 N 条」，顺序是「从旧到新」）。
  * limit 缺省 20（038 的队列可见性量级；聊天窗口是 50，任务没有回填流只看列表，20 够）。
+ *
+ * @param options.instanceId 给了 ⇒ 只读该副本的任务行（步 N2 的 COALESCE 命中口径：
+ *   默认沙盒命中旧行即 instance_id IS NULL 的行）。
  */
 export function loadRecentTasks(
   db: SqliteDatabaseLike,
   characterId: string,
-  limit = 20
+  limit = 20,
+  options: InstanceReadOptions = {}
 ): PersistedTaskRecord[] {
+  // 副本过滤（task_198，步 N2）：COALESCE 命中 ⇒ 默认沙盒拿到旧行（instance_id IS NULL）。
+  const scope = instanceScopeWhere(options.instanceId, 'AND ');
   const rows = db
     .prepare(
       `SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan, pipeline_id, mission_id
        FROM ${CHARACTER_TASKS_TABLE}
-       WHERE character_id = ?
+       WHERE character_id = ?${scope.sql}
        ORDER BY created_at DESC, id DESC
        LIMIT ?`
     )
-    .all(characterId, limit) as Array<Record<string, unknown>>;
+    .all(characterId, ...scope.params, limit) as Array<Record<string, unknown>>;
   return rows
     .map((row) => ({
       id: String(row.id),
@@ -403,14 +432,19 @@ export function loadRecentTasks(
  * 词表外 status（理论不可能，CHECK 兜底）防御性归一为 failed —— 与 loadRecentTasks 同口径不抛。
  * 空表 / 无终态行 → 空数组（调用方按「无历史」处理，不退全 0）。
  */
-export function aggregateTaskStatusCounts(db: SqliteDatabaseLike): PersistedTaskStatRow[] {
+export function aggregateTaskStatusCounts(
+  db: SqliteDatabaseLike,
+  options: InstanceReadOptions = {}
+): PersistedTaskStatRow[] {
+  const scope = instanceScopeWhere(options.instanceId);
   const rows = db
     .prepare(
       `SELECT character_id, status, COUNT(*) AS cnt, AVG(ended_at - started_at) AS avg_ms
        FROM ${CHARACTER_TASKS_TABLE}
+       ${scope.sql}
        GROUP BY character_id, status`
     )
-    .all() as Array<Record<string, unknown>>;
+    .all(...scope.params) as Array<Record<string, unknown>>;
   return rows.map((row) => ({
     characterId: String(row.character_id),
     status: (PERSISTED_TASK_STATUSES as readonly string[]).includes(String(row.status))

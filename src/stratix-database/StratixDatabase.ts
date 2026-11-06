@@ -68,7 +68,36 @@ const DEFAULT_FILENAME = 'stratix.db';
  * why 两张表：摘要可 upsert（状态一直在动），事件只 append（历史即证据）—— 写语义不同，不能挤一张表。
  * why 只加不删：新表不影响既有表结构，老库数据零迁移（与 v11 / v12 同方案）。
  */
-const TARGET_SCHEMA_VERSION = 13;
+/**
+ * v14（@since v3.3，task_198）：六张表各加一列 `instance_id`（**nullable、无 DEFAULT**）——
+ * characters / character_tasks / sessions / session_events / exp_events / unit_positions。
+ * 权威依据：docs/DESIGN-project-map.md §1.3.2 **步 N1**（加列）+ **步 N2**（旧行 instance_id
+ *   = NULL 语义 = 默认沙盒实例 DEFAULT_INSTANCE_ID = 'wsp_sandbox'；查询按
+ *   `COALESCE(instance_id, 'wsp_sandbox')` 命中；**落库不改写**旧行）。
+ * why 是「加法」而不是「迁移」：`ALTER TABLE ADD COLUMN` 只写**表结构**不写**数据** ⇒
+ *   存量行的 instance_id 仍是 NULL（= 默认沙盒），**旧行逐字节原样**（步 N2 的硬约束）。
+ * why 加列排在所有重建迁移**之后**（migrateMissingColumns 顺序）：character_tasks 的
+ *   CHECK 重建会丢掉不在临时表 DDL 里的列 ⇒ 重建跑完再统一加列，列序与新库一致。
+ * DDL 与 app/services/persistence/*-dao.ts 的 ensure* 同构同步改（铁律同上）。
+ */
+const TARGET_SCHEMA_VERSION = 14;
+
+/**
+ * 六张带副本维度的表（design §1.3.2 步 N1 的表清单）。
+ * ⚠️ 与 app/services/persistence/instance-scope.ts 的同名常量**内容必须一致**：
+ *   两层各持一份是既有 DDL 纪律的延续（stratix-database 是驱动层，不反向依赖 app 层）。
+ */
+const INSTANCE_SCOPED_TABLES = [
+  'characters',
+  'character_tasks',
+  'sessions',
+  'session_events',
+  'exp_events',
+  'unit_positions',
+] as const;
+
+/** instance_id 列名（六表统一；改一处必须同步六张表的建表 DDL 与两处迁移链）。 */
+const INSTANCE_ID_COLUMN = 'instance_id';
 
 /** Valid table name characters (alphanumeric + underscore) */
 const VALID_TABLE_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
@@ -191,6 +220,9 @@ export class StratixDatabase {
     this.migrateExpEvents();
     this.migrateSessions();
     this.migrateSafetyIndexes();
+    // v14（task_198）：六表加 instance_id 列。**排在所有重建迁移之后** ——
+    // character_tasks 的 CHECK 重建只搬临时表 DDL 里的列，最后统一加列 ⇒ 不会丢。
+    this.migrateInstanceIdColumns();
   }
 
   /**
@@ -209,6 +241,8 @@ export class StratixDatabase {
       // 下面的五态/六态重建与加列兜底对它全部幂等直过。
       // @since v3.27（task_051）：新建表直接带 v8 形状（+pipeline_id）；v7 及更早的库在
       // 方法尾部 ALTER ADD 兑底（重建临时表的 DDL 冻结在 v7 形状，历史迁移不动）。
+      // @since v3.3（task_198）：instance_id 是**唯一**例外 —— 两次重建都把它搬过去
+      //   （它带数据：副本归属），否则重建一次就把归属抹平一次。
       this.db.exec(`
         CREATE TABLE IF NOT EXISTS character_tasks (
           id TEXT PRIMARY KEY,
@@ -222,7 +256,9 @@ export class StratixDatabase {
           artifacts TEXT NOT NULL DEFAULT '',
           plan TEXT NOT NULL DEFAULT '',
           pipeline_id TEXT NOT NULL DEFAULT '',
-          mission_id TEXT
+          mission_id TEXT,
+          -- 副本归属（task_198，步 N1）：可空、无 DEFAULT ⇒ 旧行 = NULL = 默认沙盒
+          instance_id TEXT
         )
       `);
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_character_tasks_character ON character_tasks(character_id, created_at)');
@@ -235,6 +271,15 @@ export class StratixDatabase {
     // 'cancelled' 只会出现在 CHECK 词表里，作 DDL 指纹足够（与 task-record-dao 同一手法）。
     // why 不在这里 return：下面的 v6 加列对「重建过的 v4 表」和「原生的 v5 表」都要跑
     // （重建产物不带 artifacts 列；v5 表天然也没有）—— 早退会跳过加列。
+    //
+    // v14（task_198）：instance_id **在重建之前**先补上 ——
+    //   重建的 INSERT SELECT 只搬临时表 DDL 里有的列，而 instance_id **带数据**
+    //   （这行属于哪个副本）⇒ 不搬就是静默抹平副本归属（与 artifacts 的「无数据可丢」不同）。
+    if (!this.getColumnNames('character_tasks').has(INSTANCE_ID_COLUMN)) {
+      this.db.exec(`ALTER TABLE character_tasks ADD COLUMN ${INSTANCE_ID_COLUMN} TEXT`);
+      log('info', 'Added instance_id column to character_tasks (task_198)');
+    }
+
     const row = this.db
       .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'character_tasks'`)
       .get() as { sql?: string } | undefined;
@@ -250,11 +295,12 @@ export class StratixDatabase {
         output TEXT NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL,
         started_at INTEGER,
-        ended_at INTEGER
+        ended_at INTEGER,
+        instance_id TEXT
       );
       INSERT INTO character_tasks_v5
-        (id, character_id, prompt, status, output, created_at, started_at, ended_at)
-        SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at
+        (id, character_id, prompt, status, output, created_at, started_at, ended_at, instance_id)
+        SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, instance_id
         FROM character_tasks;
       DROP TABLE character_tasks;
       ALTER TABLE character_tasks_v5 RENAME TO character_tasks;
@@ -276,6 +322,7 @@ export class StratixDatabase {
     // ALTER）。**必须在 artifacts 兜底之后**：INSERT SELECT 搬运 artifacts 列，列不在就炸。
     // 'awaiting_approval' 指纹只在 CHECK 词表出现（同 'cancelled' 手法）；已是六态幂等直过。
     // plan 列随重建建表 DDL 就位（老行缺省 ''）；六态表缺 plan 的边角（手改库）ALTER 兜底。
+    // ⚠️ instance_id 一并搬（task_198）：该列带数据（副本归属），重建丢它 = 归属被静默抹平。
     const row7 = this.db
       .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'character_tasks'`)
       .get() as { sql?: string } | undefined;
@@ -292,11 +339,12 @@ export class StratixDatabase {
         started_at INTEGER,
         ended_at INTEGER,
         artifacts TEXT NOT NULL DEFAULT '',
-        plan TEXT NOT NULL DEFAULT ''
+        plan TEXT NOT NULL DEFAULT '',
+        instance_id TEXT
       );
       INSERT INTO character_tasks_v7
-        (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts)
-        SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts
+        (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, instance_id)
+        SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, instance_id
         FROM character_tasks;
       DROP TABLE character_tasks;
       ALTER TABLE character_tasks_v7 RENAME TO character_tasks;
@@ -386,7 +434,8 @@ export class StratixDatabase {
         delta INTEGER NOT NULL,
         reason TEXT NOT NULL CHECK (reason IN ('task_completed', 'task_failed', 'chat_round', 'level_up')),
         level INTEGER,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        instance_id TEXT
       )
     `);
     this.db.exec('CREATE INDEX IF NOT EXISTS idx_exp_events_character_time ON exp_events(character_id, created_at)');
@@ -435,7 +484,8 @@ export class StratixDatabase {
           created_at INTEGER NOT NULL,
           last_event_at INTEGER NOT NULL,
           closed_at INTEGER,
-          event_count INTEGER NOT NULL DEFAULT 0
+          event_count INTEGER NOT NULL DEFAULT 0,
+          instance_id TEXT
         )
       `);
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_kind_status ON sessions(kind, status)');
@@ -450,6 +500,7 @@ export class StratixDatabase {
           type TEXT NOT NULL,
           payload TEXT NOT NULL DEFAULT '{}',
           created_at INTEGER NOT NULL,
+          instance_id TEXT,
           PRIMARY KEY (session_id, seq)
         )
       `);
@@ -528,7 +579,8 @@ export class StratixDatabase {
           external_session_id TEXT,
           context_enabled INTEGER NOT NULL DEFAULT 1,
           created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
+          updated_at INTEGER NOT NULL,
+          instance_id TEXT
         )
       `);
       this.db.exec('CREATE INDEX IF NOT EXISTS idx_characters_kind ON characters(kind)');
@@ -550,7 +602,8 @@ export class StratixDatabase {
           character_id TEXT PRIMARY KEY,
           x REAL NOT NULL,
           y REAL NOT NULL,
-          updated_at INTEGER NOT NULL
+          updated_at INTEGER NOT NULL,
+          instance_id TEXT
         )
       `);
       log('info', 'Created unit_positions table');
@@ -681,6 +734,26 @@ export class StratixDatabase {
     this.createIndexSafely('idx_agent_zone_bindings_zone', 'CREATE INDEX IF NOT EXISTS idx_agent_zone_bindings_zone ON agent_zone_bindings(zone_id)');
     this.createIndexSafely('idx_zone_members_zone_id', 'CREATE INDEX IF NOT EXISTS idx_zone_members_zone_id ON zone_members(zone_id)');
     this.createIndexSafely('idx_zone_members_agent', 'CREATE INDEX IF NOT EXISTS idx_zone_members_agent ON zone_members(agent_id)');
+  }
+
+  /**
+   * 六表的 instance_id 列（@since v3.3，task_198，schema v14）——
+   * design §1.3.2 步 N1（加列）+ 步 N2（旧行 = NULL = 默认沙盒；落库不改写）。
+   *
+   * 幂等：列已在（新建库 / 已迁移过的库）⇒ 直接跳过 ⇒ 迁移可重复执行。
+   * 零数据改写：`ALTER TABLE ... ADD COLUMN col TEXT`（**无 DEFAULT**）只改表结构，
+   *   存量行的该列落 NULL —— 旧行逐字节原样，NULL 的语义由查询期 COALESCE 归一。
+   * why 表清单在这里另持一份：stratix-database 是驱动层，不反向依赖 app 层
+   *   （app/services/persistence/instance-scope.ts 的 INSTANCE_SCOPED_TABLES 是同一份清单）。
+   */
+  private migrateInstanceIdColumns(): void {
+    const tables = this.getTableNames();
+    for (const table of INSTANCE_SCOPED_TABLES) {
+      if (!tables.has(table)) continue; // 表还不存在：交给各自的建表路径（建表 DDL 自带该列）
+      if (this.getColumnNames(table).has(INSTANCE_ID_COLUMN)) continue;
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${INSTANCE_ID_COLUMN} TEXT`);
+      log('info', `Added ${INSTANCE_ID_COLUMN} column to ${table} table (task_198)`);
+    }
   }
 
   /**
@@ -1179,6 +1252,7 @@ export class StratixDatabase {
 
       -- 角色档案表：core WorldState.characters 的落库形态（appearance 存 JSON）；
       -- @since v3.29 context_enabled = 角色级上下文注入开关（task_053，缺省开）
+      -- @since v3.3 instance_id = 副本归属（task_198，步 N1：可空、无 DEFAULT ⇒ 旧行 = NULL = 默认沙盒）
       CREATE TABLE IF NOT EXISTS characters (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -1192,15 +1266,18 @@ export class StratixDatabase {
         external_session_id TEXT,
         context_enabled INTEGER NOT NULL DEFAULT 1,
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        instance_id TEXT
       );
 
       -- 单位站位表：characterId → 战场世界坐标（app 层防抖批量写入）
+      -- @since v3.3 instance_id = 副本归属（task_198，步 N1）
       CREATE TABLE IF NOT EXISTS unit_positions (
         character_id TEXT PRIMARY KEY,
         x REAL NOT NULL,
         y REAL NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        instance_id TEXT
       );
 
       -- 角色对话历史表（@since v3.15，task_036）：role ∈ user|assistant|system|error（error 为旧行兼容）；
@@ -1233,7 +1310,9 @@ export class StratixDatabase {
         -- 计划草稿全文（@since v3.25，task_049）：审批门挂起时已剥离标记行的计划，'' = 无
         plan TEXT NOT NULL DEFAULT '',
         -- 关联 mission（task_076）：角色任务终态回报的关联键，NULL = 普通任务
-        mission_id TEXT
+        mission_id TEXT,
+        -- 副本归属（task_198，步 N1）：可空、无 DEFAULT ⇒ 旧行 = NULL = 默认沙盒
+        instance_id TEXT
       );
 
       -- 索引

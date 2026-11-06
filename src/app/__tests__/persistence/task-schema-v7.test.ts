@@ -120,7 +120,7 @@ describe('StratixDatabase schema v7（六态 + plan 列，task_049）', () => {
     try {
       expect(hasSixStateCheck(db)).toBe(true);
       expect(columnNames(db)).toEqual(expect.arrayContaining(['artifacts', 'plan']));
-      expect(versionOf(db)).toBe(13); // v13（task_092）起目标 schema 是 13（sessions / session_events）
+      expect(versionOf(db)).toBe(14); // v14（task_198）起目标 schema 是 14（六表加 instance_id）
       // 六态词表全走一遍：挂起行 + 驳回行都能进（CHECK 不炸就是迁移成功的硬证据）
       upsertTask(db.getDatabase(), record());
       upsertTask(
@@ -152,7 +152,7 @@ describe('StratixDatabase schema v7（六态 + plan 列，task_049）', () => {
     try {
       expect(hasSixStateCheck(db)).toBe(true);
       expect(columnNames(db)).toEqual(expect.arrayContaining(['artifacts', 'plan']));
-      expect(versionOf(db)).toBe(13); // v13（task_092）起目标 schema 是 13（sessions / session_events）
+      expect(versionOf(db)).toBe(14); // v14（task_198）起目标 schema 是 14（六表加 instance_id）
       // 老行零丢失：artifacts（v6 加列）随重建搬运，plan 是新列落缺省（读侧 undefined）
       const old = loadRecentTasks(db.getDatabase(), 'ch-1')[0];
       expect(old).toMatchObject({ id: 'task_old', output: '老结果全文', plan: undefined });
@@ -182,7 +182,7 @@ describe('StratixDatabase schema v7（六态 + plan 列，task_049）', () => {
     try {
       expect(hasSixStateCheck(db)).toBe(true);
       expect(columnNames(db)).toEqual(expect.arrayContaining(['artifacts', 'plan']));
-      expect(versionOf(db)).toBe(13); // v13（task_092）起目标 schema 是 13（sessions / session_events）
+      expect(versionOf(db)).toBe(14); // v14（task_198）起目标 schema 是 14（六表加 instance_id）
       const old = loadRecentTasks(db.getDatabase(), 'ch-1')[0];
       expect(old).toMatchObject({ id: 'task_old', output: '老结果全文' });
       upsertTask(db.getDatabase(), record());
@@ -206,7 +206,7 @@ describe('StratixDatabase schema v7（六态 + plan 列，task_049）', () => {
     try {
       expect(hasSixStateCheck(db)).toBe(true);
       expect(columnNames(db)).toEqual(expect.arrayContaining(['artifacts', 'plan']));
-      expect(versionOf(db)).toBe(13); // v13（task_092）起目标 schema 是 13（sessions / session_events）
+      expect(versionOf(db)).toBe(14); // v14（task_198）起目标 schema 是 14（六表加 instance_id）
       const old = loadRecentTasks(db.getDatabase(), 'ch-1')[0];
       expect(old).toMatchObject({ id: 'task_old', output: '老结果全文' });
       // 五态（cancelled）与六态（awaiting_approval）都可用 —— 全链迁移后的表两代词表都收
