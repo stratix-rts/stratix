@@ -65,6 +65,34 @@ const CATEGORY_ALIASES: Record<string, readonly string[]> = {
   eyes: ['eyes', 'eye_color'],
 };
 
+/**
+ * LPC 图层路径里的**模板变量**（形如 `${head}` / `${expression}`）。
+ *
+ * why 要专门处理：素材元数据的图层路径是**带占位**的（不是最终路径）——
+ *   例：眼睛层 = `eyes/human/${head}/${expression}/`。
+ * 不插值就拿去请求 ⇒ URL 里带着 `${head}` 字面量 ⇒ 必然 404 ⇒ 整层消失。
+ * （这正是 DESIGN §2.3 记录的已知 bug，本单已修。）
+ */
+const LPC_TEMPLATE_PATTERN = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
+
+/**
+ * 体型 → LPC 的**身体层名**（`${head}` 的取值键前缀）。
+ *
+ * why 需要它：素材的 replaceInPath 表按 **LPC 身体层名**建索引
+ *   （'Human_male' / 'Human_Male' / 'Human_female' …），
+ *   而我们这边的体型词表只有 6 个（male/female/teen/muscular/pregnant/child）。
+ *   LPC 素材事实：teen 与 muscular 用男性身体层，pregnant 用女性身体层
+ *   （素材目录里没有 teen/ muscular/ pregnant 各自的头部目录，只有 adult/ child/ elderly）。
+ */
+const LPC_BODY_LAYER_NAMES: Record<BodyType, string> = {
+  male: 'male',
+  female: 'female',
+  teen: 'male',
+  muscular: 'male',
+  pregnant: 'female',
+  child: 'child',
+};
+
 /** 注册表。 */
 export class PartRegistry {
   private readonly metadata = new Map<string, PartMetadata>();
@@ -193,12 +221,17 @@ export class PartRegistry {
    * 路径格式：`{素材根}/{图层相对路径}{动画}/{变体}.png`
    * 例：'/spritesheets/body/bodies/male/walk/light.png'
    *
+   * ★ 图层路径里的**模板变量必须插值**（@since v3.3，task_197 / CP-03）：
+   *   LPC 的图层路径带 `${head}` / `${expression}` 这类占位（眼睛层就是），
+   *   拼 URL 时不插值 ⇒ 请求的是一条**字面量带花括号**的路径 ⇒ 必然 404 ⇒ 整层丢失。
+   *   插值规则见 interpolateLayerPath（下方）。
+   *
    * @param itemId 部位条目 id。
    * @param variant 变体名（大小写 / 空格会被规整成文件名形式）。
    * @param bodyType 体型（决定用哪套图层路径）。
    * @param animation 动画名。
    * @param layerNum 图层号（1 起）。
-   * @returns 路径；部位不存在 / 该体型没有图层 / 该图层没有该动画 → null（跳过这一层）。
+   * @returns 路径；部位不存在 / 该体型没有图层 / 模板变量解不出来 → null（跳过这一层）。
    */
   buildSpritePath(
     itemId: string,
@@ -213,7 +246,11 @@ export class PartRegistry {
     const layer = meta.layers?.[`layer_${layerNum}`];
     if (!layer) return null;
 
-    const basePath = (layer as Record<string, string | undefined>)[bodyType];
+    const rawPath = (layer as Record<string, string | undefined>)[bodyType];
+    if (!rawPath) return null;
+
+    // 模板变量解不出来 ⇒ 该层跳过（绝不产出带 `${}` 的坏 URL —— 那必然 404）。
+    const basePath = interpolateLayerPath(rawPath, meta, bodyType);
     if (!basePath) return null;
 
     return `${this.basePath}/${basePath}${animation}/${variantToFilename(variant)}.png`;
@@ -379,6 +416,97 @@ export class PartRegistry {
 /** 变体名 → 素材文件名（小写 + 空格转下划线）。 */
 export function variantToFilename(variant: string): string {
   return variant.toLowerCase().replace(/\s+/g, '_');
+}
+
+/**
+ * 图层路径的**模板插值**（@since v3.3，task_197 / CP-03 —— 修眼睛层 URL 模板变量未插值的 bug）。
+ *
+ * why 放在注册表（而不是合成器）：注册表是**拼路径**的地方，
+ *   而缓存键的源码哈希只覆盖 character-composer.ts / part-registry.ts / constants.ts
+ *   （见 composer-version.ts）—— 插值逻辑放在这里，改它就会让缓存键变、旧烘焙图自动失效。
+ *
+ * 规则（LPC 素材事实）：
+ *   - `${head}`：头部目录（adult / child / elderly）—— 按素材自己的 replaceInPath.head 表取；
+ *   - `${expression}`：表情目录（default / neutral / anger …）—— 没戴表情层时取 'default'；
+ *   - 变量解不出来 ⇒ **该层跳过**（返回 null）：宁可少画一层，也不请求一条带 `${}` 的坏 URL
+ *     （那必然 404，等于把「少一层」变成「整层变噪音」）。
+ *
+ * @param template 图层路径模板（可能含 `${var}`）。
+ * @param meta 该部位的素材元数据（replaceInPath 表在这里）。
+ * @param bodyType 体型（决定 head / expression 的取值）。
+ * @returns 插值后的相对路径；解不出来 → null（跳过该层）。
+ */
+function interpolateLayerPath(
+  template: string,
+  meta: PartMetadata,
+  bodyType: BodyType
+): string | null {
+  if (!template.includes('${')) return template;
+
+  let result = template;
+  for (const match of template.matchAll(LPC_TEMPLATE_PATTERN)) {
+    const name = match[1];
+    const value = resolveTemplateValue(name, meta, bodyType);
+    if (value === undefined) {
+      console.warn(
+        `[PartRegistry] 部位「${meta.itemId}」的图层路径变量「${name}」解不出来，跳过该层：${template}`
+      );
+      return null;
+    }
+    result = result.split(match[0]).join(value);
+  }
+
+  // 空值会把路径段留成 '//'（表情段整段省略的情形）—— 归一化掉。
+  return result.replace(/\/{2,}/g, '/');
+}
+
+/** 模板变量的取值（解不出来 → undefined）。 */
+function resolveTemplateValue(
+  name: string,
+  meta: PartMetadata,
+  bodyType: BodyType
+): string | undefined {
+  if (name === 'head') return resolveHeadDirectory(meta, bodyType);
+  if (name === 'expression') return resolveExpressionDirectory(meta, bodyType);
+  return undefined;
+}
+
+/**
+ * `${head}` 的取值：头部目录（adult / child / elderly）。
+ *
+ * why child 直接给 'child'：素材事实 —— 眼睛等素材对 child 体型是单独一套目录
+ *   （eyes/human/child/…），没有 child 的 replaceInPath 键也要给对。
+ * 其余体型按素材自己的 replaceInPath.head 表取（表里的键是 LPC 身体层名，
+ *   大小写两种写法都试一遍：眼睛层用 'Human_male'，表情层用 'Human_Male'）。
+ */
+function resolveHeadDirectory(meta: PartMetadata, bodyType: BodyType): string | undefined {
+  if (bodyType === 'child') return 'child';
+
+  const table = meta.replaceInPath?.head;
+  if (!table) return undefined;
+
+  const bodyLayer = LPC_BODY_LAYER_NAMES[bodyType];
+  const capitalized = `${bodyLayer[0].toUpperCase()}${bodyLayer.slice(1)}`;
+  for (const key of [`Human_${bodyLayer}`, `Human_${capitalized}`]) {
+    const value = table[key];
+    if (value) return value;
+  }
+  return undefined;
+}
+
+/**
+ * `${expression}` 的取值：表情目录。
+ *
+ * why child 是空串：素材事实 —— child 的脸没有表情变体
+ *   （眼睛素材目录 eyes/human/child/ 下直接就是动画目录，没有 default/ neutral/ …），
+ *   空串 ⇒ 该路径段整段省略（见 interpolateLayerPath 末尾的归一化）。
+ * 其余体型取「没戴表情层」的那一档（素材表里 'none' → 'default'）。
+ */
+function resolveExpressionDirectory(meta: PartMetadata, bodyType: BodyType): string | undefined {
+  if (bodyType === 'child') return '';
+
+  const table = meta.replaceInPath?.expression;
+  return table?.none ?? 'default';
 }
 
 /** 部位是否支持某动画（尊重别名表；素材没写动画列表 = 视为全支持）。 */

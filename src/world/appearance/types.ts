@@ -74,7 +74,14 @@ export interface PartMetadata {
   readonly requiredTags?: readonly string[];
   readonly excludedTags?: readonly string[];
   readonly path?: readonly string[];
-  readonly replaceInPath?: Readonly<Record<string, string>>;
+  /**
+   * LPC 的**路径替换表**（素材元数据里的 replaceInPath）。
+   *
+   * why 是嵌套的：外层键 = 图层路径里的**模板变量名**（'head' / 'expression'），
+   *   内层 = 「取值键 → 目录名」的映射（如 'Human_male' → 'adult'、'none' → 'default'）。
+   *   插值规则见 part-registry.ts 的 interpolateLayerPath。
+   */
+  readonly replaceInPath?: Readonly<Record<string, Readonly<Record<string, string>>>>;
   readonly previewRow?: number;
   readonly previewColumn?: number;
   readonly previewXOffset?: number;
