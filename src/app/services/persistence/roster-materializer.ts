@@ -53,12 +53,14 @@
  * @since v3.3（task_202 / M2-05）。
  */
 
+import { MAX_CHARACTERS_TOTAL } from '../../../core/capacity';
 import { DEFAULT_INSTANCE_ID, MAX_CHARACTERS, type ProjectInstanceId } from '../../../core/types';
 import {
   readRosterRoleDefinitions,
   type RosterRoleDefinition,
 } from '../project-context-loader';
 
+import { countCharacters } from './capacity-limits';
 import { deriveCharacterId } from './character-id-rewrite';
 import { CHARACTERS_TABLE, ensureGameSaveTables, type SqliteDatabaseLike } from './game-save-dao';
 
@@ -262,6 +264,10 @@ export function materializeRosterCharacters(
     const existing = loadMaterializedRows(db, instanceId);
     // 容量护栏：本副本的角色数不超过 MAX_CHARACTERS（core 契约上限）。
     let budget = Math.max(0, MAX_CHARACTERS - countInstanceCharacters(db, instanceId));
+    // 全局护栏（@since v3.3，task_205 / M2-08）：`characters` 表**跨副本**累积 ——
+    //   副本一多，每副本 64 条会叠成无界的行数（落库表整体驻留内存）。
+    //   ⇒ 全库再钉一条 MAX_CHARACTERS_TOTAL；满了就**拒新**（不物化），已有行一概不动。
+    let globalBudget = Math.max(0, MAX_CHARACTERS_TOTAL - countCharacters(db));
 
     const created: string[] = [];
     const refreshed: string[] = [];
@@ -287,6 +293,12 @@ export function materializeRosterCharacters(
         );
         break;
       }
+      if (globalBudget <= 0) {
+        logger(
+          `[RosterMaterializer] 角色表全局行数已达上限（${MAX_CHARACTERS_TOTAL}）⇒ 副本 ${instanceId} 的 roster 角色本轮不物化`
+        );
+        break;
+      }
       const characterId = deriveCharacterId(role.id, instanceId);
       insertMaterializedRow(db, {
         id: characterId,
@@ -302,6 +314,7 @@ export function materializeRosterCharacters(
       });
       created.push(characterId);
       budget -= 1;
+      globalBudget -= 1;
     }
 
     return { instanceId, created, refreshed, unchanged, skipped: false };

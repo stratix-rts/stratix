@@ -86,6 +86,10 @@ export function recordToCharacterView(record: PersistedCharacterRecord): Charact
     // @since v3.29（task_053）：context_enabled 列镜像；false 才写（true 是缺省语义，
     //   不写字段让老快照 / 新代码任意组合都等价 —— 缺省即开，两侧归一口径）。
     ...(record.contextEnabled === false ? { contextEnabled: false } : {}),
+    // 归属镜像（@since v3.3，task_205）：行上的 instance_id ⇒ 视图上的 instanceId。
+    // why 带上：副本维度的容量判定按「行带着归属」计账（落库层 capacity-limits.ts），
+    //   视图不带归属 ⇒ 回写时行会落 NULL ⇒ 副本计数失准。
+    ...(record.instanceId ? { instanceId: record.instanceId } : {}),
   };
 }
 
@@ -105,6 +109,9 @@ export function characterViewToRecord(character: CharacterView, createdAt: numbe
     // 缺省（undefined/null）≡ true（@since v3.29，task_053）。
     contextEnabled: character.contextEnabled ?? true,
     createdAt,
+    // 归属（@since v3.3，task_205 / M2-08）：视图带归属 ⇒ 行带 instance_id
+    //   （副本维度的容量计账靠它；缺省 = 未归属 ⇒ 不带这个键，行落 NULL）。
+    ...(character.instanceId ? { instanceId: character.instanceId } : {}),
   };
 }
 

@@ -26,6 +26,9 @@ import {
 import { createNodeExec } from '../app/services/node-exec';
 import { createTransportFor, createTransportForCustomAgent } from '../app/services/cli-transport';
 import type { CliChatEventEnvelope, CliChatRunRequest } from '../app/services/chat-transport-bridge';
+// 角色池容量护栏（@since v3.3，task_205 / M2-08）：新角色进库前先过容量判定 ——
+//   超限**拒新**（老行的改档照写），绝不让落库表跨副本无界增长。
+import { filterCharactersWithinCapacity } from '../app/services/persistence/capacity-limits';
 import {
   ensureGameSaveTables,
   loadGameSnapshot,
@@ -498,8 +501,16 @@ function setupIPC() {
       if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
       const db = getDatabase().getDatabase();
       ensureGameSaveTables(db);
-      upsertCharacters(db, records);
-      return { ok: true };
+      // 容量护栏（@since v3.3，task_205 / M2-08）：新行超上限 ⇒ 拒新（老行改档照写）。
+      //   why 在这里判：这是渲染侧**唯一**的角色写库通道（写入路径 = 触发点）。
+      const { accepted, rejected } = filterCharactersWithinCapacity(db, records);
+      upsertCharacters(db, accepted);
+      if (rejected.length > 0) {
+        console.warn(
+          `[Electron] game:saveCharacters 容量护栏拒新 ${rejected.length} 个角色（${rejected.join(', ')}）`
+        );
+      }
+      return { ok: true, rejected: rejected.length };
     } catch (error: any) {
       console.error('[Electron] game:saveCharacters failed:', error);
       return { ok: false, error: error?.message ?? String(error) };

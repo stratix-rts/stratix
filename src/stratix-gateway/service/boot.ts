@@ -33,6 +33,7 @@ import type { SqliteDatabaseLike } from '../../app/services/persistence/game-sav
 import {
   createInstanceLoader,
   createStoreMissionsProvider,
+  type InstanceRegistry,
 } from '../../app/services/persistence/instance-loader';
 import {
   createSqliteInstanceDataSource,
@@ -86,6 +87,15 @@ export interface ServiceBootOptions {
   readonly createTransport?: TaskTransportFactory;
   /** 日志口（缺省 = console.log）。 */
   readonly logger?: (line: string) => void;
+  /**
+   * 实例注册表（@since v3.3，task_205 / M2-08）。
+   *
+   * why 可注入：**同一份**注册表要被两处共用 —— 组合根要它装载副本、
+   *   容量守门要它定位副本根（归档到 `.stratix/history`）。
+   *   两处各造一份 ⇒ 两份清单可能不一致（副本被挪过位置时，解析出的根会打架）。
+   *   缺省 = 自己造一份（默认沙盒 + 进程 cwd 快照）—— 单测与嵌入式用法走这条。
+   */
+  readonly instanceRegistry?: InstanceRegistry;
 }
 
 /** 启动产物：一个可停的 service。 */
@@ -121,12 +131,14 @@ export function bootStratixService(options: ServiceBootOptions = {}): BootedStra
   //   ⇒ 大厅有卡、`project.enter(DEFAULT_INSTANCE_ID)` 能进、旧数据（instance_id IS NULL 的行）
   //   按 COALESCE 口径落它名下（design §2.4 R1-04 / §7.1 M1-07 行）。
   const store = options.store ?? worldStore;
-  const instanceRegistry = createInstanceRegistryWithDefaultSandbox({
-    cwd: nodeProcessCwd(),
-    // 分支（@since v3.3，task_187 / M1-13）：副本名牌上的「分支」一行。
-    // 取不到 = null（未知不是错误）⇒ 名牌不画「分支」那一段，不猜。
-    branch: nodeProcessGitBranch(),
-  });
+  const instanceRegistry =
+    options.instanceRegistry ??
+    createInstanceRegistryWithDefaultSandbox({
+      cwd: nodeProcessCwd(),
+      // 分支（@since v3.3，task_187 / M1-13）：副本名牌上的「分支」一行。
+      // 取不到 = null（未知不是错误）⇒ 名牌不画「分支」那一段，不猜。
+      branch: nodeProcessGitBranch(),
+    });
   // 实例根解析口（副本 id → 项目根；注册表为准，副本被挪过位置也能找对）。
   //   两个端口共用**同一份**解析口（物化要它找 `.stratix/roster`，归档要它找 `.stratix/history`）
   //   —— 一份解析口 ⇒ 两处不会各自解释出不同的根。

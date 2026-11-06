@@ -43,6 +43,10 @@
  *   v3.43（task_093 / v3.2a S3）追加会话两张表的写口（persistSession / persistSessionEvent）。
  */
 
+// 容量守门 + 从属行随行清理（@since v3.3，task_205 / M2-08）：
+//   ① 事件追加后按副本口径判容量，超限滚动归档最老（落盘口由组合根注入）；
+//   ② 删角色 ⇒ 连同 exp_events / unit_positions 一起删（这两张表无独立池）。
+import { deleteCharacterCascade } from '../../app/services/persistence/capacity-limits';
 import type { ChatPersistInput } from '../../app/services/persistence/chat-history';
 import {
   ensureCharacterChatMessagesTable,
@@ -65,6 +69,7 @@ import {
   type PersistedSessionRecord,
   type SessionListFilter,
 } from '../../app/services/persistence/session-dao';
+import type { SessionEventCapacityGuard } from '../../app/services/persistence/session-event-archive';
 import {
   ensureSessionEventsTable,
   listSessionEvents,
@@ -146,6 +151,14 @@ export interface ServiceStorage {
   readonly persistSession: (record: PersistedSessionRecord) => void;
   /** 落一条会话事件（session_events 表；append-only）。@since v3.43，task_093。 */
   readonly persistSessionEvent: (event: SessionEventInsert) => void;
+  /**
+   * 删角色时**连同从属行一起删**（@since v3.3，task_205 / M2-08）——
+   *   `exp_events`（经验事件流）与 `unit_positions`（战场站位）**无独立池**：
+   *   它们的存在意义完全依附于角色 ⇒ 角色没了，它们就该跟着没（否则表照样无界增长）。
+   *
+   * why 是**可选**方法：存储件没接这个能力时，删角色只动内存态（缺省即缺省范式）。
+   */
+  readonly deleteCharacter?: (characterId: string) => void;
 }
 
 /** 存储件的创建参数。 */
@@ -157,6 +170,15 @@ export interface ServiceStorageOptions {
   readonly dataDir?: string;
   /** 日志口（落库被拒 / 失败各记一行）。缺省 = console.warn。 */
   readonly logger?: (line: string) => void;
+  /**
+   * 会话事件的**容量守门**（可选；@since v3.3，task_205 / M2-08）——
+   *   追加一条事件后调一次：按副本口径判容量，超限则滚动归档最老的事件到 `history/`。
+   *
+   * why 是注入口而不是存储件自己造：归档要**实例根目录**（`.stratix/history` 在副本根下），
+   *   那是组合根（知道实例注册表）的事 —— 存储件不该自己猜路径。
+   * 缺省 = 不归档（缺省即缺省范式：单测与嵌入式用法不写文件）。
+   */
+  readonly sessionEventGuard?: SessionEventCapacityGuard;
 }
 
 // ============================================================================
@@ -468,6 +490,48 @@ export async function createServiceStorage(options: ServiceStorageOptions = {}):
           error instanceof Error ? error.message : String(error)
         }`
       );
+      return;
+    }
+    // 容量守门（@since v3.3，task_205 / M2-08）：写完立刻判容量 —— 超限就把**最老**的
+    //   那几行滚动归档到 `history/`（先落盘、后删行；守门内部保证次序）。
+    //   why 在写口判：写入路径就是「触发点」（design §1.4 M2 行）。
+    if (!options.sessionEventGuard) return;
+    try {
+      const outcome = options.sessionEventGuard.enforce({
+        sessionId: event?.sessionId ?? '',
+        instanceId: event?.instanceId ?? null,
+      });
+      if (outcome.archived > 0) {
+        logger(
+          `[ServiceStorage] 会话事件容量护栏：归档最老事件 ${outcome.archived} 条（${outcome.archivePath ?? '未知路径'}）`
+        );
+      } else if (outcome.reason) {
+        logger(`[ServiceStorage] 会话事件容量护门未归档（${outcome.reason}）`);
+      }
+    } catch (error: unknown) {
+      // 守门失败**不影响**事件落库（事件已经写进去了 —— 历史完整优先于容量整洁）。
+      logger(
+        `[ServiceStorage] 会话事件容量守门异常（事件已落库）：${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+  };
+
+  // 角色删除 ⇒ 从属行随行清理（@since v3.3，task_205 / M2-08）：
+  //   exp_events / unit_positions 无独立池 ⇒ 角色没了它们跟着没（一个事务，不留半截状态）。
+  const deleteCharacter = (characterId: string): void => {
+    try {
+      const result = deleteCharacterCascade(db, [characterId]);
+      logger(
+        `[ServiceStorage] 角色 ${characterId} 已从落库侧清理（characters=${result.characters} exp_events=${result.expEvents} unit_positions=${result.unitPositions}）`
+      );
+    } catch (error: unknown) {
+      logger(
+        `[ServiceStorage] 角色 ${characterId} 的落库清理失败：${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
     }
   };
 
@@ -483,5 +547,6 @@ export async function createServiceStorage(options: ServiceStorageOptions = {}):
     readSessionEventsAfter: readSessionEventsAfter,
     persistSession,
     persistSessionEvent,
+    deleteCharacter,
   };
 }

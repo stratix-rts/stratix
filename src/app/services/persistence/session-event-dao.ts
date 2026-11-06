@@ -32,12 +32,15 @@
  * 读口按 `COALESCE(instance_id, 'wsp_sandbox')` 命中（步 N2）。**落库不改写**旧行。
  */
 
+import type { ProjectInstanceId } from '../../../core/types';
+
 import type { SqliteDatabaseLike } from './game-save-dao';
 import {
   ensureInstanceIdColumn,
   instanceScopeWhere,
   type InstanceReadOptions,
 } from './instance-scope';
+import { SESSIONS_TABLE } from './session-dao';
 
 /** session_events 表名（与 StratixDatabase 的 DDL 同名 —— 两处同步改）。 */
 export const SESSION_EVENTS_TABLE = 'session_events';
@@ -61,6 +64,13 @@ export interface SessionEventInsert {
   readonly type: string;
   readonly payload: unknown;
   readonly createdAt: number;
+  /**
+   * 所属副本（@since v3.3，task_205 / M2-08；缺省 = 随会话走，见 appendSessionEvent）。
+   *
+   * why 需要归属：容量判定按**副本**计账（「这个副本的事件池满了没」）；
+   *   事件行不带 instance_id ⇒ 计数落不到副本头上（COALESCE 把它们全算进默认沙盒）。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }
 
 /** 事件分页参数：beforeSeq 是游标（取该序号**之前**的一段）；limit 缺省 50。 */
@@ -92,25 +102,64 @@ export function ensureSessionEventsTable(db: SqliteDatabaseLike): void {
     `CREATE INDEX IF NOT EXISTS idx_session_events_created_at ON ${SESSION_EVENTS_TABLE}(created_at)`
   );
   // v14 兑底（task_198）：旧库补 instance_id 列（可空、无 DEFAULT ⇒ 存量行原样留 NULL）。
+  //   顺序要紧：**先补列再建索引**（老库没这列时建索引会报「no such column」）。
   ensureInstanceIdColumn(db, SESSION_EVENTS_TABLE);
+  // v15 兜底（task_205 / M2-08）：instance_id 索引 —— 容量计数按副本走这条索引
+  //   （DESIGN-workspace §5.2 R1-20「instance_id 一律配索引」）。
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_session_events_instance ON ${SESSION_EVENTS_TABLE}(instance_id)`
+  );
 }
 
 /**
  * 追加一条事件（append-only：本表没有 update / delete 语义，历史就是历史）。
  * 重复 seq 会撞主键 → 抛错（调用方不该写重复 seq；重复即 bug，不该被静默吞掉）。
+ *
+ * ★ `instance_id` 的写侧（@since v3.3，task_205 / M2-08）：
+ *   归属**随会话走** —— 事件没自带归属时，回查 `sessions.instance_id` 继承会话的归属；
+ *   查不到（会话行还没写 / 旧库没这列）⇒ 落 NULL（按 COALESCE 归默认沙盒，语义不丢）。
+ *   why 继承而不是让调用方每次都传：事件信封（core/session/types.ts）不带归属，
+ *   而会话摘要带（M2-07 建会话即盖归属）⇒ 事件按会话继承是唯一不新增契约的口径。
  */
 export function appendSessionEvent(db: SqliteDatabaseLike, event: SessionEventInsert): void {
   ensureSessionEventsTable(db);
+  const instanceId = event.instanceId ?? lookupSessionInstanceId(db, event.sessionId);
   db.prepare(`
-    INSERT INTO ${SESSION_EVENTS_TABLE} (session_id, seq, type, payload, created_at)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO ${SESSION_EVENTS_TABLE} (session_id, seq, type, payload, created_at, instance_id)
+    VALUES (?, ?, ?, ?, ?, ?)
   `).run(
     event.sessionId,
     event.seq,
     event.type,
     serializePayload(event.payload),
-    event.createdAt
+    event.createdAt,
+    instanceId
   );
+}
+
+/**
+ * 回查会话的归属（sessions.instance_id）；查不到 ⇒ null（未归属）。
+ *
+ * why 单列一个函数：这是「事件继承会话归属」这条口径的**唯一**出处 ——
+ * 查表失败 / 老库没有该列时降级成 null（不抛：事件落库不该因会话行缺失而失败）。
+ *
+ * why 导出（@since v3.3，task_205 / M2-08）：容量守门要判**同一个**池 ——
+ *   事件行落库时用的是「来件归属 ?? 会话归属」，守门算账必须用同一口径；
+ *   否则守门把这个副本的事件算到默认沙盒头上（账记错池 = 上限形同虚设）。
+ */
+export function lookupSessionInstanceId(
+  db: SqliteDatabaseLike,
+  sessionId: string
+): ProjectInstanceId | null {
+  try {
+    const row = db
+      .prepare(`SELECT instance_id FROM ${SESSIONS_TABLE} WHERE id = ?`)
+      .get(sessionId) as Record<string, unknown> | undefined;
+    const value = row?.instance_id;
+    return value === null || value === undefined ? null : String(value);
+  } catch {
+    return null;
+  }
 }
 
 /**

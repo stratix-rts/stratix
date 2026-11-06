@@ -122,6 +122,10 @@ export function toPersistedSession(record: SessionRecord): PersistedSessionRecor
     lastEventAt: record.lastEventAt,
     closedAt: record.closedAt ?? null,
     eventCount: record.eventCount,
+    // 归属（@since v3.3，task_205 / M2-08）：会话行的 instance_id 镜像 ——
+    //   事件按会话继承归属（session-event-dao 的 appendSessionEvent），会话不带归属则事件也无从归属。
+    //   缺省 = 未归属 ⇒ 不带这个键（落 NULL = 默认沙盒口径）。
+    ...(record.instanceId ? { instanceId: record.instanceId } : {}),
   };
 }
 

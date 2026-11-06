@@ -228,14 +228,30 @@ export function createStratixService(options: StratixServiceOptions = {}): Strat
   const warn = options.logger ?? ((line: string): void => console.warn(line));
 
   // ===== ① 四个写入面（同一份 store；两处写的是同一件事）=====
-  const character = createCharacterManager({ store });
+  // 存储件（事件读口的来源；抽出局部量好让下面的闭包不用再判空）。
+  const storage = options.storage;
+  const characterBase = createCharacterManager({ store });
+  // 角色删除 ⇒ 落库侧**从属行随行清理**（@since v3.3，task_205 / M2-08）：
+  //   `exp_events` / `unit_positions` 没有独立池 —— 它们的存在意义依附于角色
+  //   ⇒ 角色删了，成长史与站位跟着删（否则这两张表照样无界增长）。
+  // why 在组合根包一层（不改 core）：core 是纯逻辑层，不该认存储；
+  //   而「删成功 ⇒ 通知落库侧」是**接线**问题，正是组合根的活。
+  const character: CharacterManager = storage?.deleteCharacter
+    ? {
+        ...characterBase,
+        deleteCharacter: (characterId: string) => {
+          const result = characterBase.deleteCharacter(characterId);
+          // 只有**真删掉了**才清落库（被占用拒绝时角色还在，清了就是误伤）。
+          if (result.ok) storage.deleteCharacter?.(characterId);
+          return result;
+        },
+      }
+    : characterBase;
   const mission = createMissionManager({ store });
   const task = createTaskManager({ store });
   // 会话域写入面（@since v3.43，task_093）：纯构造、无 IO、无订阅 —— 与前三个同口径。
   // 持久化口缺省口径（与 exp_events 同一范式）：显式给了用显式的；没给而存储件在 → 用存储件接管；
   // 两者都缺 = 不落库（会话只活在 WorldState 里，不假装落库成功）。
-  // 存储件（事件读口的来源；抽出局部量好让下面的闭包不用再判空）。
-  const storage = options.storage;
   const sessionPersister: SessionPersistPort | null =
     options.persistSession ??
     (storage

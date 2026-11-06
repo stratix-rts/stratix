@@ -20,7 +20,17 @@ import dotenv from 'dotenv';
 import express from 'express';
 import { ensureDirSync } from 'fs-extra';
 
+import { createInstanceRegistryWithDefaultSandbox } from '../app/services/persistence/default-sandbox';
+import {
+  nodeProcessCwd,
+  nodeProcessGitBranch,
+} from '../app/services/persistence/default-sandbox-node';
 import type { SqliteDatabaseLike } from '../app/services/persistence/game-save-dao';
+import {
+  createInstanceRootResolver,
+  createNodeArchiveAppender,
+} from '../app/services/persistence/project-archive-node';
+import { createSessionEventArchiver } from '../app/services/persistence/session-event-archive';
 import type { TaskTransportFactory } from '../app/services/task-service';
 import { emitCommand, emitWorldEvent } from '../core/bus';
 import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
@@ -165,9 +175,22 @@ export async function startGatewayService(
   console.log('Initializing SQLite database...');
   const db = await initializeDatabase({ dataDir });
   console.log('SQLite database initialized:', db.getPath());
+  // 实例注册表（副本清单；默认沙盒恒在）—— **进程里唯一一份**：
+  //   组合根用它装载副本，容量守门用它定位副本根（归档到 `.stratix/history`）。
+  const instanceRegistry = createInstanceRegistryWithDefaultSandbox({
+    cwd: nodeProcessCwd(),
+    branch: nodeProcessGitBranch(),
+  });
+  // 容量守门（@since v3.3，task_205 / M2-08）：会话事件超限时**滚动归档最老**到 `history/`。
+  //   守门件放在这一层（组合根之外）—— 存储件拿到它，写入路径追加完事件就问一次「要不要搬走」。
+  const sessionEventGuard = createSessionEventArchiver({
+    db: db.getDatabase() as unknown as SqliteDatabaseLike,
+    resolveInstanceRoot: createInstanceRootResolver(instanceRegistry),
+    appender: createNodeArchiveAppender(),
+  });
   // 存储件 = service 侧 SQLite 的 owner（写口 + 读口；建表兜底在这一步跑）。
   // 开库是进程内单例（stratix-database），这里传同一个 dataDir —— 不会开第二个连接。
-  const serviceStorage = await createServiceStorage({ dataDir });
+  const serviceStorage = await createServiceStorage({ dataDir, sessionEventGuard });
 
   // ===== 启动 service（A4 / task_080）——**先 boot，后挂路由** =====
   // 顺序是本单的核心：路由挂上去的那一刻，MCP 的数据面就已经指向**本进程**的
@@ -185,6 +208,7 @@ export async function startGatewayService(
         storage: serviceStorage,
         db: db.getDatabase() as unknown as SqliteDatabaseLike,
         snapshotPath,
+        instanceRegistry,
         ...(options.serviceTransport ? { createTransport: options.serviceTransport } : {}),
       });
     } catch (error) {

@@ -34,7 +34,7 @@
  * 其它副本只命中自己标了 id 的行。**落库不改写**旧行。
  */
 
-import type { SessionKind, SessionStatus } from '../../../core/types';
+import type { ProjectInstanceId, SessionKind, SessionStatus } from '../../../core/types';
 
 import type { SqliteDatabaseLike } from './game-save-dao';
 import {
@@ -93,6 +93,15 @@ export interface PersistedSessionRecord {
   readonly closedAt: number | null;
   /** 事件计数（摘要计数；事件本体在 session_events 表）。 */
   readonly eventCount: number;
+  /**
+   * 所属副本（`instance_id` 列镜像；@since v3.3，task_205 / M2-08）。
+   *
+   * why 现在写这一列：M2-01 只加了列与读口过滤，写侧一直不写 ⇒ 会话行永远落 NULL。
+   *   本单补上写侧，因为**事件按会话继承归属**（session-event-dao 的 appendSessionEvent）
+   *   —— 会话行不带归属，事件也就无从归属 ⇒ 副本维度的容量计账失准。
+   * 缺省 / null = 未归属（老行；按 COALESCE 归默认沙盒）。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }
 
 /**
@@ -150,8 +159,8 @@ export function upsertSessionRecord(db: SqliteDatabaseLike, record: PersistedSes
   ensureSessionsTable(db);
   db.prepare(`
     INSERT INTO ${SESSIONS_TABLE}
-      (id, kind, title, participants, status, ref_id, created_at, last_event_at, closed_at, event_count)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, kind, title, participants, status, ref_id, created_at, last_event_at, closed_at, event_count, instance_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       kind = excluded.kind,
       title = excluded.title,
@@ -160,7 +169,8 @@ export function upsertSessionRecord(db: SqliteDatabaseLike, record: PersistedSes
       ref_id = excluded.ref_id,
       last_event_at = excluded.last_event_at,
       closed_at = excluded.closed_at,
-      event_count = excluded.event_count
+      event_count = excluded.event_count,
+      instance_id = COALESCE(excluded.instance_id, ${SESSIONS_TABLE}.instance_id)
   `).run(
     record.id,
     record.kind,
@@ -171,7 +181,8 @@ export function upsertSessionRecord(db: SqliteDatabaseLike, record: PersistedSes
     record.createdAt,
     record.lastEventAt,
     record.closedAt ?? null,
-    record.eventCount
+    record.eventCount,
+    record.instanceId ?? null
   );
 }
 
@@ -188,7 +199,7 @@ export function getSessionRecord(
   const scope = instanceScopeWhere(options.instanceId, 'AND ');
   const row = db
     .prepare(
-      `SELECT id, kind, title, participants, status, ref_id, created_at, last_event_at, closed_at, event_count
+      `SELECT id, kind, title, participants, status, ref_id, created_at, last_event_at, closed_at, event_count, instance_id
        FROM ${SESSIONS_TABLE}
        WHERE id = ?${scope.sql}`
     )
@@ -230,7 +241,7 @@ export function listSessionRecords(
   const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const rows = db
     .prepare(
-      `SELECT id, kind, title, participants, status, ref_id, created_at, last_event_at, closed_at, event_count
+      `SELECT id, kind, title, participants, status, ref_id, created_at, last_event_at, closed_at, event_count, instance_id
        FROM ${SESSIONS_TABLE}
        ${where}
        ORDER BY created_at DESC, id DESC
@@ -299,6 +310,11 @@ function mapSessionRow(row: Record<string, unknown>): PersistedSessionRecord {
     lastEventAt: Number(row.last_event_at ?? 0),
     closedAt: row.closed_at === null || row.closed_at === undefined ? null : Number(row.closed_at),
     eventCount: Number(row.event_count ?? 0),
+    // 归属镜像（@since v3.3，task_205）：NULL = 未归属（老行按 COALESCE 归默认沙盒）。
+    // why 缺省不写这个键：未归属行**不带** instanceId 键（往返保真）。
+    ...(row.instance_id === null || row.instance_id === undefined
+      ? {}
+      : { instanceId: String(row.instance_id) }),
   };
 }
 

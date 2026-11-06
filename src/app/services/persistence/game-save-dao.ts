@@ -42,6 +42,8 @@
  * v3.3（task_199）characters 加 role_id 列 + 复合唯一索引。
  */
 
+import type { ProjectInstanceId } from '../../../core/types';
+
 import { ensureCharacterIdMapTable } from './character-id-map-dao';
 import {
   ensureInstanceIdColumn,
@@ -89,6 +91,15 @@ export interface PersistedCharacterRecord {
    */
   readonly contextEnabled: boolean;
   readonly createdAt: number;
+  /**
+   * 所属副本（`instance_id` 列镜像；@since v3.3，task_205 / M2-08）。
+   *
+   * why 现在写这一列：M2-01 只加了列与**读口**过滤，写侧一直不写 ⇒ 角色行永远落 NULL
+   *   （按 COALESCE 归默认沙盒）⇒ 副本维度的容量判定（「这个副本有几个角色」）无从算起。
+   *   本单把写侧补上：容量护栏按副本计账，前提是行**带着**归属。
+   * 缺省 / null = 未归属（老行、用户手建的散兵 —— 与 core 的 CharacterView.instanceId 同款语义）。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }
 
 /** unit_positions 表的一行：角色 → 战场世界坐标。 */
@@ -200,12 +211,17 @@ function ensureContextEnabledColumn(db: SqliteDatabaseLike): void {
  * 批量 upsert 角色档案（按 id 冲突时全字段覆盖）。
  * why 全字段覆盖而不是按列 diff：档案是 core 侧单一真相的整体快照，
  *   广播里变了哪个字段调用方不必逐个说清（少一条易漏的同步路径）。
+ *
+ * ★ `instance_id` 的写侧（@since v3.3，task_205 / M2-08）：
+ *   冲突时用 `COALESCE(excluded.instance_id, <原值>)` —— 来件**没带**归属就**不清**原值。
+ *   why 不能直接覆盖成 NULL：老渲染层回写的档案不带归属（M2-01 的写侧欠账），
+ *   直接覆盖会把 roster 物化时写好的副本归属**抹成 NULL** ⇒ 副本维度的容量计账失准。
  */
 export function upsertCharacters(db: SqliteDatabaseLike, records: readonly PersistedCharacterRecord[]): void {
   const stmt = db.prepare(`
     INSERT INTO ${CHARACTERS_TABLE}
-      (id, name, kind, persona, level, exp, appearance, body_type, skin_id, external_session_id, context_enabled, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, name, kind, persona, level, exp, appearance, body_type, skin_id, external_session_id, context_enabled, created_at, updated_at, instance_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       kind = excluded.kind,
@@ -217,7 +233,8 @@ export function upsertCharacters(db: SqliteDatabaseLike, records: readonly Persi
       skin_id = excluded.skin_id,
       external_session_id = excluded.external_session_id,
       context_enabled = excluded.context_enabled,
-      updated_at = excluded.updated_at
+      updated_at = excluded.updated_at,
+      instance_id = COALESCE(excluded.instance_id, ${CHARACTERS_TABLE}.instance_id)
   `);
   const now = Date.now();
   for (const r of records) {
@@ -234,7 +251,8 @@ export function upsertCharacters(db: SqliteDatabaseLike, records: readonly Persi
       r.externalSessionId,
       r.contextEnabled ? 1 : 0,
       r.createdAt,
-      now
+      now,
+      r.instanceId ?? null
     );
   }
 }
@@ -252,7 +270,7 @@ export function loadCharacters(
   const scope = instanceScopeWhere(options.instanceId);
   const rows = db
     .prepare(
-      `SELECT id, name, kind, persona, level, exp, appearance, body_type, skin_id, external_session_id, context_enabled, created_at
+      `SELECT id, name, kind, persona, level, exp, appearance, body_type, skin_id, external_session_id, context_enabled, created_at, instance_id
               FROM ${CHARACTERS_TABLE} ${scope.sql} ORDER BY created_at ASC, id ASC`
     )
     .all(...scope.params) as Array<Record<string, unknown>>;
@@ -273,6 +291,11 @@ export function loadCharacters(
     // 旧行无列（迁移前的竞态窗口）/ 值异常都归 true —— 缺省即开。
     contextEnabled: Number(row.context_enabled ?? 1) !== 0,
     createdAt: Number(row.created_at ?? 0),
+    // 归属镜像（@since v3.3，task_205）：NULL = 未归属（老行 / 手建散兵）。
+    // why 缺省不写这个键：未归属行**不带** instanceId 键（与读出前的形状一致 ⇒ 往返保真）。
+    ...(row.instance_id === null || row.instance_id === undefined
+      ? {}
+      : { instanceId: String(row.instance_id) }),
   }));
 }
 
