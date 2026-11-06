@@ -169,6 +169,16 @@ export class Database {
 
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private dirty = false;
+  /**
+   * 自动保存开关（@since v3.3，task_201 / M2-04）。
+   *
+   * why 需要它：sql.js 是**内存库**，落盘 = export 整个库。
+   * 迁移类**长事务**（N4b 的整批 id 重写）在 COMMIT 之前，内存里已经是「改了一半」的状态
+   * ⇒ 若此刻防抖保存定时器触发，就会把**中间态**写进磁盘文件
+   * ⇒ 崩在事务中间 = 磁盘上一个半改的库（正是 N4b 要消灭的事故）。
+   * ⇒ 迁移期间 `setAutoSaveEnabled(false)`，提交后由调用方显式 `save()` / `saveAtomically()`。
+   */
+  private autoSaveEnabled = true;
 
   /**
    * Save the database to disk.
@@ -183,11 +193,46 @@ export class Database {
   }
 
   /**
+   * 原子落盘（@since v3.3，task_201 / M2-04）：export → 临时文件 → rename。
+   *
+   * why 与 `save()` 并存：`save()` 是 writeFileSync 直写目标文件 ⇒ 进程崩在写一半时
+   *   磁盘上会留下**截断的库文件**（整库报废）。迁移交付物必须在「崩了也不烂」的前提下落盘
+   *   ⇒ 先写同目录临时文件再 rename（POSIX rename 是原子的）。
+   */
+  saveAtomically(): void {
+    if (!this.initialized) return;
+    const data = this.db.export();
+    const buffer = Buffer.from(data);
+    const tmpPath = `${this.dbPath}.tmp-${process.pid}`;
+    fs.writeFileSync(tmpPath, buffer);
+    fs.renameSync(tmpPath, this.dbPath);
+    this.dirty = false;
+  }
+
+  /**
+   * 开关自动保存（@since v3.3，task_201 / M2-04）：关掉后写入只标脏，不落盘。
+   *
+   * 重新打开时会补一次防抖保存（脏数据不会因为忘记落盘而丢）。
+   */
+  setAutoSaveEnabled(enabled: boolean): void {
+    this.autoSaveEnabled = enabled;
+    if (enabled && this.dirty && !this.saveTimer) {
+      this.saveTimer = setTimeout(() => {
+        this.saveTimer = null;
+        if (this.dirty) {
+          this.save();
+        }
+      }, 100);
+    }
+  }
+
+  /**
    * Mark as dirty and schedule a debounced save (100ms).
    * Multiple rapid writes batch into one disk flush.
    */
   scheduleSave(): void {
     this.dirty = true;
+    if (!this.autoSaveEnabled) return;
     if (this.saveTimer) return;
     this.saveTimer = setTimeout(() => {
       this.saveTimer = null;
@@ -256,9 +301,18 @@ export class Database {
     } as T;
   }
 
-  close(): void {
+  /**
+   * Close the database.
+   *
+   * @param skipSave 跳过关库前的落盘（@since v3.3，task_201 / M2-04）——
+   *   迁移场景：事务**已回滚**时内存状态 == 磁盘原状，落盘只会无谓地改写文件
+   *   （「磁盘文件未被改写」是回滚路径的验收口径之一）。
+   */
+  close(skipSave = false): void {
     if (!this.initialized) return;
-    this.save();
+    if (!skipSave) {
+      this.save();
+    }
     this.db.close();
     this.initialized = false;
   }
