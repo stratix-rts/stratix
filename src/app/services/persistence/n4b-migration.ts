@@ -24,9 +24,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import { Database } from '../../../stratix-database/sqlite-adapter';
-
 import type { ProjectInstanceId } from '../../../core/types';
+import { Database } from '../../../stratix-database/sqlite-adapter';
 
 import {
   executeCharacterIdRewrite,
