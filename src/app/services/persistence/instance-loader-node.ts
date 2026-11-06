@@ -16,6 +16,19 @@
  * why 行 → 视图的翻译住在这里而不是 DAO：DAO 只搬数据（行 ↔ 持久化记录），
  *   「持久化记录 ↔ core 视图」是**core 契约的形状**，归 app 层的翻译件（与 character-record.ts 同源纪律）。
  *
+ * ============ 副本维度：读口按 instance 过滤（@since v3.3，task_198 / M2-01）============
+ *   进副本 A 只读到 A 的行（`COALESCE(instance_id, 'wsp_sandbox')` 命中口径 —— 步 N2）；
+ *   旧行（`instance_id IS NULL`）语义上归默认沙盒 ⇒ 存量数据在切副本后**照常读得到**。
+ *
+ * ============ 步 N6：roster 物化（@since v3.3，task_202 / M2-05）============
+ *   **物化点就在这个读口**：进入副本时，先把该副本根下 `.stratix/roster` 声明的角色
+ *   **投影**成该副本的 `characters` 行（契约 → 运行层，**单向**；步 N6），再读。
+ *   why 在读之前：物化出来的行**正是本副本要读的行** ⇒ 物化与读同一处
+ *   ⇒ 不会出现「行建了、这次进副本却看不到」的错位。
+ *   why 落在 node 侧：读盘（fs）+ 落库（sqlite）两半的 IO 都在这一层（分层铁律）。
+ *   幂等：重复进入 ⇒ 零重复行（复合唯一索引 `(role_id, instance_id)` 兜底）。
+ *   默认沙盒**不物化**（历史数据的 catch-all；把沙盒存量归入项目是步 N7 的显式迁移动作）。
+ *
  * @since v3.3（task_179 / M1-05）。
  */
 
@@ -24,7 +37,6 @@ import { existsSync } from 'fs';
 import { toCharacterUnit } from '../../../core/character';
 import type { EntitySnapshot } from '../../../core/store';
 import {
-  DEFAULT_INSTANCE_ID,
   MAX_CHARACTERS,
   MAX_SESSIONS,
   MAX_TASKS,
@@ -39,6 +51,7 @@ import {
 import { recordToCharacterView } from './character-record';
 import { ensureGameSaveTables, loadCharacters, type SqliteDatabaseLike } from './game-save-dao';
 import type { InstanceDataSource, InstanceMissionsProvider } from './instance-loader';
+import { materializeInstanceRoster } from './roster-materializer';
 import { listSessionRecords, type PersistedSessionRecord } from './session-dao';
 import { TASK_HISTORY_LOAD_LIMIT } from './task-record';
 import {
@@ -110,15 +123,25 @@ export interface SqliteInstanceDataSourceOptions {
   readonly missions?: InstanceMissionsProvider;
   /** 每个角色最多读回多少条任务（缺省 = TASK_HISTORY_LOAD_LIMIT = 20，与历史面板同窗口）。 */
   readonly taskWindow?: number;
+  /**
+   * 副本项目根解析口（**步 N6 物化要用**：roster 在副本根的 `.stratix/roster`）。
+   *
+   * 缺省 = 不物化（没有根 ⇒ 不知道该读哪份 roster ⇒ 什么都不做，不猜）。
+   */
+  readonly resolveInstanceRoot?: (instanceId: ProjectInstanceId) => string | undefined;
+  /** 日志口（缺省静默）。 */
+  readonly logger?: (line: string) => void;
 }
 
 /**
  * 造 SQLite 侧的实例数据源。
  *
- * ★ **M1 零 DDL 的口径**：库里没有 instance_id 列 —— 所有行都是**全局行**，
- *   按设计（§2.4 的 `COALESCE(instance_id, 'wsp_sandbox')` 命中口径）**全部归属默认沙盒**。
- *   别的副本此刻**没有行**（它们的行要等 M2 加列后才可能出现）⇒ 读到空集合是**事实**，不是缺陷。
- *   M2 加列后，这里只需把 WHERE 条件补上 `instance_id = ?` —— 归属判定与翻译都不用重写。
+ * ★ **副本归属口径**（@since v3.3，task_198 / M2-01）：库里已有 `instance_id` 列 ⇒
+ *   读口**按副本过滤**（`COALESCE(instance_id, 'wsp_sandbox')` 命中）⇒ 进副本 A 只读到 A 的行，
+ *   旧行（`instance_id IS NULL`）语义上归默认沙盒 ⇒ 存量数据在切副本后照常读得到。
+ *
+ * ★ **步 N6 物化**（@since v3.3，task_202 / M2-05）：读之前先把该副本的 roster 角色物化成行
+ *   （契约 → 运行层，单向；详见文件头与 roster-materializer.ts）。
  */
 export function createSqliteInstanceDataSource(
   db: SqliteDatabaseLike,
@@ -127,17 +150,25 @@ export function createSqliteInstanceDataSource(
   const taskWindow = options.taskWindow ?? TASK_HISTORY_LOAD_LIMIT;
 
   const read = async (instanceId: ProjectInstanceId): Promise<EntitySnapshot> => {
-    if (instanceId !== DEFAULT_INSTANCE_ID) {
-      // 零 DDL 期的诚实答案：这个副本在库里没有行（它的行要等 instance_id 列存在）。
-      return { missions: [], tasks: [], sessions: [], characters: [], units: [] };
-    }
-
     // 建表兜底（幂等）：老库 / 测试库上直接调也能读，不要求调用方先建表。
     ensureGameSaveTables(db);
     ensureCharacterTasksTable(db);
 
+    // 步 N6：契约 → 运行层的物化（roster → 本副本的 characters 行）。
+    //   why 在读之前：物化出来的行正是本副本要读的行 ⇒ 不会「建了却看不到」。
+    //   why 对沙盒不做：沙盒是历史数据的 catch-all（物化会与存量行撞车）——
+    //     把沙盒存量归入某个项目是步 N7 的显式迁移动作，不在这里悄悄做。
+    const projectRoot = options.resolveInstanceRoot?.(instanceId);
+    if (projectRoot) {
+      materializeInstanceRoster(db, {
+        instanceId,
+        projectRoot,
+        ...(options.logger ? { logger: options.logger } : {}),
+      });
+    }
+
     const characters: CharacterView[] = [];
-    for (const record of loadCharacters(db)) {
+    for (const record of loadCharacters(db, { instanceId })) {
       if (characters.length >= MAX_CHARACTERS) break;
       const view = recordToCharacterView(record);
       // 脏行（id / name 为空）跳过 —— 与 buildRestoreInjection 同一口径（不编造档案）。
@@ -145,15 +176,16 @@ export function createSqliteInstanceDataSource(
     }
     const units: UnitView[] = characters.map(toCharacterUnit);
 
-    const sessions: SessionRecord[] = listSessionRecords(db, { limit: MAX_SESSIONS }).map(
-      toSessionRecord
-    );
+    const sessions: SessionRecord[] = listSessionRecords(db, {
+      limit: MAX_SESSIONS,
+      instanceId,
+    }).map(toSessionRecord);
 
     // 任务按角色读（character_tasks 表以 character_id 分片）—— 逐角色取最近窗口，
     // 再按总量截到 MAX_TASKS（随 WorldState 全量广播，体积必须有界）。
     const tasks: CharacterTask[] = [];
     for (const character of characters) {
-      for (const record of loadRecentTasks(db, character.id, taskWindow)) {
+      for (const record of loadRecentTasks(db, character.id, taskWindow, { instanceId })) {
         if (tasks.length >= MAX_TASKS) break;
         tasks.push(toCharacterTask(record));
       }
@@ -162,7 +194,7 @@ export function createSqliteInstanceDataSource(
 
     const missions: readonly MissionView[] = options.missions?.(instanceId) ?? [];
 
-    // 盖上实例归属：行本身没有 instance 列（零 DDL），但**内存态**里每个实体都该说清自己属于谁
+    // 盖上实例归属：**内存态**里每个实体都该说清自己属于谁
     //   （下游按 instanceId 过滤 —— M1-10 的桥接层过滤靠的就是这个字段）。
     return {
       missions: missions.map((mission) => ({ ...mission, instanceId })),

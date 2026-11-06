@@ -127,6 +127,10 @@ export function bootStratixService(options: ServiceBootOptions = {}): BootedStra
     // 取不到 = null（未知不是错误）⇒ 名牌不画「分支」那一段，不猜。
     branch: nodeProcessGitBranch(),
   });
+  // 实例根解析口（副本 id → 项目根；注册表为准，副本被挪过位置也能找对）。
+  //   两个端口共用**同一份**解析口（物化要它找 `.stratix/roster`，归档要它找 `.stratix/history`）
+  //   —— 一份解析口 ⇒ 两处不会各自解释出不同的根。
+  const resolveInstanceRoot = createInstanceRootResolver(instanceRegistry);
   // 装载端口要有库才装得动（读库在 app 侧）；无库 = 不接（`project.enter` 走「未落地」，
   //   如实说清没接上，不假装能进）。
   const instanceLoader = options.db
@@ -135,6 +139,9 @@ export function bootStratixService(options: ServiceBootOptions = {}): BootedStra
         registry: instanceRegistry,
         source: createSqliteInstanceDataSource(options.db, {
           missions: createStoreMissionsProvider(store),
+          // 步 N6（@since v3.3，task_202 / M2-05）：物化点要知道「这个副本的项目根在哪」
+          //   —— roster 契约在副本根的 `.stratix/roster`。
+          resolveInstanceRoot,
         }),
         pathExists: nodePathExists,
       })
@@ -142,7 +149,7 @@ export function bootStratixService(options: ServiceBootOptions = {}): BootedStra
   // 归档端口：退出副本时把未终结 mission 追加进 `.stratix/history/*.jsonl`（append-only）。
   const projectArchive = createProjectArchive({
     missions: createStoreMissionsProvider(store),
-    resolveInstanceRoot: createInstanceRootResolver(instanceRegistry),
+    resolveInstanceRoot,
     appender: createNodeArchiveAppender(),
   });
 

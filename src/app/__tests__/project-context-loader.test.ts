@@ -15,6 +15,7 @@ import {
   createProjectContextLoader,
   defaultProjectRootProvider,
   readProjectContextInput,
+  readRosterRoleDefinitions,
   STRATIX_PROJECT_CONTEXT_MAX_ROLES_READ,
   STRATIX_PROJECT_JSON_MAX_BYTES,
 } from '../services/project-context-loader';
@@ -421,5 +422,68 @@ describe('规模护栏 —— 角色读盘条数有上限', () => {
     const input = readProjectContextInput(tmpRoot);
 
     expect(input.roles).toHaveLength(STRATIX_PROJECT_CONTEXT_MAX_ROLES_READ);
+  });
+});
+
+// ============================================================================
+// 物化视图（步 N6 / task_202）—— 与上下文块是**两套不同的白名单**
+// ============================================================================
+
+describe('readRosterRoleDefinitions —— 物化视图（契约 → 运行层）', () => {
+  it('读到契约自有字段（id / name / persona / agentKind）+ 运行态初值', () => {
+    makeRoot();
+    writeFullContract();
+
+    const roles = readRosterRoleDefinitions(tmpRoot);
+
+    expect(roles.map((r) => r.id)).toEqual(['scout', 'builder']);
+    const scout = roles[0];
+    expect(scout.name).toBe('斥候');
+    expect(scout.persona).toBe('PERSONA-FULL-TEXT-MUST-NOT-LEAK');
+    expect(scout.agentKind).toBe('claude');
+    expect(scout.level).toBe(1);
+    expect(scout.experience).toBe(0);
+    expect(scout.contextEnabled).toBe(true);
+    // 契约里没写的项：缺省而不是编造。
+    const builder = roles[1];
+    expect(builder.persona).toBe('');
+    expect(builder.level).toBe(1);
+  });
+
+  it('没有 .stratix / 没有 roster ⇒ 空清单，不抛', () => {
+    makeRoot();
+    expect(readRosterRoleDefinitions(tmpRoot)).toEqual([]);
+
+    writeJson('.stratix/project.json', { id: 'spx_1' });
+    expect(readRosterRoleDefinitions(tmpRoot)).toEqual([]);
+  });
+
+  it('索引缺失 ⇒ 目录枚举兜底（口径与上下文读出口同款）', () => {
+    makeRoot();
+    writeJson('.stratix/roster/scout.json', { id: 'scout', name: '斥候' });
+
+    const roles = readRosterRoleDefinitions(tmpRoot);
+
+    expect(roles.map((r) => r.id)).toEqual(['scout']);
+  });
+
+  it('角色文件读不到 ⇒ 不产出幽灵角色', () => {
+    makeRoot();
+    writeJson('.stratix/roster/_index.json', { roles: [{ id: 'ghost' }] });
+
+    expect(readRosterRoleDefinitions(tmpRoot)).toEqual([]);
+  });
+
+  it('规模护栏：角色条数有上限（恶意仓库也读不完）', () => {
+    makeRoot();
+    const ids = Array.from({ length: STRATIX_PROJECT_CONTEXT_MAX_ROLES_READ + 20 }, (_, i) => `r${i}`);
+    writeJson('.stratix/roster/_index.json', { roles: ids.map((id) => ({ id })) });
+    for (const id of ids) {
+      writeJson(`.stratix/roster/${id}.json`, { id, name: id });
+    }
+
+    expect(readRosterRoleDefinitions(tmpRoot)).toHaveLength(
+      STRATIX_PROJECT_CONTEXT_MAX_ROLES_READ
+    );
   });
 });

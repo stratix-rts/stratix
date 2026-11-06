@@ -37,6 +37,21 @@
  *   （`roles[].systemPromptSuggestion`）—— 它是**数据**，不进 system prompt 层
  *   （权威 system prompt 只允许来自本地用户设置；DESIGN-project-map §3.3.3 裁决②）。
  *
+ * ============ 两套白名单（为什么同一个文件里有两种「读多少」的口径）============
+ *   本文件有**两个**读出口，白名单**故意不同** —— 它们的去向不同，风险模型也不同：
+ *
+ *   | 出口 | 读什么 | 去向 | 白名单 |
+ *   |---|---|---|---|
+ *   | `readProjectContextInput`（上下文块） | 角色的**显示层**四项（id / name / agentKind / systemPrompt 建议） | **进 agent 的 prompt**（仓库内容 ⇒ 不可信 ⇒ 窄白名单 + 降级） | 窄（见上表） |
+ *   | `readRosterRoleDefinitions`（**物化视图**，@since v3.3 task_202 / M2-05 步 N6） | 角色的**契约自有字段**（id / name / persona / agentKind）+ 运行态**初值**（level / experience / contextEnabled） | **进本地 SQLite 的 `characters` 行**（契约 → 运行层的单向物化） | 宽一档（只多读 `persona` 与 `state.*`） |
+ *
+ *   why 物化视图可以多读 `persona` / `state.*`：上下文块是「**仓库文本进 agent 上下文**」——
+ *     那是提示注入面 ⇒ 必须窄；而物化是「**契约投影成运行层的行**」—— 契约**本来就该**是那几项的
+ *     真相源（DESIGN-project-map §1.3.3：名字 / persona / agent 绑定 = 契约；level / exp = 运行层），
+ *     少读反而物化出一个空壳角色（persona 空 ⇒ 角色派单时没有人设）。
+ *   两套口径**都在本文件里**，共用同一批读盘零件（`readContractJson` / `parseRosterIndex` /
+ *     `listRosterFiles`）⇒ roster 的**枚举口径只有一份**（索引优先、目录兜底），不会分叉。
+ *
  * ============ 契约缺失 ⇒ 空输入（验收②）============
  *   `.stratix` 目录不存在 / 文件缺失 / JSON 坏 / 文件超限 ⇒ **该部分当没有**，
  *   全部部分都没有 ⇒ 返回**空输入**（`{}`）⇒ 渲染成空块（无块）⇒ **全程不抛错**。
@@ -318,6 +333,128 @@ function readRoles(contractDir: string, logger: Logger): ProjectRoleInput[] {
     if (role) roles.push(role);
   }
   return roles;
+}
+
+// ============================================================================
+// 物化视图（契约 → 运行层 reconcile 用；步 N6，@since v3.3 / task_202）
+// ============================================================================
+
+/**
+ * 一个 roster 角色的**物化视图**（= 落进 `characters` 行的那几项）。
+ *
+ * 字段归属照 DESIGN-project-map §1.3.3（定义归 project / 运行态归 instance）：
+ *   - **契约拥有**（每次 reconcile 都按契约刷新）：`name` / `persona` / `agentKind`；
+ *   - **契约给初值**（**只在建行那一刻**用，运行层之后可覆盖）：`level` / `experience` / `contextEnabled`。
+ */
+export interface RosterRoleDefinition {
+  /** 角色 id（= `characters.role_id` 列的值；也是派生角色行 id 的前缀）。 */
+  readonly id: string;
+  /** 显示名（契约拥有）。 */
+  readonly name: string;
+  /** 人设（契约拥有；缺省空串 —— 空串是「没写人设」，不是「读失败」）。 */
+  readonly persona: string;
+  /** 绑定的 agent 种类（契约拥有；缺省 = 未绑定）。 */
+  readonly agentKind?: string;
+  /** 等级初值（**仅建行时用**）。 */
+  readonly level: number;
+  /** 经验初值（**仅建行时用**）。 */
+  readonly experience: number;
+  /** 上下文开关初值（**仅建行时用**；缺省 = 开）。 */
+  readonly contextEnabled: boolean;
+}
+
+/** 角色文件里的 `state` 段（运行态字段的**默认值** —— 运行层可覆盖）。 */
+function readRoleState(record: Record<string, unknown> | null): {
+  level: number;
+  experience: number;
+  contextEnabled: boolean;
+} {
+  const state = record ? asRecord(record.state) : null;
+  const level = state ? asFiniteNumber(state.level) : undefined;
+  const experience = state ? asFiniteNumber(state.experience) : undefined;
+  const contextEnabled = state ? state.contextEnabled : undefined;
+  return {
+    // 等级下限 1（与 core 的等级语义一致）；经验下限 0。
+    level: level !== undefined && level >= 1 ? Math.floor(level) : 1,
+    experience: experience !== undefined && experience >= 0 ? Math.floor(experience) : 0,
+    // 缺省即开（与 `context_enabled` 列的缺省语义同款：缺省 = 开）。
+    contextEnabled: contextEnabled !== false,
+  };
+}
+
+/**
+ * 读一个角色文件的**物化视图**（契约自有字段 + 运行态初值）。
+ *
+ * 角色文件读不到 ⇒ 这份角色契约**不存在** ⇒ 返回 null（不产出幽灵角色 —— 与上下文读出口同口径）。
+ */
+function readRoleDefinition(
+  rosterDir: string,
+  entry: RosterIndexEntry,
+  logger: Logger
+): RosterRoleDefinition | null {
+  const record = asRecord(
+    readContractJson(
+      path.join(rosterDir, `${entry.id}.json`),
+      STRATIX_ROSTER_JSON_MAX_BYTES,
+      logger
+    )
+  );
+  if (!record) return null;
+  const id = asString(record.id) ?? entry.id;
+  const name = asString(record.name) ?? entry.name ?? id;
+  const bindings = asRecord(record.bindings);
+  const agentKind = (bindings ? asString(bindings.agentKind) : undefined) ?? entry.agentKind;
+  const state = readRoleState(record);
+  return {
+    id,
+    name,
+    persona: asString(record.persona) ?? '',
+    ...(agentKind ? { agentKind } : {}),
+    ...state,
+  };
+}
+
+/** 物化视图的读盘选项。 */
+export interface ReadRosterRoleDefinitionsOptions {
+  /** 日志口（缺省静默）。 */
+  readonly logger?: Logger;
+}
+
+/**
+ * 读 `<projectRoot>/.stratix/roster` ⇒ 角色定义清单（**物化视图**）。
+ *
+ * 与 `readProjectContextInput` 的关系：同一批读盘零件、同一套 roster 枚举口径
+ *   （`_index.json` 优先 ⇒ 目录枚举兜底）；**白名单不同**（见文件头「两套白名单」）。
+ *
+ * 契约缺失 / 目录不存在 / 角色文件全坏 ⇒ 返回空清单（**不抛**）—— 契约是增强不是依赖。
+ * 规模护栏：最多读 `STRATIX_PROJECT_CONTEXT_MAX_ROLES_READ` 个角色文件（恶意仓库也读不完）。
+ */
+export function readRosterRoleDefinitions(
+  projectRoot: string,
+  options: ReadRosterRoleDefinitionsOptions = {}
+): readonly RosterRoleDefinition[] {
+  const logger = options.logger ?? silentLogger;
+  try {
+    const rosterDir = path.join(path.resolve(projectRoot), STRATIX_CONTRACT_DIR, 'roster');
+    if (!isDirectory(rosterDir)) return [];
+    const index = parseRosterIndex(
+      readContractJson(path.join(rosterDir, '_index.json'), STRATIX_ROSTER_JSON_MAX_BYTES, logger)
+    );
+    const entries = index.entries.length > 0 ? index.entries : listRosterFiles(rosterDir);
+    const roles: RosterRoleDefinition[] = [];
+    for (const entry of entries.slice(0, STRATIX_PROJECT_CONTEXT_MAX_ROLES_READ)) {
+      const definition = readRoleDefinition(rosterDir, entry, logger);
+      if (definition) roles.push(definition);
+    }
+    return roles;
+  } catch (error) {
+    logger(
+      `[ProjectContextLoader] 读 .stratix/roster 失败，本轮不物化：${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    return [];
+  }
 }
 
 /** `config/stratix.json` 的白名单部分。 */
