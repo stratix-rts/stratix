@@ -17,6 +17,14 @@
  *   通用演出（celebrate / spawn / despawn / error / command）**不在表里** ⇒ 永远走 sheet
  *   （它们静态、无变体需求，sheet 的 GPU 合成成本几乎为零）。
  *
+ * 输入：纯数据 —— ① `findCodeFxRoute` 吃一个战场触点的 sheet kind（`SpriteFxKind`）；
+ *   ② `decideFxRoute` 吃一个 `FxRouteRequest`（hasRoute = 该 kind 在不在路由表 /
+ *   hasCodeSource = 代码路由的效果源注册没注册 / reducedMotion = 用户要不要减少动效）——
+ *   三个布尔都由调用方**现读现算**喂进来，本模块自己不读 registry、不读 Phaser。
+ * 输出：`findCodeFxRoute` → `CodeFxRoute` | null（null = 该 kind 没有分流规则 ⇒ 走 sheet）；
+ *   `decideFxRoute` → `FxRouteDecision`（route = 'code' | 'sheet' + reason 五选一：
+ *   no-route / no-code-source / reduced-motion / code-refused / code）。
+ *
  * 禁止事项：
  *   1. import phaser —— 本模块是纯裁决（node 单测直接跑）；
  *   2. import app / hud —— 铁律：world 只认 core；

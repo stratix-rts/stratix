@@ -18,6 +18,15 @@
  * why `new_id` 上建索引：
  *   回滚方向是**反向 UPDATE**（new → old）⇒ 按 new_id 反查是热路径。
  *
+ * 输入：一个 better-sqlite3 兼容的连接（本地声明的 `CharacterIdMapDatabase`：prepare + exec）
+ *   + 写入侧的 `PersistedCharacterIdMapRecord`（oldId / newId / instanceId / createdAt）；
+ *   读取侧的键：正向查给 (oldId, instanceId)、反向查给 newId、列表给可选 instanceId 过滤。
+ * 输出：
+ *   - `ensureCharacterIdMapTable` —— 建表 + `idx_character_id_map_new` 索引（幂等）；
+ *   - `recordCharacterIdMapping` —— 幂等 upsert 一行（同 (old_id, instance_id) 覆盖，不新增行）；
+ *   - `findCharacterIdMappingByOldId` / `findCharacterIdMappingByNewId` —— 一行或 null；
+ *   - `listCharacterIdMappings` —— 行数组（按 created_at, old_id 排序；instanceId 缺省 = 全表）。
+ *
  * 禁止事项：
  *   1. 不在这里做 id 重写本身 —— N4b 是独立的高风险交付物（整批单事务 + 校验脚本）；
  *      本文件只提供「表 + 读写」，让 N4b 的事务能同事务写映射。

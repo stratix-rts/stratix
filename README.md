@@ -198,16 +198,20 @@ docker run -d -p 3000:3000 -p 8080:8080 stratix/stratix:latest
 
 ### 方式二：源码构建
 
+> ⚠️ **本仓实际用 npm**（package.json 的 scripts 是 npm 口径；`pnpm gateway:start` 等
+> 脚本在本仓**不存在**）。完整命令清单见 [DEV.md](DEV.md) 与 [CLAUDE.md](CLAUDE.md)：
+> `npm install` → `npm run dev`（backend + frontend）或 `npm run electron:dev`（三合一）。
+
 ```bash
 # 克隆仓库
 git clone https://github.com/stratix-rts/stratix.git
 cd stratix
 
 # 安装依赖
-pnpm install
+npm install
 
 # 启动开发模式
-pnpm dev
+npm run dev
 ```
 
 ### 方式三：连接现有 OpenClaw
@@ -250,6 +254,71 @@ pnpm frontend:start
 ```
 
 ---
+
+## 🧭 v3.3 现状速览（多副本 / 资产管线 / 画布交互 落地后的用法差异）
+
+> 上文讲的是**产品形态**；这一节讲**这一轮实际落地后，怎么用、怎么验**。
+> 口径来源：[docs/DESIGN-project-map.md](docs/DESIGN-project-map.md)（多副本）·
+> [docs/DESIGN-asset-pipelines.md](docs/DESIGN-asset-pipelines.md)（资产管线）·
+> [docs/DESIGN-canvas-interactions.md](docs/DESIGN-canvas-interactions.md)（画布交互）·
+> [docs/ARCH-LAWS-STATIC-SCAN.md](docs/ARCH-LAWS-STATIC-SCAN.md)（架构铁律静态扫描）。
+
+### 1. 多副本：项目 = 副本实例（instance）
+
+- **副本的契约面在 `.stratix/`**（`project.json` + `roster/` + `config/stratix.json`）；
+  养成数据在落库层，**按副本维度隔离**。
+- **落库隔离口径**（唯一事实源：`src/app/services/persistence/instance-scope.ts`）：
+  六张表各带 `instance_id` 列（可空）；**旧行 `IS NULL` 记在默认沙盒**（`wsp_sandbox`），
+  查询按 `COALESCE(instance_id, 'wsp_sandbox')` 命中 —— **落库不改写存量行**。
+- **进一个副本的三步**：新副本要先**物化 roster**（契约 → 运行层的单向 reconcile）；
+  存量要迁进某个副本得**带预览、可撤销**；副本内的角色 id 由 `role_id` 列派生，
+  **沙盒老行 id 一律不改**。
+- **容量上限**（跨副本总量，防无界增长）：每副本 64 角色 / 全局 512 角色；
+  `session_events` 每副本每会话 512、每副本总 4096，超出**滚动归档**到 `history/`。
+- **怎么验**：`node e2e-tests/m1-instance-switch.e2e.mjs`（切副本零残留、切回数据还在）·
+  `node e2e-tests/m2-end-to-end.e2e.mjs`（双副本隔离 + 容量上限 + 回滚矩阵 + 归属迁移闭环）。
+
+### 2. 资产管线：两条管线各自闭环，失败静默降级
+
+- **战场特效（pixelfx，已 vendor 进仓）**：dev 期走**代码路由**动态渲染；
+  release 期**构建期烘焙** sheet（含调色板变体与 seed 变体），运行时**只读整图**。
+  烘焙 `npm run fx:bake`，校验产物 `npm run fx:bake:verify`。
+- **角色立绘（CharacterComposer）**：导入 / 换肤时烘**一张整精灵图**，存**用户本地缓存**
+  （不进仓库、不进 `.stratix`）；缓存键 = **agent 标识 + 皮肤 + Composer 版本号**
+  （Composer 升级 ⇒ 版本变 ⇒ 旧图自动失效重烘）。
+- **两条纪律**：① **烘焙失败静默降级** —— 回落运行时直合成，失败只进内部日志，
+  **不弹错、不阻塞**（用户永远看到可用结果）；② **双路由像素一致性** ——
+  代码路由现算帧 vs 烘焙帧逐像素 diff，漂移当场报警。
+- **铁则**：特效管线与角色管线**禁止互卷**（互不 import，参数面互不借用）。
+
+### 3. 画布交互：单击 / 双击 / 右键 / ESC 的既定口径
+
+| 操作 | 行为 |
+|---|---|
+| 单击单位 | **选中**（选中是右击移动 / 键盘操作的锚） |
+| 双击单位 | 打开该 agent 的**单独聊天框** |
+| 右击空地 | **移动**已选单位（上行 `unit.move` → 下行 `event.push(unit.position)`，补间不是瞬移） |
+| 一次键击归谁 | 优先级链：**仪式在演 → 输入焦点在输入框 → 画布手势**；ESC 在无输入焦点时 = 镜头归位 |
+| 减少动效 | `prefers-reduced-motion` ⇒ 不播代码路由特效 |
+
+- 事件矩阵与冲突对见 [docs/DESIGN-canvas-interactions.md](docs/DESIGN-canvas-interactions.md)；
+  回归由**交互矩阵套件**兜底（core / hud / world 三层各一份）。
+- **怎么验**：`node e2e-tests/qa-full-flow.e2e.mjs`（冷启动 → 进副本 → 选中/移动 →
+  派单 → 切副本 → 回大厅）。
+
+### 4. QA 轮的命令速查
+
+| 命令 | 作用 |
+|---|---|
+| `npm run arch:scan` | 架构铁律静态扫描（5 条铁律）；`--strict` = 豁免也不放过 |
+| `npm run dead:scan` | 死代码扫描 |
+| `npm run test:arch` | 铁律扫描 + 豁免账本的棘轮测试（账实必须一致） |
+| `npm run fx:bake` / `npm run fx:bake:verify` | 发布期特效烘焙 / 产物校验 |
+| `node e2e-tests/probes/probe.mjs` | 走查探针：连接探测 + 世界状态快照 |
+| `node e2e-tests/qa-full-flow.e2e.mjs` | 全流程验收（QA-01） |
+
+> 走查 / 验收脚本的清单与端口纪律见 [e2e-tests/README.md](e2e-tests/README.md)；
+> 截图留痕的命名规范见 [reports/README.md](reports/README.md)。
 
 ## 🎬 使用场景
 

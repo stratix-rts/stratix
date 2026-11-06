@@ -10,7 +10,7 @@
  *     ⑤ 互聊议题里的 `@session_<id>` → 注入可见 + 留痕（type=reference 事件）；
  *     ⑥ 自动起名（规则模式）生效。
  *
- * ★ 与既有剧本（e2e-tests/session-domain.e2e.mjs = v3.2a S7）的关系：
+ * ★ 与既有剧本（e2e-tests/session-domain/session-domain.e2e.mjs = v3.2a S7）的关系：
  *   两支共用同一个 service 夹具（e2e-tests/session-domain/service-process.ts）与同一套
  *   进程纪律；本剧本**另起端口、另起数据目录**，故可与老剧本各自独立跑，互不干扰。
  *
@@ -29,8 +29,8 @@
  *   3. 引入新依赖 —— 只用 node 内置（fetch / WebSocket / child_process / net / fs）。
  *
  * 用法：
- *   node e2e-tests/session-capabilities.e2e.mjs            # 默认：替身模式（确定性）
- *   node e2e-tests/session-capabilities.e2e.mjs --keep     # 保留临时目录（排查用）
+ *   node e2e-tests/session-domain/session-capabilities.e2e.mjs            # 默认：替身模式（确定性）
+ *   node e2e-tests/session-domain/session-capabilities.e2e.mjs --keep     # 保留临时目录（排查用）
  *
  * @since v3.2b-B9（task_108）。
  */
@@ -55,10 +55,10 @@ import {
   printSummary,
   psTable,
   waitFor,
-} from './lib/service-harness.mjs';
+} from '../lib/service-harness.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO = path.resolve(HERE, '..');
+const REPO = path.resolve(HERE, '..', '..');
 
 /** 仓库内的可执行文件（不经 npx —— 少一层进程与解析开销）。 */
 const bin = (name) => path.join(REPO, 'node_modules', '.bin', name);
@@ -187,7 +187,7 @@ async function main() {
     const service = launch(
       'service',
       bin('tsx'),
-      [path.join(HERE, 'session-domain', 'service-process.ts')],
+      [path.join(HERE, 'service-process.ts')],
       {
         cwd: REPO,
         env: {

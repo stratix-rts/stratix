@@ -25,6 +25,16 @@
  * why 落库而不是 `.stratix/state/`：同 `character_id_map` 的理由（R1-39）——
  *   台账是**回滚凭据**，必须与数据**同库备份、同事务写入、同寿命**；机器坏了映射没了就再也回不去。
  *
+ * 输入：一个 better-sqlite3 兼容的连接（本地声明的 `AttributionLedgerDatabase`：prepare + exec）
+ *   + 写入侧的 `AttributionLedgerRecord`（rowKind / rowId / originalInstanceId / sourceInstanceId /
+ *   targetInstanceId / createdAt）；读取侧给可选 targetInstanceId 过滤（缺省 = 全表）。
+ * 输出：
+ *   - `ensureAttributionLedgerTable` —— 建表 + `idx_instance_attribution_map_target` 索引（幂等）；
+ *   - `recordAttributionRow` —— 幂等 upsert 一行（同 (row_kind, row_id) 覆盖，不新增行）；
+ *   - `listAttributionRows` —— 行数组（按 created_at, row_kind, row_id 排序）；
+ *   - `deleteAttributionRows` —— 按 (row_kind, row_id) 逐条删（撤销成功后清凭据用）。
+ *   记录里的 `originalInstanceId` **保留 null**（不折成 ''）—— null 与 'wsp_sandbox' 字节不同。
+ *
  * 禁止事项：
  *   1. 不在这里改业务数据 —— 本文件只管「表 + 读写」，数据改动在
  *      instance-attribution-migration.ts 的**一个事务**里发生；

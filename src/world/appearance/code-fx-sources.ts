@@ -10,6 +10,13 @@
  * ★ 为什么不用总线：效果源是**本客户端的资产事实**（不是业务状态）——
  *   塞进 WorldState 等于给状态机加第二个真相源（core/types.ts 明写皮肤与素材不进状态）。
  *
+ * 输入：Phaser game registry 里的一个只读键值存储（场景的 `this.registry`；`null` /
+ *   `undefined` 也吃 —— 读口不炸，按「没有代码源」处理），键名 `stratix:code-fx-sources`。
+ *   注册表里塞什么由 app 层组合根负责（值是 `CodeFxSource[]`，但本模块不信任 registry 的形状）。
+ * 输出：`readCodeFxSources(store)` → `readonly CodeFxSource[]`（逐条过形状校验：
+ *   kind 非空字符串 / create 是函数 / width、height 是数字）；没注册、不是数组或形状非法
+ *   ⇒ **空列表** ⇒ 该触点走 sheet 路由（不是错误）。
+ *
  * 禁止事项：
  *   1. import app / hud —— 铁律：world 只认 core；
  *   2. import pixelfx —— 外部库的知识只留在 app 层的适配器里；

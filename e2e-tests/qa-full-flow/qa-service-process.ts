@@ -30,6 +30,9 @@
  *   - 进程 cwd = 沙盒根（不是仓根！）—— 退出副本时的归档文件（`.stratix/history/*.jsonl`）
  *     会写进实例根 ⇒ 实例根必须在临时目录。
  *
+ * 输入：四个 `SX_QA_*` 环境变量（端口 / DATA_DIR / 沙盒根 / 副本 B 根）——
+ *   逐项说明见下方「输入（环境变量）」段；其中 `SX_QA_DATA_DIR` 与 `SX_QA_INSTANCE_B_ROOT`
+ *   缺失 ⇒ 启动即抛错（退出码 1），另两项有缺省（端口 7831 / 沙盒根 = 进程 cwd）。
  * 输入（环境变量）：
  *   SX_QA_PORT              service 端口（HTTP + world-sync WS 同一端口，与生产一致）。
  *   SX_QA_DATA_DIR          临时 DATA_DIR（SQLite + 世界态快照）。

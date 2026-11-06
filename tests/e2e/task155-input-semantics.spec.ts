@@ -109,7 +109,7 @@ test.describe('输入语义定稿（task_155）', () => {
     expect(await panel.locator('[data-role="task-submit"]').count()).toBe(0);
 
     await page.locator('.hud-bottom-bar').screenshot({
-      path: `${SHOTS}/task155-r11-bottom-single-input-ck155.png`,
+      path: `${SHOTS}/bottom-single-input-r11-ck155.png`,
     });
   });
 
@@ -163,7 +163,7 @@ test.describe('输入语义定稿（task_155）', () => {
     await expect(bar.locator('[data-role="task-bar-title"]')).toHaveText('生成中…');
 
     await page.locator('.hud-bottom-bar').screenshot({
-      path: `${SHOTS}/task155-r11-taskbar-placeholder-ck155.png`,
+      path: `${SHOTS}/taskbar-placeholder-r11-ck155.png`,
     });
   });
 

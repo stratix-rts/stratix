@@ -13,6 +13,19 @@
  *      ② 发布产物里有 manifest ⇒ 变体清单与产物**逐条对得上**，不会出现「索引说有、文件却没有」。
  *   两条路径的清单**同构**（同一个构造器）⇒ 本模块的解析代码不需要知道自己在 dev 还是 release。
  *
+ * 输入：① Phaser game registry（只读键值存储，键 `stratix:fx-variants`；`null` /
+ *   `undefined` 也吃 ⇒ 按「没有变体」处理）；
+ *   ② 烘焙 manifest 的解析结果（`fx-bake-manifest.json` 的 `artifacts` 数组；任何形状都能吃 ——
+ *   解析不出来就是没有变体）+ 皮肤目录（缺省 `SPRITE_FX_RUNTIME_SKIN` = 'default'）；
+ *   ③ 基础变体的运行时参数 `SpriteFxSource`（生成索引里那条）+ 随机源
+ *   （`pickSpriteFxCandidate` 的入参，缺省 `Math.random`；做成入参是为了单测能喂确定序列）。
+ * 输出：`readSpriteFxVariants(store)` → 变体清单（逐条过形状校验）；
+ *   `spriteFxVariantsFromManifest(manifest, skin)` → 变体清单（只收 variantIndex > 0 的条目 ——
+ *   基础变体归运行时索引管，重复收会让随机分布歪）；
+ *   `spriteFxVariantSource(base, variant)` → 只换纹理 / 动画 key 与路径的特效源；
+ *   `spriteFxCandidates(base, variants)` → 基础变体在前的候选列表；
+ *   `pickSpriteFxCandidate(candidates, random)` → 挑中的候选（候选为空 ⇒ null）。
+ *
  * 禁止事项：
  *   1. import app / hud —— 铁律：world 只认 core；
  *   2. import scripts/ —— 构建期脚本不是运行时依赖（口径抄一份即可，字段名见 manifest 结构版本号）；

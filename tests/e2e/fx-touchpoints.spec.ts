@@ -90,37 +90,37 @@ test.describe('精灵特效触点（task_161）', () => {
     await trigger(page, 'spawn');
     await page.waitForTimeout(400);
     expect(await activeCount(page), '上场触点没有创建实例').toBeGreaterThan(0);
-    await page.screenshot({ path: `${SHOTS}/fx-161-spawn.png` });
+    await page.screenshot({ path: `${SHOTS}/fx-r161-spawn.png` });
 
     // 退场（despawn）：摘掉单位 → 在其最后位置播特效。
     await trigger(page, 'despawn');
     await page.waitForTimeout(400);
     expect(await activeCount(page), '退场触点没有创建实例').toBeGreaterThan(0);
-    await page.screenshot({ path: `${SHOTS}/fx-161-despawn.png` });
+    await page.screenshot({ path: `${SHOTS}/fx-r161-despawn.png` });
 
     // 任务完成（celebrate）：world 通道的 task.completed → 桥接层 → 场景钩子。
     await trigger(page, 'complete');
     await page.waitForTimeout(500);
     expect(await activeCount(page), '完成触点没有创建实例').toBeGreaterThan(0);
-    await page.screenshot({ path: `${SHOTS}/fx-161-celebrate.png` });
+    await page.screenshot({ path: `${SHOTS}/fx-r161-celebrate.png` });
 
     // 任务报错（error）：world 通道的 task.failed。
     await trigger(page, 'fail');
     await page.waitForTimeout(500);
     expect(await activeCount(page), '报错触点没有创建实例').toBeGreaterThan(0);
-    await page.screenshot({ path: `${SHOTS}/fx-161-error.png` });
+    await page.screenshot({ path: `${SHOTS}/fx-r161-error.png` });
 
     // 角色升级（levelUp）：world 通道的 level.up。
     await trigger(page, 'levelup');
     await page.waitForTimeout(500);
     expect(await activeCount(page), '升级触点没有创建实例').toBeGreaterThan(0);
-    await page.screenshot({ path: `${SHOTS}/fx-161-levelup.png` });
+    await page.screenshot({ path: `${SHOTS}/fx-r161-levelup.png` });
 
     // 指令下达（command）：与右键短按同一条路径（issueMoveCommandAt）。
     await trigger(page, 'command');
     await page.waitForTimeout(500);
     expect(await activeCount(page), '指令触点没有创建实例').toBeGreaterThan(0);
-    await page.screenshot({ path: `${SHOTS}/fx-161-command.png` });
+    await page.screenshot({ path: `${SHOTS}/fx-r161-command.png` });
   });
 
   test('实例会自己回收（播完即清 —— 不回收就是资源泄漏）', async ({ page }) => {
@@ -140,7 +140,7 @@ test.describe('精灵特效触点（task_161）', () => {
     await trigger(page, 'burst');
     await page.waitForTimeout(400);
     expect(await activeCount(page)).toBeLessThanOrEqual(MAX_CONCURRENT);
-    await page.screenshot({ path: `${SHOTS}/fx-161-concurrency.png` });
+    await page.screenshot({ path: `${SHOTS}/fx-r161-concurrency.png` });
 
     // 上限之外的老实例被挤掉后，总数稳定在阈值上（不越界）。
     await page.waitForTimeout(600);

@@ -21,6 +21,13 @@
  *   | angle   | 离散方向桶 / 收敛镜像 | ⚠️ 本批效果**不消费 angle**（无 o.angle）→ 0 桶，标 runtime-only |
  *   | seed    | 烘 K 变体随机选 | ✅ K = 2（基础变体 + 1 个固定 seed 变体） |
  *
+ * 输入：FxBakeOptions —— rootDir（仓库根：vendor/pixelfx 与 src/hud/theme/tokens-*.css）、
+ *   outDir（**构建产物目录**，由 scripts/bake-fx-release.ts 传 dist/frontend/fx）、
+ *   skins（发布皮肤闭集 default / pixel）、seedVariants（默认 2）、kinds（只烘部分效果）。
+ * 输出：FxBakeManifest —— 同时落盘为 <outDir>/fx-bake-manifest.json（buildFxBakeManifest 构造，
+ *   无时间戳 / 无绝对路径 ⇒ 同输入同字节）；产物为 <outDir>/<skin>/<kind>[__sN].png + 同名 .json。
+ *   幂等：重跑先只清掉自己写过的皮肤目录与 manifest 再重写，目录里其它文件一律不碰。
+ *
  * 禁止事项：
  *   1. import CharacterComposer 及其部件库 —— 两条烘焙管线禁止互卷（DESIGN §0 铁则）；
  *   2. 把产物写进 assets/ —— 那是入库资产目录（发布期产物按构造就不入库）；

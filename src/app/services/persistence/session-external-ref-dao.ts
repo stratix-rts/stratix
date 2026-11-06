@@ -39,6 +39,19 @@
  *   留着它只会让读口二义（两个 ext id 同时有效？），也让表无界增长
  *   （perf 铁律：数据不许无限增长）⇒ 剪枝后表规模上界 = 角色数 × 副本数。
  *
+ * 输入：一个 better-sqlite3 兼容的连接（`SqliteDatabaseLike`：prepare + exec）
+ *   + 写入侧的 `SessionExternalRefInsert`（externalSessionId / instanceId / characterId? /
+ *   sessionId? / createdAt）；IPC 入口拿到的是 **unknown 原始值** ⇒ 先过
+ *   `parseSessionExternalRefInsert` 的形状校验；读取侧给 (externalSessionId, instanceId) 联合键
+ *   或 (characterId, instanceId)，列表给可选 instanceId 过滤。
+ * 输出：
+ *   - `ensureSessionExternalRefsTable` —— 建表 + `idx_session_external_refs_character` 索引（幂等）；
+ *   - `recordSessionExternalRef` —— 幂等 upsert 一行，并剪掉同 (character_id, instance_id) 下
+ *     其它 ext id 的旧凭据；
+ *   - `findSessionExternalRef` / `findSessionExternalRefByCharacter` —— 一行或 null；
+ *   - `listSessionExternalRefs` —— 行数组（按 created_at, external_session_id 排序）；
+ *   - `parseSessionExternalRefInsert` —— 合法形状或 null（脏形状一律拒）。
+ *
  * 禁止事项：
  *   1. 不在这里做 id 重写 —— N4b 是独立的高风险交付物（整批单事务 + 校验脚本）；
  *      本文件只提供「表 + 读写」。

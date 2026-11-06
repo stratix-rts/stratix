@@ -19,6 +19,23 @@
  *
  * ⚠️ 前置：目标副本**必须先完成 N6 物化**（否则迁过去的是无 `role_id` 的孤儿行）——
  *   未物化时本脚本直接拒绝执行（不是警告）。
+ *
+ * 输入：子命令 preview | migrate | rollback + --data-dir（库目录，默认 stratix-data）
+ *   + --filename（库文件名，默认 stratix.db）+ --target（要迁进的目标副本 instanceId，**必填**）
+ *   + --source（源副本，缺省 = 默认沙盒）+ --confirm（出手开关）。
+ *   库文件口径 = <dataDir>/<filename>.sqlite；前置 = 目标副本已 N6 物化（存在 role_id 非空的角色行）。
+ * 输出：stdout 的预览清单（源副本 → 目标副本、要迁移的角色 / 任务 / 会话 / 外部凭据 / 跟随行的条数与明细、
+ *   告警、阻断项）；migrate --confirm 真正出手前先备份库文件与 WAL / SHM 边车到
+ *   <dataDir>/backups/n7-<时间戳>/，执行后打印各类行数的落地统计与撤销命令；
+ *   退出码 0 = 预览或执行成功，1 = 有阻断项 / 未加 --confirm / 找不到库文件 / 被 AttributionBlockedError 拦下，
+ *   2 = 用法错误（未知子命令、缺 --target）。
+ *
+ * 禁止事项：
+ *   1. 不带 --confirm 就改库 —— 这是不可忽略的一次性归属变更，必须先看清单再由人确认；
+ *   2. 在目标副本未 N6 物化时强迁 —— 迁过去的是无 role_id 的孤儿行，本脚本直接拒绝（不是警告）；
+ *   3. 在预览路径上顺手写库 —— preview 关库时跳过落盘，「预览一个字节都不写」必须成立；
+ *   4. 把 rollback 当成「删掉备份目录」的信号 —— 撤销走反向 UPDATE，备份目录是最后一道人工兜底，
+ *      撤销验证通过前不要删。
  */
 
 import * as fs from 'fs';

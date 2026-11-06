@@ -30,6 +30,17 @@
  *   切副本   —— activeInstanceId 换成第二个副本 / 角色表换成 B 的名册 / A 的角色不见了
  *   回大厅   —— activeInstanceId 回到 null / 大厅面板重新挂上 / 卡片还在
  *
+ * 输入：命令行开关 `--keep`（保留临时目录不删；用法见下方『跑法』段）；**无外部环境变量**
+ *   （端口由脚本在备用段动态挑选：vite 7600-7699 / service 7800-7899，显式避开用户的
+ *   7523 / 7524 / 7525 / 9222）+ 仓内依赖：`node_modules/.bin/tsx`、仓内 playwright、
+ *   `e2e-tests/fixtures/m2-instance-b`（副本 B 的 roster 契约面）、
+ *   `e2e-tests/demo-flow/fake-claude.mjs`（派单那一步的桩 CLI）；
+ *   可选环境变量 `SX_QA_WS_PROXY=1`（开线上帧旁路，默认不开 —— why 见下文注释）。
+ * 输出：stdout 的断言摘要（`printSummary`）+ 失败时的分层诊断（渲染层 console 关键行 /
+ *   失败请求 / service 与 vite 进程日志末段 / 页面诊断）+ 末尾的『缺口清单』
+ *   （GAP 编号 / 层 / 现象 / 定位）；退出码口径见下方『退出码』段（有断言未过即 1，
+ *   缺口已记账也不放过失败项）。
+ *
  * 跑法：node e2e-tests/qa-full-flow.e2e.mjs [--keep]
  * 退出码：0 = 全部断言通过；1 = 有断言失败（失败环节在摘要里点名，缺口清单在摘要之后）。
  *

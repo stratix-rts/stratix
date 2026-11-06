@@ -10,6 +10,13 @@
  *   「发布期现烘的图」与「开发期提交的图」必须是同一套参数出的，否则线上线下对不上，
  *   而这种漂移要到用户眼前才发现（同一特效两种颜色）。
  *
+ * 输入：仓库根 rootDir + 皮肤 id（skin，取 src/hud/theme/tokens-<skin>.css 的 token 表 + 战场调色板
+ *   PALETTE_CSS_VARS）+ 效果 spec（EFFECT_SPECS 里的 kind / pixelfxId / scale / paletteTokens / 钉死的 seed）
+ *   + 渲染参数（fps = RENDER_FPS）；pixelfx 库根默认取仓内 vendor/pixelfx，可用 PIXELFX_DIR 覆盖。
+ * 输出：纯函数返回值 —— TokenTable（token 名 → #hex）、AtlasMeta（fps / frames / frameSize / pivot / loop）、
+ *   RenderedSheet（{ png, json } 两个产物路径，落在调用方给的 outDir/<分类>/<名字>/ 下）；
+ *   本层不落最终产物目录、不写 manifest（落盘与 manifest 构造归 fx-release-bake.ts）。
+ *
  * 禁止事项：
  *   1. 引入 pixelfx 的**运行时代码** —— 本层只调用 vendor/pixelfx/tools/render.mjs 这个
  *      离线渲染 CLI（一期纪律：运行时零新增依赖）；

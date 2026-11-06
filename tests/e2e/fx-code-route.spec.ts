@@ -127,7 +127,7 @@ test.describe('代码路由特效（task_162）', () => {
       '屏幕坐标没跟着相机走',
     ).toBeCloseTo(-200, 0);
 
-    await page.screenshot({ path: `${SHOTS}/fx-162-world-anchor.png` });
+    await page.screenshot({ path: `${SHOTS}/fx-r162-world-anchor.png` });
   });
 
   test('皮肤联动：切皮肤 → 调色板热读 → 下一个实例就用新色', async ({ page }) => {
@@ -168,7 +168,7 @@ test.describe('代码路由特效（task_162）', () => {
     expect(instance.palette[0], '实例没用上皮肤色').toBe(success);
     expect(instance.palette[0]).not.toBe(before.palette.success);
 
-    await page.screenshot({ path: `${SHOTS}/fx-162-skin-link.png` });
+    await page.screenshot({ path: `${SHOTS}/fx-r162-skin-link.png` });
   });
 
   test('预算护栏：并发上限生效（一次播 8 条 → 场上不超过 2 条）', async ({ page }) => {
@@ -183,7 +183,7 @@ test.describe('代码路由特效（task_162）', () => {
     expect(state.renderHz).toBeLessThanOrEqual(30);
     expect(state.renderHz).toBeGreaterThanOrEqual(10);
 
-    await page.screenshot({ path: `${SHOTS}/fx-162-concurrency.png` });
+    await page.screenshot({ path: `${SHOTS}/fx-r162-concurrency.png` });
   });
 
   test('护栏实测：浏览器内基准 —— 并发 2 的单帧占用落在单帧预算内', async ({ page }) => {

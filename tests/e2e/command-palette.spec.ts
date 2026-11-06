@@ -165,7 +165,7 @@ test.describe('⌘K 命令面板（@since v3.9，task_150）', () => {
     // 分组标题渲染。
     expect(state.groupNames.length).toBeGreaterThanOrEqual(3);
     await page.locator('strat-command-palette .panel').screenshot({
-      path: `${SHOTS}/-r9-cmdk-list-default-ck.png`,
+      path: `${SHOTS}/cmdk-r9-list-default-ck.png`,
     });
 
     // 输两个汉字 → 子序列模糊命中「切换到像素风」。
@@ -175,7 +175,7 @@ test.describe('⌘K 命令面板（@since v3.9，task_150）', () => {
     expect(state.ids).toContain('theme.pixel');
     expect(state.selected).toBe('theme.pixel');
     await page.locator('strat-command-palette .panel').screenshot({
-      path: `${SHOTS}/-r9-cmdk-search-default-ck.png`,
+      path: `${SHOTS}/cmdk-r9-search-default-ck.png`,
     });
 
     // Enter 执行 —— 皮肤真的切了（不是「看起来执行了」）。
@@ -200,7 +200,7 @@ test.describe('⌘K 命令面板（@since v3.9，task_150）', () => {
     const pixelState = await paletteState(page);
     expect(pixelState.ids).toContain('log.open');
     await page.locator('strat-command-palette .panel').screenshot({
-      path: `${SHOTS}/-r9-cmdk-search-pixel-ck.png`,
+      path: `${SHOTS}/cmdk-r9-search-pixel-ck.png`,
     });
 
     await page.keyboard.press('Escape');
@@ -223,7 +223,7 @@ test.describe('⌘K 命令面板（@since v3.9，task_150）', () => {
     console.log(`【灰态原因】${dispatch?.id} → ${dispatch?.text}`);
 
     await page.locator('strat-command-palette .panel').screenshot({
-      path: `${SHOTS}/-r9-cmdk-disabled-default-ck.png`,
+      path: `${SHOTS}/cmdk-r9-disabled-default-ck.png`,
     });
   });
 

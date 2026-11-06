@@ -120,7 +120,7 @@
 - 三个观测点：
   - **A（协议层）**：一个独立 WS 客户端连 `ws://127.0.0.1:7524/ws/world-sync`，记录首次收到「含该任务且 status=running」的 `snapshot` 的时刻；
   - **B（应用层）**：浏览器页内 `window.__srfApp.snapshot()`（dev-only 调试句柄，task_136）轮询该任务的 `status`；
-  - **C（视觉层）**：B 命中 `running` 的瞬间截屏（`reports/shots/task142-latency-working.png`），证明动画确实切到工作态。
+  - **C（视觉层）**：B 命中 `running` 的瞬间截屏（`reports/shots/latency-r142-working.png`），证明动画确实切到工作态。
 - `t0` = 发出 MCP `stratix_task_assign` 的时刻（**不是** MCP 回执时刻 —— 回执在 `t0+17ms`）。
 - 任务是真派单：gateway 进程内**真跑 CLI**（agent_kind=claude-code），不做假数据。
 
@@ -315,4 +315,4 @@ grep -n "TaskStatus" -A 12 src/core/types.ts                           # core �
 ```
 
 **证据产物**：`/tmp/unit-state-latency-timeline.json`（脚本落盘的时间线）｜
-`reports/shots/task142-latency-working.png`（running 瞬间截图）。
+`reports/shots/latency-r142-working.png`（running 瞬间截图）。

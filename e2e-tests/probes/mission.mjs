@@ -1,7 +1,7 @@
 /**
  * 文件职责：CDP 走查 —— mission（战场任务）全链闭环。
  *
- * 用法：node e2e-tests/mission.mjs [characterId] [prompt]
+ * 用法：node e2e-tests/probes/mission.mjs [characterId] [prompt]
  *   characterId —— 承接角色 id；缺省自动挑一个「已绑 agent 且场上有对应单位」的角色。
  *   prompt      —— 任务指令原文；缺省用一句最省事的「回一句 READY」。
  *
@@ -24,7 +24,7 @@ import {
   sleep,
   POLL_INTERVAL_MS,
   POLL_TIMEOUT_MS,
-} from './lib/cdp.mjs';
+} from '../lib/cdp.mjs';
 
 async function main() {
   const [, , characterIdArg, ...promptParts] = process.argv;

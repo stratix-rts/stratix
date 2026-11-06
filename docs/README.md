@@ -18,10 +18,31 @@
 | [THEME_SWITCHING.md](./THEME_SWITCHING.md) | 功能 | ✅ 有效 | 主题切换机制说明 |
 | [STRATIX_AGENT_DESIGN.md](./STRATIX_AGENT_DESIGN.md) | 设计 | ⚠️ 需核对 | Agent 核心设计（部分过时） |
 | [CHARACTER_CREATOR_V3_TECH_DOC.md](./CHARACTER_CREATOR_V3_TECH_DOC.md) | 技术 | ✅ 有效 | 英雄设计器 V3 技术文档 |
-| [ZONE_DESIGN.md](./ZONE_DESIGN.md) | 设计 | ⚠️ 需核对 | Zone 系统设计 |
-| [RTS_ZONE_API.md](./RTS_ZONE_API.md) | API | ✅ 有效 | RTS Zone 对外 API 定义 |
-| [RTS_ZONE_ARCHITECTURE.md](./RTS_ZONE_ARCHITECTURE.md) | 架构 | ✅ 有效 | RTS Zone 子系统架构 |
+| ~~ZONE_DESIGN.md~~ | 设计 | ❌ 已退役 | Zone 系统设计 —— **文件已删除**（Zone 整体砍掉，见 REFACTOR_PLAN_V3 §4 D5） |
+| ~~RTS_ZONE_API.md~~ | API | ❌ 已退役 | RTS Zone 对外 API 定义 —— **文件已删除**（同上） |
+| ~~RTS_ZONE_ARCHITECTURE.md~~ | 架构 | ❌ 已退役 | RTS Zone 子系统架构 —— **文件已删除**（同上） |
 | [测试标准.md](./测试标准.md) | 规范 | ⚠️ 需核对 | 测试覆盖率和标准 |
+
+### v3.3 当前有效文档（QA-04 / task_224 补录）
+
+上表是**历史索引**（部分条目已随 Zone 退役而失效）。下面这张是 **v3.3 现在的真相源** ——
+新文档一律先看这里。
+
+| 文档 | 类型 | 说明 |
+|------|------|------|
+| [DESIGN-project-map.md](./DESIGN-project-map.md) | 设计（冻结） | **项目 = 副本** 的总设计：M1/M2 多副本落库维度、容量上限、迁移与回滚矩阵 |
+| [DESIGN-canvas-interactions.md](./DESIGN-canvas-interactions.md) | 设计 | **画布交互**总设计：事件矩阵、键击归属优先级链、冲突对裁决 |
+| [DESIGN-asset-pipelines.md](./DESIGN-asset-pipelines.md) | 设计 | **资产管线**总纲：特效（pixelfx）/ 角色（CharacterComposer）两条管线各自闭环 |
+| [DESIGN-dsh-bridge.md](./DESIGN-dsh-bridge.md) | 设计 | dsh 桥接中间件设计（M3-00 起步） |
+| [REFACTOR_PLAN_V3.md](./REFACTOR_PLAN_V3.md) | 计划 | **v3 重构的冻结决策**（D5/D6 等；与 CLAUDE.md 冲突时以它为准） |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | 架构 | 系统整体架构与模块间关系 |
+| [WORLD-SYNC.md](./WORLD-SYNC.md) | 协议 | 视图侧 WS 协议（world-sync v3：快照 + 下行事件通道） |
+| [MCP_SERVER_DESIGN.md](./MCP_SERVER_DESIGN.md) | 协议 | MCP 工具面（给 agent 派单与探查） |
+| [DEMO-PLAN.md](./DEMO-PLAN.md) | 计划 | v3.3 演示链（视觉与交互简化） |
+| [ARCH-LAWS-STATIC-SCAN.md](./ARCH-LAWS-STATIC-SCAN.md) | 规范 | **架构铁律静态扫描**（5 条铁律 + 豁免账本 + CI 接线） |
+| [CODE-REVIEW-TRIAGE-QA03.md](./CODE-REVIEW-TRIAGE-QA03.md) | 记账 | QA-03 lint 分诊与死代码整治的账 |
+| [../e2e-tests/README.md](../e2e-tests/README.md) | 用法 | 走查探针 / 验收剧本的清单与端口纪律 |
+| [../reports/README.md](../reports/README.md) | 规范 | 截图留痕的**命名规范** |
 
 ### 如何判断一份文档是否过时？
 

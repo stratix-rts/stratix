@@ -30,6 +30,13 @@
  *   不是新引入的差异）。**一旦仓内出现 `__s1` 变体 sheet，本模块会自动把它列进清单**，
  *   dev 立刻与 release 同规格（变体命名规则见 fx-release-bake.ts 的 `fxBakeFileBase`）。
  *
+ * 输入：rootDir（仓库根，取 src/hud/theme/tokens-<skin>.css 的调色板）+ assetsRoot（仓内快照根，
+ *   缺省 <rootDir>/assets/fx；由 vite.config.ts 的 fxDevAssetsPlugin 传入）；
+ *   目录名只认皮肤登记表（SKIN_IDS）里的 id，文件只认 EFFECT_SPECS 里的效果与 `<kind>[__sN]` 命名。
+ * 输出：FxBakeManifest（与发布期同构，共用 buildFxBakeManifest ⇒ dev/release 消费代码同一套）
+ *   + fxSnapshotFingerprint（快照文件清单 + mtime + 字节数的指纹串，供 dev server 判断清单缓存是否过期）；
+ *   本模块**只读盘**，不写任何文件（清单由调用方序列化后返回）。
+ *
  * 禁止事项：
  *   1. 在清单里写时间戳 / 绝对路径 —— 清单必须可复现（同输入 → 同字节）；
  *   2. 把本模块引进运行时（src/）—— 它是 node 侧读盘的工具，运行时只读 JSON；

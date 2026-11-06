@@ -15,6 +15,13 @@
  *     - `.eslintrc.cjs` 里加了新豁免、账本里没有 ⇒ **未登记豁免** ⇒ 测试失败；
  *     - 账本里有、`.eslintrc.cjs` 里没有 ⇒ 过期豁免 ⇒ 测试失败（提示删账本条目）。
  *
+ *   输入：无（纯常量账本；零 import、零 IO —— scopes 里的字面量要与 `.eslintrc.cjs` 的
+ *     ignorePatterns / overrides.files / settings.import.core-modules **逐字一致**才能对上账）。
+ *   输出：`LINT_WAIVERS`（readonly LintWaiver[]，首版 11 条 L-01 … L-11），每条 =
+ *     id / kind（ignore-pattern | override | core-module）/ scopes（精确范围字面量）/
+ *     reason / followUp。棘轮比对的是 `.eslintrc.cjs` 与本账本的**集合是否相等**
+ *     （配置里有而账本里没有 = 未登记豁免；账本里有而配置里没有 = 过期豁免）。
+ *
  *   禁止事项：
  *     1. 把豁免当「顺手放过」—— 每条必须写清理由与后续处置（followUp）；
  *     2. 悄悄扩大豁免范围 —— 往 `.eslintrc.cjs` 加豁免必须同时来这里登记；

@@ -1,7 +1,7 @@
 /**
  * 文件职责：CDP 走查 —— 向指定角色派一单，并轮询到任务终态。
  *
- * 用法：node e2e-tests/assign.mjs <characterId> [prompt]
+ * 用法：node e2e-tests/probes/assign.mjs <characterId> [prompt]
  *   characterId —— WorldState.characters 里的角色 id（用 probe.mjs 查）。
  *   prompt      —— 任务指令原文；缺省用一句最省事的「回一句 READY」。
  *
@@ -21,14 +21,14 @@ import {
   sleep,
   POLL_INTERVAL_MS,
   POLL_TIMEOUT_MS,
-} from './lib/cdp.mjs';
+} from '../lib/cdp.mjs';
 
 const TERMINAL_TASK_STATUS = new Set(['completed', 'failed', 'cancelled']);
 
 async function main() {
   const [, , characterId, ...promptParts] = process.argv;
   if (!characterId) {
-    console.error('用法：node e2e-tests/assign.mjs <characterId> [prompt]');
+    console.error('用法：node e2e-tests/probes/assign.mjs <characterId> [prompt]');
     return 2;
   }
   const prompt = promptParts.join(' ') || '请回复一句 READY（不要做任何其他操作）。';

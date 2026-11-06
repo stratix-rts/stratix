@@ -8,6 +8,11 @@
  *   为什么有两种模式：
  *     棘轮模式是 CI 的默认口径 —— 已知的历史债记在豁免账本里（src/architecture/law-waivers.ts），
  *     账本之外的新违规一律红。严格模式给「想看全貌 / 豁免清零后转正」用。
+ *   输入：仓库根目录（REPO_ROOT = path.resolve(__dirname, '..')）——
+ *     扫描面 = src/ 与 scripts/ 下的 .ts 文件（src/architecture/law-scanner.ts 的 RepoIndex）；
+ *     豁免清单 = src/architecture/law-waivers.ts；命令行只认 --strict（扫 process.argv）。
+ *   输出：stdout 上的扫描报告（五条铁律各一段：违规明细 + 已豁免项的豁免理由 + 过期豁免提示 + 合计行）；
+ *     退出码 0 = 无未豁免违规；1 = 有未豁免违规（--strict 时「只剩已豁免的历史债」也算 1）。
  *   禁止事项：在这里改产品代码 —— 本脚本只报告。
  */
 

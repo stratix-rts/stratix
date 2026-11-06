@@ -9,6 +9,21 @@
  * 用法：npx tsx scripts/rehearse-n4b-character-ids.ts
  *
  * ⚠️ 只碰临时目录（`os.tmpdir()`）里的夹具库，**不碰任何用户库**。
+ *
+ * 输入：**不接任何命令行参数**（不读 argv、不接库路径）—— 夹具由
+ *   src/app/__tests__/persistence/helpers/n4b-fixture.ts 在 os.tmpdir() 下现建，
+ *   一次建五个独立夹具库（成功路径 / participants 坏行 / character_tasks 悬空 / 中途崩溃 / 缺 role_id）。
+ * 输出：stdout 的**可贴演练记录**（五个场景小节 + 每条断言的 ✓/✗ + 演练小结）——
+ *   成功路径额外打印迁移后的 characters.id 与 sessions.participants 明细、迁移报告路径、
+ *   重跑幂等结果与前滚回滚结果；
+ *   退出码 0 = 全部断言通过；1 = 有断言失败或抛错。
+ *
+ * 禁止事项：
+ *   1. 给本脚本接上 --data-dir 之类参数 —— 一旦能指向真实库路径，就等于给「误改用户库」开门；
+ *   2. 去掉收尾的临时目录清理 —— 五个夹具目录必须 rmSync 掉，留在磁盘上会被下一次演练
+ *      当成旧夹具误读；
+ *   3. 拿演练结果冒充生产库结论 —— 演练只证明六步纪律在干净夹具上成立，
+ *      真实库的形态（脏数据 / 半迁状态）只能靠 verify-n4b-character-ids.ts 去判。
  */
 
 import * as fs from 'fs';

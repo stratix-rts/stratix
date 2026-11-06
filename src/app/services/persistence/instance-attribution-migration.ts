@@ -59,6 +59,23 @@
  *   - **暴露**：宿主可见的控制面动作（将来 `ctx.remote.stratix` 的 admin 动作）。
  *   - 本单只交付**服务层能力 + CLI 入口 + 测试**；**UI 触发可后置**。
  *
+ * 输入：一个 better-sqlite3 兼容的连接（本地声明的 `AttributionDatabase`；可选
+ *   setAutoSaveEnabled / save / saveAtomically）+ `AttributionMigrationOptions`
+ *   （targetInstanceId 必填；sourceInstanceId 缺省 = 默认沙盒 `wsp_sandbox`；now / detailLimit /
+ *   logger / onStep 可选）。数据来源 = 源副本按 `instanceScopeCondition`（COALESCE 口径）读出的
+ *   `characters` / `character_tasks` / `sessions` / `session_external_refs` 三类对象 + 跟随行
+ *   （`unit_positions` / `exp_events` / `session_events`），外加目标副本「有无 `role_id` 非空的行」
+ *   这一物化判据。
+ * 输出：
+ *   - `previewInstanceAttribution` —— `AttributionPreview`（全量 counts + 按 detailLimit 截断的
+ *     明细 + blockers + warnings + targetMaterialized）：**一个字节都不落库**；
+ *   - `executeInstanceAttribution` —— `AttributionExecuteResult`（preview + 各类别 applied 计数 +
+ *     committed）；有阻断项抛 `AttributionBlockedError`（**没动任何数据**）；中途失败 ⇒ ROLLBACK；
+ *   - `previewInstanceAttributionRollback` —— 台账行 + 各类别计数（只读）；
+ *   - `rollbackInstanceAttribution` —— `AttributionRollbackResult`（reverted 计数 + total），
+ *     依据台账里的**原值**逐行反向 UPDATE（NULL 还原成 NULL），成功后清台账与本次写的
+ *     `character_id_map` 行。
+ *
  * 禁止事项：
  *   1. 在事务外改数据 —— 整批改 + 同事务写台账，**一个事务**；
  *   2. 改角色行 id —— N7 只改归属；

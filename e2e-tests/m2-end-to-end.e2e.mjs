@@ -16,6 +16,16 @@
  *   `scripts/rehearse-n4b-character-ids.ts` / `scripts/migrate-n7-attribution.ts`）
  *   由本文件当子进程跑 —— 「脚本可重跑」验的是**命令本身**，不是模块函数。
  *
+ * 输入：命令行开关 `--keep`（保留临时目录不删；用法见下方『跑法』段）+ 仓内依赖 ——
+ *   夹具 `e2e-tests/fixtures/m2-instance-a` 与 `e2e-tests/fixtures/m2-instance-b`
+ *   （两个副本的 .stratix 契约面）、`node_modules/.bin/tsx`（跑场景进程与 ③④⑤ 的 CLI）、
+ *   `scripts/verify-n4b-character-ids.ts` / `scripts/rehearse-n4b-character-ids.ts` /
+ *   `scripts/migrate-n7-attribution.ts`（③④⑤ 的 CLI 入口）；
+ *   所有库与工作目录都落在 `os.tmpdir()` 下的临时目录（`stratix-m2-e2e-*`），**不碰用户的库**。
+ * 输出：stdout 的断言摘要（`printSummary` 的 PASS/FAIL 行 + 每条断言的观测值）
+ *   + 场景进程写出的 `$SX_M2_WORKDIR/report.json`（五组观测值 = 驱动层的断言对象）；
+ *   失败时 stderr 打剧本堆栈；退出码口径见下方『退出码』段。
+ *
  * 跑法：node e2e-tests/m2-end-to-end.e2e.mjs [--keep]
  * 退出码：0 = 五组断言全过；1 = 有断言失败或脚本报错。
  *

@@ -16,6 +16,14 @@
  *   只保证「构建会烘」，而**确定性是要能单独拿出来验的** —— 所以这里留一条独立可跑的
  *   `--verify`：同一输入烘两份，逐字节比对，输出证据。
  *
+ * 输入：仓库根（ROOT = path.resolve(__dirname, '..')，用于定位 vendor/pixelfx 与 src/hud/theme/tokens-*.css）
+ *   + 命令行参数：--out（产物目录，默认 dist/frontend/fx）、--skins（默认 default,pixel）、
+ *   --seed-variants（默认 2，须为 ≥1 的整数）、--kinds（只烘部分效果）、--verify（确定性自检）。
+ * 输出：产物目录下的 PNG + atlas JSON + fx-bake-manifest.json（字段口径由 fx-release-bake.ts 的
+ *   buildFxBakeManifest 统一构造）+ stdout 上的逐条产物清单（皮肤 / kind / 变体 / seed / 帧数 / sha256）；
+ *   退出码 0 = 烘焙或 --verify 自检通过；1 = 失败（参数非法 / 产物目录越界 / 渲染失败 / 两次烘焙不一致，
+ *   都以 throw 冒泡成未捕获异常）。
+ *
  * 禁止事项：
  *   1. 产物写进 assets/ —— 那是入库资产目录（烘焙器内部有闸门，见 fx-release-bake.ts）；
  *   2. manifest 里写时间戳 —— 会破坏「两次烘焙逐字节一致」。

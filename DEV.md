@@ -29,6 +29,20 @@ npm run electron:dev
 npm run electron:build
 ```
 
+### QA 与资产管线命令（v3.3 新增）
+
+| 命令 | 作用 |
+|------|------|
+| `npm run arch:scan` | 架构铁律静态扫描（5 条铁律）；`npm run arch:scan:strict` = 豁免也不放过 |
+| `npm run dead:scan` | 死代码扫描 |
+| `npm run test:arch` | 铁律扫描 + 豁免账本的棘轮测试（账实必须一致） |
+| `npm run fx:bake` | 发布期特效烘焙（构建期产物，**不入库提交**） |
+| `npm run fx:bake:verify` | 校验烘焙产物与清单 |
+| `npm run typecheck` | 全量类型检查（`typecheck:app` / `typecheck:tests` 分别查应用与测试工程） |
+| `npm test` | jest 全仓（CPU 密集 —— 本机同时间只跑这一件重活） |
+
+走查探针与验收剧本见 [e2e-tests/README.md](e2e-tests/README.md)。
+
 ### Tailscale 远程连接
 
 ```bash

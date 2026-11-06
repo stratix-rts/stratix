@@ -111,7 +111,7 @@ test.describe('底部双框合一（task_154）', () => {
     expect(barInputs).toBe(1);
 
     await page.locator('.hud-bottom-bar').screenshot({
-      path: `${SHOTS}/task154-r11-bottom-single-input-ck154.png`,
+      path: `${SHOTS}/bottom-single-input-r11-ck154.png`,
     });
   });
 
@@ -139,7 +139,7 @@ test.describe('底部双框合一（task_154）', () => {
     expect(draft).toBe('请把事件总线的重构做完，拆成采集层、归一化层与分发层三层。');
 
     await page.locator('.hud-bottom-bar').screenshot({
-      path: `${SHOTS}/task154-r11-bottom-taskbar-ck154.png`,
+      path: `${SHOTS}/bottom-taskbar-r11-ck154.png`,
     });
   });
 
@@ -184,7 +184,7 @@ test.describe('新建角色一级入口（task_154）', () => {
     await expect(wizard).toBeVisible({ timeout: 10_000 });
     await expect(wizard.locator('[data-role="scan-summary"]')).toBeVisible();
 
-    await page.screenshot({ path: `${SHOTS}/task154-r11-topbar-create-character-ck154.png` });
+    await page.screenshot({ path: `${SHOTS}/topbar-create-character-r11-ck154.png` });
   });
 
   test('全流程：点按钮 → 填表 → 保存 → 上场（≤5s）→ toast「已上场」，测完删掉', async ({ page }) => {
@@ -246,7 +246,7 @@ test.describe('新建角色一级入口（task_154）', () => {
       .poll(async () => (await toastTexts(page)).some((t) => t.includes('已上场')), { timeout: 5000 })
       .toBe(true);
 
-    await page.screenshot({ path: `${SHOTS}/task154-r11-character-onboarded-ck154.png` });
+    await page.screenshot({ path: `${SHOTS}/character-onboarded-r11-ck154.png` });
 
     // ⑦ 测完删掉（别留垃圾档案）。
     const removed = await page.evaluate((name) => {

@@ -14,6 +14,13 @@
  *
  *   解析方式：TypeScript AST（跟 src/architecture/law-scanner.ts 同一口径）——
  *     注释掉的 import、字符串里的路径都不算数。
+ *
+ *   输入：仓库根（REPO_ROOT = path.resolve(__dirname, '..')）——
+ *     扫描面 = src/ 下的 .ts（测试文件不作为「被扫描对象」，但仍是引用方）+ scripts/ + tests/
+ *     + e2e-tests/ + tools/；引用线索还包含非 .ts 文本文件（json / html / js / mjs / cjs / sh / py / yml / yaml）。
+ *   输出：stdout 的三段清单（【A】零引用文件候选、【B】完全未使用的导出、【C】仅本文件内部使用的导出）
+ *     + 合计行；不写任何文件、不改任何代码，退出码恒为 0（只报告，不阻断 CI）。
+ *
  *   禁止事项：
  *     1. 在本脚本里改产品代码 —— 本脚本只**报告**；
  *     2. 把候选直接当结论 —— 处置前必须人工确认（任务要求：候选清单先产出再动）。

@@ -242,7 +242,7 @@ test.describe('远程模式世界事件转发（task_156）', () => {
     );
     expect(selectCommands).toHaveLength(0);
 
-    await page.screenshot({ path: `${SHOTS}/world-sync-event-forward-click.png` });
+    await page.screenshot({ path: `${SHOTS}/world-sync-r11-event-forward-click.png` });
   });
 
   test('② 点空地清选 + 框选多单位在远程模式同样生效（selection.box 也走转发）', async ({ page }) => {

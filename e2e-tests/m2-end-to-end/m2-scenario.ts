@@ -18,9 +18,21 @@
  *   —— 进程层一旦自己判「通过」，失败就会被吞掉。
  *
  * 用法：SX_M2_WORKDIR=<临时目录> npx tsx e2e-tests/m2-end-to-end/m2-scenario.ts
+ * 输入：环境变量 `SX_M2_WORKDIR`（= 临时工作目录，**必填**；缺失 ⇒ 打错误并以退出码 2 退出；
+ *   完整用法见上方『用法』段）+ 前置条件：该目录里已由驱动层铺好两个副本的契约面
+ *   （`instance-a` / `instance-b` 的 `.stratix/project.json` + `roster/_index.json` +
+ *   `config/stratix.json`）。
  * 输出：把 JSON 报告写到 `$SX_M2_WORKDIR/report.json`。
  *
  * ⚠️ 只碰临时目录里的库，**不碰任何用户库**。
+ *
+ * 禁止事项：
+ *   1. 不许在本进程里断言（不出 PASS/FAIL、不自己判「通过」）—— 进程层一旦自己判通过，
+ *      失败就会被吞掉；断言全在驱动层 `m2-end-to-end.e2e.mjs`。
+ *   2. 不许写 `$SX_M2_WORKDIR` 以外的任何路径 —— 用户库一开一写就是数据事故；
+ *      本进程只写临时目录里的库与 `report.json`。
+ *   3. 不许引入随机量（随机 id / 随机时刻 / 随机名册）—— 报告要能逐字复算才能两次跑对得上；
+ *      时刻用固定的 `T0`（1760000000000），副本 id 用固定的 `wsp_m2_a` / `wsp_m2_b`。
  */
 
 import * as fs from 'fs';

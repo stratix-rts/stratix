@@ -14,6 +14,23 @@
  * ⚠️ **本脚本只做「一次性重写」，不改任何业务语义**；执行时机由人决定（本单只交付脚本）。
  * ⚠️ N4b 之后**不支持降级**到 M1 版本（旧版本按旧 id 找角色会找不到 ⇒ 角色全丢），
  *    只支持**前滚回滚**（`rollback` 子命令，靠 character_id_map 反向 UPDATE）。
+ *
+ * 输入：库目录 --data-dir（默认 stratix-data）+ 库文件名 --filename（默认 stratix.db，不含 .sqlite 后缀）
+ *   + 操作选项 --confirm-service-stopped（**必须给**：服务仍写盘时锁文件与提交前指纹守门会拒绝执行）、
+ *   --dry-run（只出计划与校验口径，不改数据）、--strict（告警项也判失败）、
+ *   --instance（只处理指定副本，缺省 = 全部非默认沙盒副本）；
+ *   前置 = 默认沙盒之外的副本行已带 role_id（N6 物化完成），否则整批被阻断。
+ * 输出：stdout 的结果行（状态 + 实际重写行数 + 失败原因 + 失败恢复指引）
+ *   + 备份目录 <dataDir>/backups/n4b-<时间戳>/（库文件与 WAL / SHM 边车，逐个 sha256 校验）
+ *   + 迁移报告 <备份目录>/n4b-report.json；
+ *   退出码 0 = succeeded / no-op / dry-run，1 = rolled-back / blocked 或抛错，2 = 用法错误。
+ *
+ * 禁止事项：
+ *   1. 不带 --confirm-service-stopped 就改用户库 —— 运行中的 service 随时把内存里的旧状态
+ *      整库写回磁盘，重写成果会被覆盖（角色 id 又变回旧的）；
+ *   2. 跳过备份直接改库 —— 备份由编排层在改库前自动完成并校验指纹，本脚本没有「无备份」的路径；
+ *   3. 借迁移顺手改业务语义 —— 只重写 id 并同事务写 character_id_map，行内容 / 状态 / 归属一律不动；
+ *   4. 把 N4b 当成可降级操作 —— 迁完只支持 rollback 子命令的前滚回滚，不支持回到 M1 版本。
  */
 
 import {

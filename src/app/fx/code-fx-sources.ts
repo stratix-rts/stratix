@@ -14,6 +14,14 @@
  *   - 其余五个触点（庆祝 / 上场 / 下场 / 报错 / 指令）是通用演出 ⇒ 留 sheet（见
  *     world/appearance/code-fx-routing.ts 的分流表）。
  *
+ * 输入：效果清单 `PRODUCTION_CODE_FX_SPECS`（每条 = kind / scale / paletteRoles / `load` 取法）
+ *   + `load` 动态 import 取回的 pixelfx 效果模块（形状须是 `PixelfxEffectModule`：meta.size /
+ *   meta.origin / meta.duration / meta.loop / createFrame）。
+ * 输出：`readonly CodeFxSource[]` —— 每个源带 kind / width / height / originX / originY /
+ *   durationMs / loop / scale / paletteRoles / create（`toCodeFxSource` 适配出来的）。
+ *   取不到的 kind **静默缺席** ⇒ 该 kind 没有代码源 ⇒ 战场自动回落 sheet 路由
+ *   （空数组 = 全部走 sheet 路由，不是错误）。
+ *
  * 禁止事项：
  *   1. import world 的其它实现 —— 这里只 import world 的**契约**（CodeFxSource 类型）与键名；
  *   2. 在这里写死色值 —— 调色板槽位（角色名）由 world 层按皮肤 token 热读解析；

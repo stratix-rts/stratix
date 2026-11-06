@@ -13,25 +13,47 @@
 
 ```
 e2e-tests/
-├── lib/cdp.mjs   # 公共封装：连页面 + Runtime.evaluate helper（三脚本共用）
+├── lib/cdp.mjs   # 公共封装：连页面 + Runtime.evaluate helper（走查探针共用）
 ├── lib/service-harness.mjs     # 公共封装：起服务 / 断言 / 回收 pid / MCP 调用 / world-sync 观察
-├── probe.mjs     # 连接探测 + 世界状态快照（角色 / 单位 / 任务 / 使命）
-├── assign.mjs    # 向指定角色派单，轮询至任务终态
-├── mission.mjs   # mission 全链：create → confirm accept → 带 missionId 派单 → 轮询到收尾
+├── probes/                      # **走查探针**（驱动已在跑的实例；QA-04 归整：探针脚本独立成目录）
+│   ├── probe.mjs     # 连接探测 + 世界状态快照（角色 / 单位 / 任务 / 使命）
+│   ├── assign.mjs    # 向指定角色派单，轮询至任务终态
+│   └── mission.mjs   # mission 全链：create → confirm accept → 带 missionId 派单 → 轮询到收尾
 ├── service-resident.e2e.mjs           # **自起自收**的总验收剧本（服务常驻 / Electron 可选）
 ├── service-resident/fake-cli.ts        # fake CLI adapter（执行替身；--real 可切真 claude）
 ├── service-resident/service-process.ts # service 进程启动器（tsx 直跑）
 ├── session-domain.e2e.mjs             # **会话域验收剧本**（互聊超时 → 可见可查）
+├── session-domain/session-capabilities.e2e.mjs # **会话域六能力验收剧本**（resume/fork/task_run/…）
 ├── session-domain/peer-cli.ts          # 静默 CLI adapter（互聊超时制造机）
 ├── session-domain/service-process.ts   # service 进程启动器 + 互聊夹具（tsx 直跑）
 ├── m0-project-context.e2e.mjs         # **M0 端到端验收剧本**（项目块 + cwd + 库零变化）
 ├── m0-project-context/fake-cli.ts     # 回报所见（prompt + cwd）的 CLI adapter（执行替身）
 ├── m0-project-context/service-process.ts # 生产组合根（真 service）+ 真派单（tsx 直跑）
 ├── m0-project-context/schema-baseline.ts  # 「M0 前」的库结构基线快照程序
-├── fixtures/m0-project/               # **入库夹具**：一个最小 `.stratix` 契约面
+├── m1-instance-switch.e2e.mjs         # **M1 端到端验收剧本**（切副本零残留 / 切回数据还在）
+├── m1-instance-switch/instance-switch-process.ts # 战场侧进程脚本（seed / switch 两阶段）
+├── m1-instance-switch/fake-cli.ts     # fake CLI adapter（替身）
+├── m1-instance-switch/tsconfig.json   # 把 `phaser` 映射到桩模块（node 里跑不了真 Phaser）
+├── m2-end-to-end.e2e.mjs              # **M2 端到端验收剧本**（双副本隔离 + 容量 + 回滚演练）
+├── m2-end-to-end/m2-scenario.ts       # M2 五组能力观测进程（临时库真跑，写 JSON 报告）
+├── qa-full-flow.e2e.mjs               # **QA-01 全流程验收剧本**（冷启动 → 进副本 → 选中/移动 → 派单 → 切副本 → 回大厅）
+├── qa-full-flow/qa-service-process.ts # QA-01 的 service 进程装配
+├── qa-full-flow/vite-server.ts        # QA-01 的 vite dev server（代理到本次验收自己的 service）
+├── demo-flow.e2e.mjs                  # **演示收口剧本**（派活 → 框选 → 特效 → 回放 60s）
+├── demo-flow/fake-claude.mjs          # 本地模式的假 claude 二进制（替身）
+├── fixtures/                          # **入库夹具**：各场景的最小 `.stratix` 契约面
+│   ├── m0-project/  m1-instance-b/  m2-instance-a/  m2-instance-b/
 ├── lobby-empty-card/                  # **大厅空卡探针**（task_213 / M2-12）：快照探针 + DOM 探针（详见其 README）
 └── README.md
 ```
+
+> **目录约定（QA-04 / task_224 归整）**
+>
+> - **探针脚本独立成目录**：驱动「已经在跑的实例」的走查探针（`probe` / `assign` / `mission`）
+>   归在 `probes/`；与某个剧本绑定的探针留在该剧本目录内（如 `lobby-empty-card/`）。
+> - **每个剧本 = 一个顶层驱动（`*.e2e.mjs`）+ 一个同名目录**（夹具 / helper / 替身）。
+>   驱动与它的 helper **永远同处一个顶层**，避免「哪个 helper 属于哪支剧本」要靠猜。
+> - **`lib/` 与 `fixtures/` 是横切面**：前者是公共封装，后者是入库夹具 —— 不属于任何一支剧本。
 
 ## 前置条件
 
@@ -67,9 +89,13 @@ e2e-tests/
 
 | 脚本 | 用法 | 作用 |
 |------|------|------|
-| `probe.mjs` | `node e2e-tests/probe.mjs` | 连接探测 + 打印世界状态 JSON（角色 / 单位 / 任务 / 使命 / 通知 / 检出 agent） |
-| `assign.mjs` | `node e2e-tests/assign.mjs <characterId> [prompt]` | 向指定角色派一单，轮询到任务终态（completed → 退出码 0） |
-| `mission.mjs` | `node e2e-tests/mission.mjs [characterId] [prompt]` | mission 全链闭环（mission 到 `done` → 退出码 0） |
+| `probe.mjs` | `node e2e-tests/probes/probe.mjs` | 连接探测 + 打印世界状态 JSON（角色 / 单位 / 任务 / 使命 / 通知 / 检出 agent） |
+| `assign.mjs` | `node e2e-tests/probes/assign.mjs <characterId> [prompt]` | 向指定角色派一单，轮询到任务终态（completed → 退出码 0） |
+| `mission.mjs` | `node e2e-tests/probes/mission.mjs [characterId] [prompt]` | mission 全链闭环（mission 到 `done` → 退出码 0） |
+
+> ⚠️ **路径已变（QA-04 / task_224 归整）**：这三个走查探针从 `e2e-tests/` 顶层移到了
+> `e2e-tests/probes/`。旧路径（`node e2e-tests/probe.mjs`）**不再存在** ——
+> 走查探针归到目录，是为了让「顶层 = 剧本」这条约定不留例外。
 
 角色 id 用 `probe.mjs` 查（`characters[].id`）。`mission.mjs` 省略角色时自动挑一个
 「已建档且场上有对应单位」的角色 —— mission 必须指派到在场的单位才成立。
@@ -201,6 +227,102 @@ node e2e-tests/m0-project-context.e2e.mjs --keep   # 保留临时目录（排查
 **端口与进程纪律**：本剧本**不监听任何端口**（不起 HTTP/WS 服务），只 spawn 短命子进程，
 故不与 7523 / 7524 / 9222 冲突；数据目录是临时目录（可重复执行）。
 
+## 剧本：m1-instance-switch.e2e.mjs（M1 端到端验收 · 切副本零残留）
+
+`docs/DESIGN-project-map.md` §7.1「M1-16」行的收口验收：进默认沙盒造数据 → 切到第二个副本 →
+断言**无残留** → 切回 → 断言数据**还在**（是被换回来，不是被清空）。
+
+```bash
+node e2e-tests/m1-instance-switch.e2e.mjs          # 默认：替身模式（确定性）
+node e2e-tests/m1-instance-switch.e2e.mjs --keep    # 保留临时目录（排查用）
+```
+
+**三条断言**：① 切副本不串数据（单位表空 / 地图槽归零 / 站位种子键分家）；
+② 切回后旧数据完整；③ 零 DDL（库结构与 M1 前逐字节一致 —— 「M1 前」靠 `git archive`
+把那个提交展开成临时代码树**用那棵树建一次库**取基线，不是嘴说）。
+
+**为什么要两个进程**：站位种子是**启动读档**时写进键仓的 ⇒ 同一进程里造完再切副本，
+读档那一步根本没发生，种子分区无从验。分进程 = 真重启一次，走**生产代码**的读档链。
+
+**夹具**：`fixtures/m1-instance-b/`（第二个副本的最小 `.stratix` 契约面），跑时整份拷进临时目录。
+
+## 剧本：m2-end-to-end.e2e.mjs（M2 端到端验收 · 双副本隔离 + 容量 + 回滚）
+
+M2（多副本落库维度）的收口验收：在**临时库**上真跑五组能力，观测值写成 JSON 报告，
+**断言在驱动层**（进程层只如实回报所见 —— 进程层自己判「通过」，失败会被吞掉）。
+
+```bash
+node e2e-tests/m2-end-to-end.e2e.mjs          # 默认：替身模式（确定性）
+node e2e-tests/m2-end-to-end.e2e.mjs --keep    # 保留临时目录（排查用）
+```
+
+**五组观测**：① **副本间数据隔离**（characters / tasks / sessions / events 互不可见，
+COALESCE 命中口径正确）；② **容量上限生效**（每 instance 64 角色 / 全局 512 /
+session_events 每会话 512 + 每 instance 4096 ⇒ 滚动归档到 `history/`）；
+③ **N4b 校验脚本可重跑**；④ **回滚矩阵演练**（校验失败 ⇒ 自动回滚）；
+⑤ **N7 归属迁移**（预览 → 执行 → 撤销 闭环）。
+
+**夹具**：`fixtures/m2-instance-a/` 与 `fixtures/m2-instance-b/`（两个真副本的最小契约面）。
+
+## 剧本：qa-full-flow.e2e.mjs（QA-01 全流程验收）
+
+v3.3 QA 轮的总验收：**真浏览器（Playwright）+ 真 vite dev server + 真 service 进程 +
+真 world-sync 协议 v3 + 真 core 裁决 + 真 CLI 子进程**（PATH 上的假 claude = 桩进程）。
+
+```bash
+node e2e-tests/qa-full-flow.e2e.mjs          # 默认：替身模式（确定性）
+node e2e-tests/qa-full-flow.e2e.mjs --keep    # 保留临时目录（排查用）
+```
+
+**断言链**：冷启动（连上 / 首份快照 / 大厅面板挂载 / `activeInstanceId` 显式 null）→
+进副本（裁决 / 面板退场 / **仪式画出来**）→ 选中（真点击 → `selection.unitIds` 长度 1 /
+revision 递增）→ 移动（右击 → `unit.move` 上行 → **下行 `event.push(unit.position)`** →
+像素级证明是补间不是瞬移）→ 派单（queued → running → completed）→ 切副本 → 回大厅。
+
+**三条硬纪律**：① **不碰用户实例**（端口在备用段里动态挑并显式避开 7523/7524/7525/9222；
+数据全在 `os.tmpdir()` 下，**一个字节都不写进用户的仓 / 库**）；
+② **可重跑**（每次新建临时目录 + 新端口探测 + 收尾按 pid 精确回收；断言只看观测值）；
+③ **失败如实定位到层**（每条断言挂在环节上，末尾输出**缺口清单**）。
+
+**已记账的缺口（本轮不改码）**：GAP-01 进副本仪式在**远程模式**下不演（差的是
+「service 广播 → 客户端收到」这一跳）；GAP-02 副本内没有「退出副本 / 切副本」的界面出口。
+
+## 剧本：demo-flow.e2e.mjs（演示收口剧本）
+
+`docs/DEMO-PLAN.md` §11 的收口：把演示链「派活 → 框选 → 指令特效 → 干活动画 → 卡住 →
+集火 → 完成插旗 → 区域点亮 → 里程碑 → 回放 60s」在**假 CLI** 下真跑一遍。
+
+```bash
+node e2e-tests/demo-flow.e2e.mjs            # 默认：fake CLI（确定性）
+node e2e-tests/demo-flow.e2e.mjs --keep     # 保留临时目录（排查用）
+SX_DEMO_PHASES=A,B node e2e-tests/demo-flow.e2e.mjs   # 只跑某几段（排查用）
+```
+
+**三段拓扑**（这一条链在三种形态里各跑一半，理由写在剧本文件头）：A 段走 dev 验收页
+（卡住体态 / 集火在生产应用里不可达）；B 段走生产入口**本地模式**（任务生命周期事件由渲染进程
+自己的 core 发出，远程模式听不到）；C 段走生产入口**远程模式**（回放读口基址由 world-sync
+地址换协议得出，本地模式写死的是用户端口）。
+
+**替身只落在最末端那一跳**：本地模式的 PATH 上的 `claude` 二进制 → `demo-flow/fake-claude.mjs`；
+远程模式的 service 侧注入既有 fake CLI adapter。core 的裁决 / 队列 / 相位 / 落库全是真链路。
+
+## 剧本：session-domain/session-capabilities.e2e.mjs（会话域六能力验收）
+
+v3.2b-B9 的六项能力逐条落成可重复执行的剧本：resume / fork / task_run 全量事件化 /
+长会话压缩 / @会话引用 / 自动起名。
+
+```bash
+node e2e-tests/session-domain/session-capabilities.e2e.mjs          # 默认：替身模式（确定性）
+node e2e-tests/session-domain/session-capabilities.e2e.mjs --keep    # 保留临时目录（排查用）
+```
+
+**与老剧本（`session-domain.e2e.mjs`）的关系**：两支共用同一个 service 夹具
+（`session-domain/service-process.ts`）与同一套进程纪律；本剧本**另起端口、另起数据目录**，
+故可与老剧本各自独立跑、互不干扰。
+
+> ⚠️ **路径已变（QA-04 / task_224 归整）**：本剧本原在 `e2e-tests/` 顶层，
+> 现归到 `e2e-tests/session-domain/` —— 它复用的正是该目录里的 service 夹具与 peer CLI。
+
 ## 环境变量
 
 | 变量 | 默认 | 说明 |
@@ -208,10 +330,16 @@ node e2e-tests/m0-project-context.e2e.mjs --keep   # 保留临时目录（排查
 | `CDP_BASE` | `127.0.0.1:9222` | CDP 调试端口（换端口 / 换机器时用） |
 | `SX_POLL_INTERVAL_MS` | `3000` | 轮询间隔 |
 | `SX_TIMEOUT_MS` | `300000` | 轮询超时（5 分钟） |
-| `SX_SERVICE_PORT` | `7797`（`service-resident`）/ `7817`（`session-domain`） | 剧本自己的 service 端口 |
-| `SX_WS_PORT` | `7798`（`service-resident`）/ `7818`（`session-domain`） | 剧本自己的状态同步 WS 端口 |
+| `SX_SERVICE_PORT` | `7797`（`service-resident`）/ `7817`（`session-domain`）/ `7827`（`session-capabilities`） | 剧本自己的 service 端口 |
+| `SX_WS_PORT` | `7798`（`service-resident`）/ `7818`（`session-domain`）/ `7828`（`session-capabilities`） | 剧本自己的状态同步 WS 端口 |
 | `SX_CDP_PORT` | `7799` | 剧本自己的 Electron 调试端口 |
 | `SX_VITE_PORT` | `7601` | 剧本自己的 vite dev server 端口 |
+| `SX_DEMO_VITE_PORT` / `SX_DEMO_SERVICE_PORT` / `SX_DEMO_SERVICE_WS_PORT` | `7611` / `7811` / `7812` | `demo-flow` 剧本自己的 vite / service / WS 端口 |
+| `SX_DEMO_PHASES` | 全跑 | `demo-flow` 只跑某几段（`A,B`）；不设 = A/B/C 三段全跑 |
+
+> `qa-full-flow` **不读**这些环境变量：它在备用段里**动态挑**空闲端口
+> （vite 7600-7699 / service 7800-7899），并显式避开用户的 7523 / 7524 / 7525 / 9222。
+> `m1-instance-switch` 与 `m2-end-to-end` **不监听任何端口**（只 spawn 短命子进程）。
 | `STRATIX_PEER_TURN_TIMEOUT_MS` | `10000` | 互聊回合超时（会话域剧本用；下界 10s，产品口径的覆盖链） |
 
 ## 脚本口径（与 core 契约一致，不是猜的）
@@ -231,12 +359,18 @@ node e2e-tests/m0-project-context.e2e.mjs --keep   # 保留临时目录（排查
 
 - `tsconfig.json` / `tsconfig.app.json` / `tsconfig.test.json` 的 `include` 都只覆盖
   `src/**` 与 `tests/**`，**不含 `e2e-tests/`** —— 纯 JS 不进 `tsc`，也不进 `jest`（`jest.config.js` 的 roots 亦不含它）。
-- **走查脚本**（`probe` / `assign` / `mission`）**不 import 任何 `src/**` 模块**：脚本跑在 node 侧，
-  通过 CDP 操作页面，与仓库实现解耦 —— core 契约变了，改脚本里的口径注释即可，不需要引入构建链。
+- **走查探针**（`probes/probe` / `probes/assign` / `probes/mission`）**不 import 任何 `src/**` 模块**：
+  脚本跑在 node 侧，通过 CDP 操作页面，与仓库实现解耦 —— core 契约变了，改脚本里的口径注释即可，
+  不需要引入构建链。
 - **验收剧本**（`service-resident.e2e.mjs` + `service-resident/*.ts`、`session-domain.e2e.mjs` +
-  `session-domain/*.ts`、`m0-project-context.e2e.mjs` + `m0-project-context/*.ts`）是例外：它们要
+  `session-domain/*.ts`、`m0-project-context.e2e.mjs` + `m0-project-context/*.ts`、
+  `m1-instance-switch.e2e.mjs` + `m1-instance-switch/*.ts`、`m2-end-to-end.e2e.mjs` +
+  `m2-end-to-end/*.ts`、`qa-full-flow.e2e.mjs` + `qa-full-flow/*.ts`）是例外：它们要
   **拉起真实 service**（注入执行器替身、读真实 MCP / world-sync / 真库），
   所以那些 `.ts` helper 会 import `src/**`。
   它们同样不进 `tsc` / `jest`（不在 include / roots 里），由 `tsx` 直跑（见 `service-resident/service-process.ts` 的文件头）。
-- `lib/service-harness.mjs` 是两个验收剧本共用的**夹具层**（起服务 / 断言 / 回收 pid / MCP / world-sync）：
+- **但它们进 lint**：`tsconfig.eslint.json` 的 `include` 覆盖 `e2e-tests/**/*` ——
+  此前这一整棵树因为不在任何 tsconfig 工程里，`eslint .` 直接报解析错，等于**零 lint 覆盖**
+  （QA-03 首跑发现，已修）。
+- `lib/service-harness.mjs` 是多个验收剧本共用的**夹具层**（起服务 / 断言 / 回收 pid / MCP / world-sync）：
   端口与进程纪律集中在一处，改一处全体生效。

@@ -9,6 +9,13 @@
  *   解码器只需认得它产出的东西。遇到别的格式（隔行 / 调色板 / 16bit）**直接报错** ——
  *   静默按错的格式解出来的图，比报错难查得多（而且会让一致性测试假绿）。
  *
+ * 输入：一个 PNG 文件的字节（`Buffer`；来源是自家 vendor/pixelfx 的 `encodePNG` 写出的
+ *   RGBA8 / 非隔行 PNG —— 解码器只认得它产出的那一种）。
+ * 输出：`decodePng(buffer)` → `DecodedPng`（width / height / `data: Uint8Array`，
+ *   长度 = width × height × 4，行优先，RGBA8 像素）。
+ *   格式不符时**抛错**（不静默按错的格式解）：签名不匹配 / 缺 IHDR 段 /
+ *   非 RGBA8（depth ≠ 8 或 color ≠ 6）/ 隔行（interlace ≠ 0）/ 缺 IDAT 段 / 未知过滤器。
+ *
  * 禁止事项：
  *   1. 引入 npm 依赖（pngjs 之类）—— 本仓的测试零新增依赖是硬约束；
  *   2. 顺手扩成通用 PNG 解码器 —— 上游编码器口径不变就不需要更多。
