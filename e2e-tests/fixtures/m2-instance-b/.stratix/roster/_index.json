@@ -1,0 +1,8 @@
+{
+  "formatVersion": 1,
+  "defaultRoleId": "scout",
+  "roles": [
+    { "id": "scout", "name": "斥候", "agentKind": "claude-code" },
+    { "id": "engineer", "name": "工兵", "agentKind": "claude-code" }
+  ]
+}

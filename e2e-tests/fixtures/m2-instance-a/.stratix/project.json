@@ -1,0 +1,14 @@
+{
+  "$schema": "https://stratix.dev/schemas/project/v1.json",
+  "formatVersion": 1,
+  "id": "spx_m2a_5c1f8b0e93a742d6e8b0127f",
+  "name": "霜港工坊",
+  "description": "M2 端到端验收的副本 A（各有各的养成与任务，互相看不见）。",
+  "createdAt": "2026-11-06T10:00:00.000Z",
+  "agents": {
+    "defaultRoleId": "scout",
+    "defaultProfile": "stratix-default"
+  },
+  "engines": { "stratix": ">=3.3.0" },
+  "links": { "dsh": "dsh/profile.json" }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://stratix.dev/schemas/project/v1.json",
+  "formatVersion": 1,
+  "id": "spx_m2b_7e2d9c4a10b85f36d47a1c92",
+  "name": "赤岩前哨",
+  "description": "M2 端到端验收的副本 B（各有各的养成与任务，互相看不见）。",
+  "createdAt": "2026-11-06T10:00:00.000Z",
+  "agents": {
+    "defaultRoleId": "scout",
+    "defaultProfile": "stratix-default"
+  },
+  "engines": { "stratix": ">=3.3.0" },
+  "links": { "dsh": "dsh/profile.json" }
+}

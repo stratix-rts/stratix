@@ -58,6 +58,8 @@
  *   它**带数据**（行归属哪个副本）⇒ 重建迁移必须把它**搬过去**（见下方 rebuild 的 DDL 注释）。
  */
 
+import type { ProjectInstanceId } from '../../../core/types';
+
 import {
   ensureInstanceIdColumn,
   instanceScopeWhere,
@@ -113,6 +115,16 @@ export interface PersistedTaskRecord {
   readonly pipelineId?: string;
   /** 关联 mission（task_076）；null / 缺省 = 普通任务。 */
   readonly missionId?: string | null;
+  /**
+   * 所属副本（`instance_id` 列镜像；@since v3.3，task_207 / M2-10）。
+   *
+   * why 现在写这一列：读口按副本过滤（`COALESCE(instance_id, 'wsp_sandbox')` ——
+   *   步 N2 口径），而 M2-01 只加了列、**写侧一直没写** ⇒ 任务行永远落 NULL
+   *   ⇒ 副本里派的任务在本副本**读不回来**（反倒算进默认沙盒的池子）。
+   *   与 characters / sessions / session_events 同一套口径（那是 M2-05…M2-08 补齐的）。
+   * 缺省 / null = 未归属（老行 / 不带归属的来件）。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }
 
 /** 词表导出给 IPC 校验层用（主进程拒绝表外 status，别让脏词进 CHECK 约束炸 IPC）。 */
@@ -349,8 +361,8 @@ function ensureArtifactsColumn(db: SqliteDatabaseLike): void {
 export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord): void {
   db.prepare(`
     INSERT INTO ${CHARACTER_TASKS_TABLE}
-      (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan, pipeline_id, mission_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan, pipeline_id, mission_id, instance_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       status = excluded.status,
       output = excluded.output,
@@ -359,7 +371,8 @@ export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord):
       artifacts = excluded.artifacts,
       plan = excluded.plan,
       pipeline_id = CASE WHEN excluded.pipeline_id <> '' THEN excluded.pipeline_id ELSE ${CHARACTER_TASKS_TABLE}.pipeline_id END,
-      mission_id = excluded.mission_id
+      mission_id = excluded.mission_id,
+      instance_id = COALESCE(excluded.instance_id, ${CHARACTER_TASKS_TABLE}.instance_id)
   `).run(
     record.id,
     record.characterId,
@@ -372,7 +385,8 @@ export function upsertTask(db: SqliteDatabaseLike, record: PersistedTaskRecord):
     record.artifacts ?? '',
     record.plan ?? '',
     record.pipelineId ?? '',
-    record.missionId ?? null
+    record.missionId ?? null,
+    record.instanceId ?? null
   );
 }
 
@@ -394,7 +408,7 @@ export function loadRecentTasks(
   const scope = instanceScopeWhere(options.instanceId, 'AND ');
   const rows = db
     .prepare(
-      `SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan, pipeline_id, mission_id
+      `SELECT id, character_id, prompt, status, output, created_at, started_at, ended_at, artifacts, plan, pipeline_id, mission_id, instance_id
        FROM ${CHARACTER_TASKS_TABLE}
        WHERE character_id = ?${scope.sql}
        ORDER BY created_at DESC, id DESC
@@ -420,6 +434,10 @@ export function loadRecentTasks(
       // 流水线归属（task_051）：老库行（v7 及以前）/ 非流水线任务 → undefined。
       pipelineId: typeof row.pipeline_id === 'string' && row.pipeline_id.length > 0 ? row.pipeline_id : undefined,
       missionId: typeof row.mission_id === 'string' && row.mission_id.length > 0 ? row.mission_id : undefined,
+      // 副本归属镜像（task_207 / M2-10）：NULL = 未归属（老行）⇒ 不带这个键（往返保真）。
+      ...(row.instance_id === null || row.instance_id === undefined
+        ? {}
+        : { instanceId: String(row.instance_id) }),
     }))
     .reverse();
 }

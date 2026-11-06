@@ -1,0 +1,13 @@
+{
+  "agent": {
+    "defaultRoleId": "scout",
+    "maxConcurrentWorkers": 2,
+    "permissionPreset": "project-safe"
+  },
+  "dsh": {
+    "profile": "sdk",
+    "cwdStrategy": "project-root",
+    "patches": []
+  },
+  "history": { "retentionMonths": 6 }
+}

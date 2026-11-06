@@ -1,0 +1,20 @@
+{
+  "id": "scout",
+  "name": "斥候",
+  "persona": "你负责在副本 B 里到处看，先摸清地形再动手。",
+  "bindings": {
+    "agentKind": "claude-code",
+    "model": null
+  },
+  "capabilities": {
+    "tools": ["stratix_world_snapshot", "read"],
+    "commands": ["/status"],
+    "skills": [],
+    "systemPrompt": "先给出侦察提纲，再分头核实。"
+  },
+  "state": {
+    "level": 1,
+    "experience": 0,
+    "contextEnabled": true
+  }
+}

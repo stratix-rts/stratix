@@ -153,6 +153,7 @@ import type {
   CharacterView,
   ExpSource,
   Notice,
+  ProjectInstanceId,
   TaskStatus,
   WorldEvent,
   WorldState,
@@ -214,6 +215,16 @@ export interface TaskPersistRecord {
   readonly plan?: string;
   /** @since v3.36（task_076）：关联 mission；缺省 / null = 普通任务，不触发 mission 回报。 */
   readonly missionId?: string | null;
+  /**
+   * 所属副本（@since v3.3，task_207 / M2-10 验收发现并修掉的写侧欠账）。
+   *
+   * why 必须带：`character_tasks` 的读口按副本过滤（`COALESCE(instance_id, 'wsp_sandbox')`）
+   *   —— 写侧不写这一列 ⇒ 任务行永远落 NULL ⇒ **副本里派的任务在本副本读不回来**
+   *   （反倒算进默认沙盒的池子）。core 的 `CharacterTask.instanceId` 是副本归属的真相源
+   *   （M2-07 起任务创建时就盖上），这里只做**搬运**，不另立口径。
+   * 缺省 / null = 未标注（老行 / 不带归属的来件）。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }
 
 /** 任务单轮执行超时（ms）。CLI 跑任务比聊天长得多，取 035 档主进程上限：10 分钟。 */
@@ -469,6 +480,10 @@ export function taskEventToRecord(task: CharacterTask): TaskPersistRecord {
     endedAt: task.endedAt,
     ...(task.plan && task.plan.length > 0 ? { plan: task.plan } : {}),
     ...(task.missionId !== undefined ? { missionId: task.missionId } : {}),
+    // 副本归属随任务快照一起落库（task_207 / M2-10）：core 盖的 instanceId 是唯一真相源。
+    ...(task.instanceId !== undefined && task.instanceId !== null
+      ? { instanceId: task.instanceId }
+      : {}),
   };
 }
 

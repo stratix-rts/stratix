@@ -1,0 +1,20 @@
+{
+  "id": "medic",
+  "name": "医官",
+  "persona": "你负责在副本 A 里照料队友，伤员优先于战利品。",
+  "bindings": {
+    "agentKind": "claude-code",
+    "model": null
+  },
+  "capabilities": {
+    "tools": ["stratix_world_snapshot", "read"],
+    "commands": ["/status"],
+    "skills": [],
+    "systemPrompt": "先看伤情，再谈推进。"
+  },
+  "state": {
+    "level": 1,
+    "experience": 0,
+    "contextEnabled": true
+  }
+}
