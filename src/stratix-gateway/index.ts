@@ -32,7 +32,7 @@ import {
 } from '../app/services/persistence/project-archive-node';
 import { createSessionEventArchiver } from '../app/services/persistence/session-event-archive';
 import type { TaskTransportFactory } from '../app/services/task-service';
-import { emitCommand, emitWorldEvent } from '../core/bus';
+import { emitCommand, emitWorldEvent, onWorldEvent } from '../core/bus';
 import { OpenClawConnectionStore } from '../stratix-data-store/OpenClawConnectionStore';
 import { initializeDatabase } from '../stratix-database';
 import { createNocoDBService, type NocoDBServiceOptions } from '../stratix-nocodb';
@@ -369,6 +369,11 @@ export async function startGatewayService(
     //   → service 侧的 runtime 裁决（落 store → snapshot 回推全体客户端）。
     //   与 dispatch 同源同实例 —— 客户端看到的就是 service 持有的真相（铁律 1「真相唯一」）。
     dispatchEvent: emitWorldEvent,
+    // 下行事件面（@since v3.3，task_216 / IX-02）：service 侧 core 的**裁决产物**
+    //   （首批只放 unit.position —— 右击移动的编队终值）→ 广播给全体已 hello 的连接。
+    //   客户端收到后喂回本地 core 总线 ⇒ tween / 小地图 / 落库三处自动恢复。
+    //   白名单在协议层（下行白名单与上行白名单互斥 ⇒ 不会回环）。
+    subscribeWorldEvents: onWorldEvent,
   });
   console.log(`[world-sync] endpoint ready on ${WORLD_SYNC_PATH}`);
 

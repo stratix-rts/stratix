@@ -2,6 +2,7 @@
  * 文件职责：world-sync WebSocket 协议契约层（前后端分离 B1 / task_081）—— 消息型的类型、
  *   类型守卫（isXxx）、协议常量与 encode/decode 纯函数。
  *   @since v3.3（task_156）：新增 `event.forward`（客户端 → service 的世界事件转发通道）。
+ *   @since v3.3（task_216 / IX-02）：新增 `event.push`（service → 客户端的**下行**事件通道）。
  * 输入：src/core/types.ts 的总线契约（WorldState / HudCommand / WorldEvent，仅 type-only 导入 → 零运行时依赖）。
  * 输出：WorldSyncMessage 联合 + 守卫 + 纯函数（encodeMessage / decodeMessage / toWireState 等）。
  * 禁止事项：
@@ -12,7 +13,8 @@
  *
  * 方向语义（写死，见 docs/WORLD-SYNC.md）：
  *   客户端 → service：hello（注册）、command.forward（命令写入口）、event.forward（世界事件写入口）
- *   service → 客户端：snapshot（唯一的状态面）、command.ack（落点回执）、error（协议错误）
+ *   service → 客户端：snapshot（唯一的状态面）、command.ack（落点回执）、event.push（**下行事件流**）、
+ *                    error（协议错误）
  *
  * 重连语义（写死）：
  *   客户端重连 = hello → service 立即回一份**全量** snapshot → 客户端整体覆盖本地视图。
@@ -37,8 +39,13 @@ import type { HudCommand, WorldEvent, WorldState } from '@/core/types';
  *   unsupported_version 并断开：**响亮地失败**好过悄悄不生效。
  *   MIN 仍是 1：v1 客户端只用到 hello / snapshot / command.forward / command.ack —— 那套语义一字未改，
  *   仍可连上（它只是用不上 event.forward 这条新能力）。
+ *
+ * @since v3.3（task_216 / IX-02）升到 3：新增消息型 `event.push`（service → 客户端的**下行**事件通道）。
+ *   why 升版本：同 §7.4「新增消息型 = 破坏性变更」。老客户端收到 event.push 只会判
+ *   unknown_message_type ⇒ 客户端那侧要把新消息型显式入册（decode 失败 = 响亮地失败）。
+ *   MIN 仍是 1：v1 / v2 客户端用的那套语义一字未改，仍可连上（它们只是用不上 event.push）。
  */
-export const WORLD_SYNC_PROTOCOL_VERSION = 2;
+export const WORLD_SYNC_PROTOCOL_VERSION = 3;
 
 /** 可接受的最低协议版本（含）。低于此值同样按 unsupported_version 拒绝。 */
 export const WORLD_SYNC_MIN_PROTOCOL_VERSION = 1;
@@ -65,6 +72,7 @@ export type WorldSyncMessageType =
   | 'command.forward'
   | 'command.ack'
   | 'event.forward'
+  | 'event.push'
   | 'error';
 
 /** 消息的类型名清单（常量，供服务端分派与文档对齐）。 */
@@ -74,6 +82,7 @@ export const WORLD_SYNC_MESSAGE_TYPES: readonly WorldSyncMessageType[] = [
   'command.forward',
   'command.ack',
   'event.forward',
+  'event.push',
   'error',
 ] as const;
 
@@ -118,7 +127,7 @@ export interface WorldSyncErrorDetail {
 }
 
 // ============================================================================
-// 消息类型（六型 —— @since v3.3 task_156 加了 event.forward）
+// 消息类型（七型 —— @since v3.3 task_156 加了 event.forward；task_216 / IX-02 加了 event.push）
 // ============================================================================
 
 /**
@@ -233,6 +242,66 @@ export interface EventForwardMessage {
 }
 
 /**
+ * 可**下行**的世界事件（@since v3.3，task_216 / IX-02）—— **视图事实**事件白名单。
+ *
+ * why 首批只有 `unit.position`：位置是**共享真相**（所有客户端看到同一份站位），
+ *   但它**不进 WorldState 快照**（core 契约里 UnitView 无坐标字段 —— 位置真相在世界层）⇒
+ *   它只能经**事件流**下发。快照通道不动（WorldState 不加坐标字段 —— 那是契约层的破坏性变更）。
+ *
+ * why 与上行白名单**互斥**（硬要求，防回环）：同一事件类型若同时在两个白名单里 ⇒
+ *   service 推给客户端 → 客户端喂回本地总线 → 本地转发器又上行 → service 再推…… **无限回环**。
+ *   编译期断言见 `UpstreamDownstreamEventOverlap`。
+ */
+export type PushableWorldEvent = Extract<WorldEvent, { type: 'unit.position' }>;
+
+/**
+ * 下行白名单的类型名 → 在册。
+ * why 同样是类型驱动的（`Record<PushableWorldEvent['type'], true>`）：
+ *   core 改事件名/改形状时本对象**编译报错**（缺键 / 多余键）⇒ 契约不静默漂移。
+ */
+const PUSHABLE_WORLD_EVENT_FLAGS: Readonly<Record<PushableWorldEvent['type'], true>> = {
+  'unit.position': true,
+};
+
+/** 下行白名单的类型名清单（常量，供 service 端点 / 客户端 / 文档 / 单测对齐）。 */
+export const PUSHABLE_WORLD_EVENT_TYPES: readonly PushableWorldEvent['type'][] = [
+  'unit.position',
+] as const;
+
+/** 类型层面的 never 断言（T 非 never 时编译报错）。 */
+type AssertNever<T extends never> = T;
+
+/**
+ * 编译期不变式（@since v3.3，task_216 / IX-02）：上行白名单与下行白名单**互斥**。
+ *
+ * why 要编译期守：防回环是**协议级**的不变式，靠人记靠不住 —— 一旦有人把 `unit.position`
+ *   加进 `FORWARDABLE_WORLD_EVENT_TYPES`（它看起来很"合理"：位置也是状态语义），
+ *   线上就是一个无限回环（每条事件都绕一圈回来）。这里把交集压成 never ⇒ **编译期报错**。
+ */
+export type UpstreamDownstreamEventOverlap = AssertNever<
+  Extract<ForwardableWorldEvent['type'], PushableWorldEvent['type']>
+>;
+
+/**
+ * event.push —— service → 客户端：**下行**事件信封（@since v3.3，task_216 / IX-02）。
+ *
+ * why 存在这条通道：service 侧的 core 裁决右击移动后，会在**自己的**总线上广播 `unit.position`
+ *   （编队终值 —— 见 core/runtime.ts 的 applyUnitMove）。协议原先只有 `event.forward`（上行）⇒
+ *   那条广播**无人可收** ⇒ 客户端没有 tween、没有小地图更新、也没有落库（画布"点了没反应"）。
+ *
+ * 语义：客户端收到后把事件**喂回本地 core 总线**（复用既有 world 通道语义）⇒
+ *   world 桥接层照旧驱动 tween（unit-layer 的 applyUnitPosition）、小地图累积表照旧更新、
+ *   落库订阅者照旧落 unit_positions —— **三处自动恢复，无需各自新增代码**。
+ *
+ * 载荷 = 白名单化的视图事件（首批只放 `unit.position`）—— 与 `event.forward` 的上行白名单**互斥**。
+ */
+export interface EventPushMessage {
+  readonly type: 'event.push';
+  /** 待下发的世界事件（下行白名单内的那几条）。 */
+  readonly event: PushableWorldEvent;
+}
+
+/**
  * error —— service → 客户端：协议错误信封（信封级问题：解不开、类型不认识、版本不兼容）。
  * 命令层面的失败不走这里，走 command.ack{ok:false}。
  */
@@ -251,6 +320,7 @@ export type WorldSyncMessage =
   | CommandForwardMessage
   | CommandAckMessage
   | EventForwardMessage
+  | EventPushMessage
   | ErrorMessage;
 
 // ============================================================================
@@ -545,6 +615,37 @@ export function isEventForwardMessage(value: unknown): value is EventForwardMess
   return isForwardableWorldEvent(value.event);
 }
 
+/**
+ * 下行世界事件的**信封级**判定（@since v3.3，task_216 / IX-02）：
+ * 类型名在**下行白名单**内 + 载荷形状对得上（坐标是有限数、单位 id 非空串）。
+ *
+ * why 在这里挡形状：下行事件是要**原样喂进客户端本地总线**的 —— 坐标是 NaN 会让
+ *   tween 的时长算成 NaN（画面直接卡住），坐标缺失会让单位层炸在 undefined 上。
+ */
+export function isPushableWorldEvent(value: unknown): value is PushableWorldEvent {
+  if (!isRecord(value)) return false;
+  const type = value.type;
+  if (typeof type !== 'string') return false;
+  if (PUSHABLE_WORLD_EVENT_FLAGS[type as PushableWorldEvent['type']] !== true) return false;
+  switch (type) {
+    case 'unit.position':
+      return (
+        isNonEmptyString(value.unitId) &&
+        isFiniteNumber(value.x) &&
+        isFiniteNumber(value.y)
+      );
+    default:
+      return false;
+  }
+}
+
+/** event.push 判定（@since v3.3，task_216 / IX-02）。 */
+export function isEventPushMessage(value: unknown): value is EventPushMessage {
+  if (!isRecord(value)) return false;
+  if (value.type !== 'event.push') return false;
+  return isPushableWorldEvent(value.event);
+}
+
 /** error 判定。 */
 export function isErrorMessage(value: unknown): value is ErrorMessage {
   if (!isRecord(value)) return false;
@@ -563,6 +664,7 @@ export function isWorldSyncMessage(value: unknown): value is WorldSyncMessage {
     isCommandForwardMessage(value) ||
     isCommandAckMessage(value) ||
     isEventForwardMessage(value) ||
+    isEventPushMessage(value) ||
     isErrorMessage(value)
   );
 }
@@ -640,6 +742,15 @@ export function createEventForwardMessage(
   return { type: 'event.forward', event };
 }
 
+/**
+ * 构造 event.push 信封（@since v3.3，task_216 / IX-02）。
+ * 不在下行白名单的事件返回 null（service 端点据此**不推** —— 白名单是防回环的第一道闸）。
+ */
+export function createEventPushMessage(event: WorldEvent): EventPushMessage | null {
+  if (!isPushableWorldEvent(event)) return null;
+  return { type: 'event.push', event };
+}
+
 /** 构造协议错误信封。 */
 export function createErrorMessage(
   code: WorldSyncErrorCode,
@@ -681,7 +792,7 @@ export function encodeMessage(message: WorldSyncMessage): string | null {
 }
 
 /**
- * 解析 JSON 文本为消息型之一（六型）。
+ * 解析 JSON 文本为消息型之一（七型）。
  * 失败 → 返回 { ok:false, code, message }，**不抛**。
  * 错误码口径：JSON 解析失败 / 字段不合法 → malformed_message；type 不在词表 → unknown_message_type。
  */

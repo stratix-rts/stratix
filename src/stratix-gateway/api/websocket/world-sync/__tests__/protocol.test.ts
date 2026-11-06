@@ -1,12 +1,15 @@
 /**
- * 单测：world-sync 协议契约层（task_081；@since v3.3 task_156：event.forward 事件面）。
- * 覆盖：消息型的类型守卫（合法 / 非法样例各 ≥2）、编解码纯函数、编组槽位 wire 互转、协议常量。
+ * 单测：world-sync 协议契约层（task_081；@since v3.3 task_156：event.forward 事件面；
+ *   @since v3.3 task_216 / IX-02：event.push **下行**事件面）。
+ * 覆盖：消息型的类型守卫（合法 / 非法样例各 ≥2）、编解码纯函数、编组槽位 wire 互转、协议常量、
+ *   上下行白名单的**互斥**不变式（防回环）。
  */
 
-import type { WorldState } from '@/core/types';
+import type { WorldEvent, WorldState } from '@/core/types';
 
 import {
   FORWARDABLE_WORLD_EVENT_TYPES,
+  PUSHABLE_WORLD_EVENT_TYPES,
   WORLD_SYNC_ACK_TIMEOUT_MS,
   WORLD_SYNC_ERROR_CODES,
   WORLD_SYNC_MESSAGE_TYPES,
@@ -16,6 +19,7 @@ import {
   WORLD_SYNC_SEQ_START,
   createErrorMessage,
   createEventForwardMessage,
+  createEventPushMessage,
   createFailedAck,
   createNotAttachedAck,
   createOkAck,
@@ -28,9 +32,11 @@ import {
   isCommandForwardMessage,
   isErrorMessage,
   isEventForwardMessage,
+  isEventPushMessage,
   isForwardableWorldEvent,
   isHelloMessage,
   isHudCommand,
+  isPushableWorldEvent,
   isSnapshotMessage,
   isSupportedProtocolVersion,
   isWorldStateWire,
@@ -74,20 +80,22 @@ describe('协议常量', () => {
   it('版本与端点路径是冻结值', () => {
     // @since v3.3（task_156）：协议升到 2（新增 event.forward 消息型 —— 升版本是响亮地失败，
     //   好过老 service 悄悄拒收 event.forward 造成「画布全哑」）。
-    expect(WORLD_SYNC_PROTOCOL_VERSION).toBe(2);
+    // @since v3.3（task_216 / IX-02）：协议升到 3（新增 event.push 下行消息型 —— 同一纪律）。
+    expect(WORLD_SYNC_PROTOCOL_VERSION).toBe(3);
     expect(WORLD_SYNC_MIN_PROTOCOL_VERSION).toBe(1);
     expect(WORLD_SYNC_PATH).toBe('/ws/world-sync');
     expect(WORLD_SYNC_SEQ_START).toBe(1);
     expect(WORLD_SYNC_ACK_TIMEOUT_MS).toBeGreaterThan(0);
   });
 
-  it('消息类型词表封闭（含 event.forward），错误码词表封闭', () => {
+  it('消息类型词表封闭（含 event.forward / event.push），错误码词表封闭', () => {
     expect(WORLD_SYNC_MESSAGE_TYPES).toEqual([
       'hello',
       'snapshot',
       'command.forward',
       'command.ack',
       'event.forward',
+      'event.push',
       'error',
     ]);
     expect(WORLD_SYNC_ERROR_CODES).toContain('not_attached');
@@ -98,7 +106,7 @@ describe('协议常量', () => {
     expect(isSupportedProtocolVersion(WORLD_SYNC_PROTOCOL_VERSION)).toBe(true);
     expect(isSupportedProtocolVersion(WORLD_SYNC_MIN_PROTOCOL_VERSION)).toBe(true);
     expect(isSupportedProtocolVersion(0)).toBe(false);
-    expect(isSupportedProtocolVersion(3)).toBe(false);
+    expect(isSupportedProtocolVersion(4)).toBe(false);
     expect(isSupportedProtocolVersion('1')).toBe(false);
   });
 });
@@ -291,6 +299,94 @@ describe('isEventForwardMessage / isForwardableWorldEvent', () => {
     expect(message?.type).toBe('event.forward');
     expect(message?.event).toEqual(click);
     expect(createEventForwardMessage({ type: 'camera.moved', center: { x: 1, y: 2 }, zoom: 1 })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// event.push（@since v3.3，task_216 / IX-02：service → 客户端的下行事件通道）
+// ---------------------------------------------------------------------------
+
+describe('event.push（下行事件面）', () => {
+  const position: WorldEvent = { type: 'unit.position', unitId: 'unit_c1', x: 120, y: -40 };
+
+  it('合法样例 1/2：unit.position 判真', () => {
+    expect(isPushableWorldEvent(position)).toBe(true);
+    expect(isEventPushMessage({ type: 'event.push', event: position })).toBe(true);
+  });
+
+  it('合法样例 2：坐标是 0（不是缺失）也判真', () => {
+    expect(isPushableWorldEvent({ type: 'unit.position', unitId: 'unit_c1', x: 0, y: 0 })).toBe(
+      true,
+    );
+  });
+
+  it('非法样例 1：形状不对（缺 unitId / 坐标非数 / id 非串）', () => {
+    expect(isPushableWorldEvent({ type: 'unit.position', x: 1, y: 2 })).toBe(false);
+    expect(isPushableWorldEvent({ type: 'unit.position', unitId: 'u1', x: 'NaN', y: 2 })).toBe(false);
+    expect(isPushableWorldEvent({ type: 'unit.position', unitId: 1, x: 1, y: 2 })).toBe(false);
+  });
+
+  it('非法样例 2：上行语义的事件不在下行白名单（unit.move / unit.click / camera.moved）', () => {
+    expect(isPushableWorldEvent({ type: 'unit.move', unitIds: ['u1'], x: 1, y: 2 })).toBe(false);
+    expect(
+      isPushableWorldEvent({
+        type: 'unit.click',
+        unitId: 'u1',
+        mods: { shift: false, ctrl: false, meta: false, alt: false },
+      }),
+    ).toBe(false);
+    expect(isPushableWorldEvent({ type: 'camera.moved', center: { x: 1, y: 2 }, zoom: 1 })).toBe(false);
+  });
+
+  it('非法样例 3：event.push 信封缺 event / 类型不是 event.push', () => {
+    expect(isEventPushMessage({ type: 'event.push' })).toBe(false);
+    expect(isEventPushMessage({ type: 'event.forward', event: position })).toBe(false);
+  });
+
+  it('白名单词表：下行首批只放 unit.position', () => {
+    expect(PUSHABLE_WORLD_EVENT_TYPES).toEqual(['unit.position']);
+  });
+
+  it('★ 防回环不变式：上行白名单与下行白名单**互斥**', () => {
+    // why：同一事件类型若同时在两边 ⇒ service 推 → 客户端喂回本地总线 → 本地转发器再上行
+    //   → service 再推 …… 无限回环。协议层另有编译期断言（UpstreamDownstreamEventOverlap）。
+    const upstream = new Set<string>(FORWARDABLE_WORLD_EVENT_TYPES);
+    for (const type of PUSHABLE_WORLD_EVENT_TYPES) {
+      expect(upstream.has(type)).toBe(false);
+    }
+    // 反向：上行白名单里的那几条**也不在**下行白名单（首批下行只放 unit.position）
+    const downstream = new Set<string>(PUSHABLE_WORLD_EVENT_TYPES);
+    for (const type of FORWARDABLE_WORLD_EVENT_TYPES) {
+      expect(downstream.has(type)).toBe(false);
+    }
+    // 关键一条：unit.position **不得**进上行白名单（它是下行的）
+    expect(FORWARDABLE_WORLD_EVENT_TYPES).not.toContain('unit.position');
+  });
+
+  it('createEventPushMessage：白名单内造得出、白名单外造不出', () => {
+    const message = createEventPushMessage(position);
+    expect(message?.type).toBe('event.push');
+    expect(message?.event).toEqual(position);
+    // 上行语义的事件造不出下行信封（防回环的第一道闸）
+    expect(createEventPushMessage({ type: 'unit.move', unitIds: ['u1'], x: 1, y: 2 })).toBeNull();
+    expect(createEventPushMessage({ type: 'camera.moved', center: { x: 1, y: 2 }, zoom: 1 })).toBeNull();
+  });
+
+  it('编解码往返：event.push 能编码也能解回同一条消息', () => {
+    const message = createEventPushMessage(position);
+    expect(message).not.toBeNull();
+    const raw = encodeMessage(message!);
+    expect(raw).not.toBeNull();
+    const decoded = decodeMessage(raw!);
+    expect(decoded.ok).toBe(true);
+    if (decoded.ok) {
+      expect(decoded.message.type).toBe('event.push');
+      expect(decoded.message).toEqual(message);
+    }
+  });
+
+  it('isWorldSyncMessage 认得 event.push（分派守卫已入册）', () => {
+    expect(isWorldSyncMessage({ type: 'event.push', event: position })).toBe(true);
   });
 });
 

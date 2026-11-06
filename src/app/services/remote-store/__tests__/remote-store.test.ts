@@ -6,6 +6,8 @@
  *   ④ stale 标志（未连上 / 收到快照 / 再断开三态）；
  *   ⑤ 屏位归属（@since v3.10，task_153：屏位是客户端自己的视图状态，不被 service 的共享值串台）。
  *   ⑥ 事件面（@since v3.3，task_156：emitWorldEvent → event.forward；白名单外的事件不上行）。
+ *   ⑦ 下行事件面（@since v3.3，task_216 / IX-02：event.push → 喂回本地 core 总线；
+ *      且 unit.position **不上行** ⇒ 不回环）。
  * 输入：内存 WebSocket 替身（**不起真端口**、不连真 service）+ 协议层构造助手（B1 产物）。
  * 输出：逐条断言（任一失败即红）。
  * 禁止事项：
@@ -13,8 +15,9 @@
  *   2. 用真实计时器等退避 —— 退避用 jest 假计时器推进（确定性、不拖时间）。
  */
 
+import { onWorldEvent } from '../../../../core/bus';
 import { createInitialState } from '../../../../core/store';
-import type { WorldState } from '../../../../core/types';
+import type { WorldEvent, WorldState } from '../../../../core/types';
 import { createSnapshotMessage } from '../../../../stratix-gateway/api/websocket/world-sync/protocol';
 import {
   createRemoteStore,
@@ -120,7 +123,8 @@ describe('createRemoteStore（前后端分离 B3：Electron 远程 store）', ()
     const hello = socket.sentMessages()[0];
     expect(hello.type).toBe('hello');
     // @since v3.3（task_156）：协议升到 2（新增 event.forward 消息型）。
-    expect(hello.protocolVersion).toBe(2);
+    // @since v3.3（task_216 / IX-02）：协议升到 3（新增 event.push 下行消息型）。
+    expect(hello.protocolVersion).toBe(3);
     expect(typeof hello.clientId).toBe('string');
 
     // 第一份快照
@@ -308,6 +312,78 @@ describe('createRemoteStore（前后端分离 B3：Electron 远程 store）', ()
     socket.drop();
     expect(store.isStale()).toBe(true);
     expect(store.getState().units.map((u) => u.id)).toEqual(['u1']);
+
+    store.dispose();
+  });
+
+  // ---------------------------------------------------------------------------
+  // ⑦ 下行事件面（@since v3.3，task_216 / IX-02）：event.push → 喂回本地 core 总线
+  // ---------------------------------------------------------------------------
+
+  it('⑦ event.push → 喂回本地 core 总线（tween / 小地图 / 落库三处自动恢复的源头）', () => {
+    const pushed: WorldEvent[] = [];
+    const sockets: MockSocket[] = [];
+    const store = createRemoteStore('ws://127.0.0.1:0/ws/world-sync', {
+      createSocket: () => {
+        const socket = new MockSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      onPushedEvent: (event) => pushed.push(event),
+    });
+    sockets[0].open();
+
+    sockets[0].deliver({
+      type: 'event.push',
+      event: { type: 'unit.position', unitId: 'unit_c1', x: 300, y: 400 },
+    });
+
+    // 载荷**原样**喂回本地总线（不加工、不丢字段 —— 位置真相一个字节都不能改）
+    expect(pushed).toEqual([{ type: 'unit.position', unitId: 'unit_c1', x: 300, y: 400 }]);
+
+    store.dispose();
+  });
+
+  it('⑦′ 缺省落地口是**本地 core 总线**（不注入时也喂回总线）', () => {
+    const seen: WorldEvent[] = [];
+    const unsubscribe = onWorldEvent((event) => seen.push(event));
+    const { store, sockets } = setup({});
+    sockets[0].open();
+
+    sockets[0].deliver({
+      type: 'event.push',
+      event: { type: 'unit.position', unitId: 'unit_c1', x: 10, y: 20 },
+    });
+
+    expect(seen).toEqual([{ type: 'unit.position', unitId: 'unit_c1', x: 10, y: 20 }]);
+
+    unsubscribe();
+    store.dispose();
+  });
+
+  it('⑦″ ★ 防回环：下行推来的 unit.position **不会**被上行转发（不回灌给 service）', () => {
+    const { store, sockets } = setup({});
+    const socket = sockets[0];
+    socket.open();
+
+    // service 推来一条 unit.position → 喂回本地总线
+    socket.deliver({
+      type: 'event.push',
+      event: { type: 'unit.position', unitId: 'unit_c1', x: 300, y: 400 },
+    });
+
+    // 本地转发器（组合根那侧）把总线上的事件再走一遍上行面 —— unit.position 不在上行白名单
+    //   ⇒ 直接拒（返回 false、不上行）⇒ 不会 service→client→service 绕圈。
+    const forwarded = store.emitWorldEvent({
+      type: 'unit.position',
+      unitId: 'unit_c1',
+      x: 300,
+      y: 400,
+    });
+    expect(forwarded).toBe(false);
+
+    const eventForwards = socket.sentMessages().filter((m) => m.type === 'event.forward');
+    expect(eventForwards).toHaveLength(0);
 
     store.dispose();
   });

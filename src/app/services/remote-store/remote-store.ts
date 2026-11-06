@@ -23,6 +23,15 @@
  *   camera.director。纯视图事件（camera.moved / replay.beat / fx.sound …）**不上行** ——
  *   service 不需要相机姿态，别拿视图态污染真相。
  *
+ * ============ 下行事件面（@since v3.3，task_216 / IX-02）============
+ *   service 侧的 core 裁决右击移动后，会广播 `unit.position`（编队终值）。协议原先**只有**
+ *   上行通道 ⇒ 那条广播无人可收 ⇒ 客户端没有 tween、没有小地图更新、也没有落库。
+ *   故本实现处理 `event.push`：把 service 推来的**裁决产物**喂回**本地 core 总线** ——
+ *   world 桥接层的 tween（unit-layer 的 applyUnitPosition）、小地图累积表、落库订阅者
+ *   **三处自动恢复**，各自零改动。
+ *   ★ 防回环：下行白名单（`PUSHABLE_WORLD_EVENT_TYPES`，首批只放 unit.position）与上行白名单
+ *   **互斥**（协议层有编译期断言）⇒ 喂回本地总线的事件**不会**再被上行转发器发回 service。
+ *
  * ============ 唯一的例外：屏位（currentScreen）是**客户端自己的**视图状态 ============
  *   快照里的 `currentScreen` 落在 service 的**共享** store 上 —— 谁跳屏，所有客户端都被拽过去
  *   （task_153 默认连网关后暴露：另一个客户端切到设置屏，本浏览器就被拽进设置屏）。
@@ -46,6 +55,8 @@
  * 配套契约：docs/WORLD-SYNC.md｜src/stratix-gateway/api/websocket/world-sync/protocol.ts（B1 产物）
  */
 
+// 本文件内部有一个同名方法（RemoteStore.emitWorldEvent —— 上行通道），故别名导入避免遮蔽。
+import { emitWorldEvent as emitBusWorldEvent } from '../../../core/bus';
 import { createInitialState, type CoreStore, type StateListener } from '../../../core/store';
 import type { HudCommand, ScreenId, WorldEvent, WorldState } from '../../../core/types';
 import {
@@ -144,6 +155,16 @@ export interface RemoteStoreOptions {
   readonly ackTimeoutMs?: number;
   /** 命令回执回调（成功 / 失败都走这里 —— 失败必带原因）。 */
   readonly onCommandResult?: (result: RemoteCommandResult) => void;
+  /**
+   * **下行事件的落地口**（@since v3.3，task_216 / IX-02；缺省 = core 总线的 emitWorldEvent）。
+   *
+   * why 默认喂回本地总线：service 推下来的 `unit.position` 是**裁决产物**，
+   *   客户端要把它**原样喂进本地 core 总线**（world 通道）—— 那样 world 桥接层的 tween、
+   *   小地图累积表、落库订阅者**三处自动恢复**，各自不需要新增代码。
+   *
+   * why 可注入：单测要能观测「到底喂了什么」（也可换成隔离的替身，避免动全局总线单例）。
+   */
+  readonly onPushedEvent?: (event: WorldEvent) => void;
   /** 日志口（缺省 = console.warn 前缀 [remote-store]）。 */
   readonly logger?: (line: string) => void;
 }
@@ -172,6 +193,8 @@ export function createRemoteStore(url: string, options: RemoteStoreOptions = {})
   const logger = options.logger ?? ((line: string): void => console.warn(`[remote-store] ${line}`));
   const clientId = options.clientId ?? `electron-${randomSuffix()}`;
   const ackTimeoutMs = options.ackTimeoutMs ?? WORLD_SYNC_ACK_TIMEOUT_MS;
+  // 下行事件的落地口（@since v3.3，task_216 / IX-02）：默认喂回**本地 core 总线**。
+  const emitPushedEvent = options.onPushedEvent ?? emitBusWorldEvent;
   const baseDelay = Math.max(0, options.reconnectDelayMs ?? 500);
   const maxDelay = Math.max(baseDelay, options.reconnectMaxDelayMs ?? 10_000);
 
@@ -296,6 +319,14 @@ export function createRemoteStore(url: string, options: RemoteStoreOptions = {})
         return;
       case 'command.ack':
         settleCommand(message);
+        return;
+      case 'event.push':
+        // 下行事件面（@since v3.3，task_216 / IX-02）：service 推来的**裁决产物**
+        //   （首批只放 unit.position）→ 喂回本地 core 总线 ⇒ world 桥接层的 tween、
+        //   小地图累积表、落库订阅者三处自动恢复（各自零改动）。
+        // 防回环：unit.position **不在**上行白名单内 ⇒ 本地转发器再走 emitWorldEvent 时
+        //   会被 createEventForwardMessage 挡掉（返回 false、不上行）——不会绕回 service。
+        emitPushedEvent(message.event);
         return;
       case 'error':
         logger(`service 报错：${message.code} ${message.message}`);

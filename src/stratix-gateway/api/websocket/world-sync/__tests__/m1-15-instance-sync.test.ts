@@ -102,8 +102,11 @@ describe('M1-15 world-sync 不动（回归）', () => {
     resetBus();
   });
 
-  it('① 协议版本仍为 2；载荷里没有新增 instanceId 字段', () => {
-    expect(WORLD_SYNC_PROTOCOL_VERSION).toBe(2);
+  it('① 协议版本仍为 3；载荷里没有新增 instanceId 字段', () => {
+    // @since v3.3（task_216 / IX-02）：协议升到 3 —— 新增 `event.push` **下行**消息型
+    //   （新增消息型 = 破坏性变更 ⇒ 升版本，docs/WORLD-SYNC.md §7.4）。
+    //   本单（M1-15）冻结的是**载荷形状**（没有 instanceId 字段），那份语义一字未改。
+    expect(WORLD_SYNC_PROTOCOL_VERSION).toBe(3);
 
     const store = createStore({ units: [makeUnit('u-alpha')] });
     const endpoint = makeEndpoint(store);

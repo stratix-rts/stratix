@@ -437,6 +437,8 @@ async function boot(): Promise<void> {
   //   白名单在协议层（FORWARDABLE_WORLD_EVENT_TYPES）：纯视图事件（camera.moved / replay.beat）
   //   不上行 —— service 不需要相机姿态，别拿视图态污染真相。
   //   本地模式**零改动**：remote 为 null → 压根不订阅这条总线。
+  //   ★ 防回环（@since v3.3，task_216 / IX-02）：下行通道推回来的 `unit.position` 也会经过这里 ——
+  //   但它**不在**上行白名单内 ⇒ remote.emitWorldEvent 直接返回 false（不上行）⇒ 不会绕回 service。
   const stopRemoteEventForward = remote
     ? onWorldEvent((event) => {
         remote.emitWorldEvent(event);

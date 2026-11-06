@@ -1,5 +1,6 @@
 /**
- * 单测：world-sync 的**传输端**（task_082 / 前后端分离 B2；@since v3.3 task_156：事件面）。
+ * 单测：world-sync 的**传输端**（task_082 / 前后端分离 B2；@since v3.3 task_156：事件面；
+ *   @since v3.3 task_216 / IX-02：**下行**事件面 event.push）。
  * 覆盖（对齐任务验收）：
  *   ① hello 后必收 snapshot（含真实 store 数据）；
  *   ② 命令往返 ack：forward → 状态变更 → ack ok；
@@ -7,13 +8,14 @@
  *   ④ seq 单调递增；
  *   ⑤ 两客户端并存各自收广播（且 ack 只回发起方）；
  *   ⑥ 世界事件转发：event.forward → core 裁决 → 落 store → 快照回推（task_156）；
+ *   ⑦ 下行事件：core 裁决产物 → unit.position → 广播 event.push 给全体客户端（task_216）；
  *   ＋ 协议错误（坏帧 / 版本不兼容 / 未注册就发命令 / 方向反了）与心跳踢死链。
  *
  * 传输层用**注入式内存 duplex socket**（不起真端口、不连真 TCP）——
  *   见 __tests__/helpers/memory-socket.ts。
  */
 
-import { emitCommand, emitWorldEvent, resetBus } from '@/core/bus';
+import { emitCommand, emitWorldEvent, onWorldEvent, resetBus } from '@/core/bus';
 import { createCoreRuntime } from '@/core/runtime';
 import { createStore, type CoreStore } from '@/core/store';
 import type { Notice, UnitView } from '@/core/types';
@@ -24,6 +26,7 @@ import {
   WORLD_SYNC_SEQ_START,
   type CommandAckMessage,
   type ErrorMessage,
+  type EventPushMessage,
   type SnapshotMessage,
 } from '../protocol';
 
@@ -82,6 +85,8 @@ describe('world-sync 端点（task_082）', () => {
       dispatch: emitCommand,
       // @since v3.3（task_156）：事件面投递口 = core 总线的 emitWorldEvent（生产同源）。
       dispatchEvent: emitWorldEvent,
+      // @since v3.3（task_216 / IX-02）：下行事件流订阅口 = core 总线的 onWorldEvent（生产同源）。
+      subscribeWorldEvents: onWorldEvent,
       snapshotThrottleMs: 20,
       ackTimeoutMs: 80,
       heartbeatIntervalMs: 0,
@@ -397,5 +402,91 @@ describe('world-sync 端点（task_082）', () => {
     store.setState((state) => ({ ...state, notices: [...state.notices, makeNotice('n-after')] }));
     await wait(50);
     expect(client.messagesOfType<SnapshotMessage>('snapshot').length).toBe(before);
+  });
+
+  // -------------------------------------------------------------------------
+  // ⑦ 下行事件面（@since v3.3，task_216 / IX-02）：service → 客户端
+  // -------------------------------------------------------------------------
+
+  it('⑦ 下行：core 裁决右击移动 → unit.position → 客户端收到 event.push（回程通道闭环）', async () => {
+    const store = createStore({ units: [makeUnit('u-alpha')] });
+    runtimeStops.push(startRuntime(store)); // service 侧的 runtime = 裁决方
+    const { endpoint } = makeEndpoint({ store });
+    const { client, server } = createDuplexPair();
+    endpoint.accept(server);
+    client.send(hello('electron-1'));
+
+    // 右击移动上行 → service 的 core 裁决 → 编队终值经 unit.position 广播
+    client.send(forwardEvent({ type: 'unit.move', unitIds: ['u-alpha'], x: 300, y: 400 }));
+    await wait(60);
+
+    const pushes = client.messagesOfType<EventPushMessage>('event.push');
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].event.type).toBe('unit.position');
+    expect(pushes[0].event.unitId).toBe('u-alpha');
+    // 落位是**编队终值**（core 算的），不是客户端随手写的坐标
+    expect(pushes[0].event.x).toBe(300);
+    expect(pushes[0].event.y).toBe(400);
+  });
+
+  it('⑦′ 下行白名单外的事件不推（纯视图事件 / 上行语义事件都不推）', async () => {
+    const { endpoint } = makeEndpoint();
+    const { client, server } = createDuplexPair();
+    endpoint.accept(server);
+    client.send(hello('electron-1'));
+
+    emitWorldEvent({ type: 'camera.moved', center: { x: 1, y: 2 }, zoom: 1 });
+    emitWorldEvent({ type: 'unit.move', unitIds: ['u-alpha'], x: 1, y: 2 });
+    await flush();
+
+    expect(client.messagesOfType<EventPushMessage>('event.push')).toHaveLength(0);
+  });
+
+  it('⑦″ 未注册的连接收不到 event.push（先 hello 再推）', async () => {
+    const { endpoint } = makeEndpoint();
+    const { client, server } = createDuplexPair();
+    endpoint.accept(server);
+
+    emitWorldEvent({ type: 'unit.position', unitId: 'u-alpha', x: 10, y: 20 });
+    await flush();
+    expect(client.messagesOfType<EventPushMessage>('event.push')).toHaveLength(0);
+
+    client.send(hello('electron-1'));
+    emitWorldEvent({ type: 'unit.position', unitId: 'u-alpha', x: 30, y: 40 });
+    await flush();
+    const pushes = client.messagesOfType<EventPushMessage>('event.push');
+    expect(pushes).toHaveLength(1);
+    expect(pushes[0].event.x).toBe(30);
+  });
+
+  it('⑦‴ 客户端发 event.push → 拒（方向反了：它是 service → 客户端方向）', () => {
+    const { endpoint } = makeEndpoint();
+    const { client, server } = createDuplexPair();
+    endpoint.accept(server);
+    client.send(hello('electron-1'));
+
+    client.send(
+      JSON.stringify({ type: 'event.push', event: { type: 'unit.position', unitId: 'u1', x: 1, y: 2 } }),
+    );
+
+    const errors = client.messagesOfType<ErrorMessage>('error');
+    expect(errors).toHaveLength(1);
+    expect(errors[0].code).toBe('malformed_message');
+  });
+
+  it('⑦⁴ 多客户端：下行事件广播给**全体**已注册连接（位置是共享真相）', async () => {
+    const { endpoint } = makeEndpoint();
+    const pairA = createDuplexPair();
+    const pairB = createDuplexPair();
+    endpoint.accept(pairA.server);
+    endpoint.accept(pairB.server);
+    pairA.client.send(hello('electron-a'));
+    pairB.client.send(hello('electron-b'));
+
+    emitWorldEvent({ type: 'unit.position', unitId: 'u-alpha', x: 300, y: 400 });
+    await flush();
+
+    expect(pairA.client.messagesOfType<EventPushMessage>('event.push')).toHaveLength(1);
+    expect(pairB.client.messagesOfType<EventPushMessage>('event.push')).toHaveLength(1);
   });
 });

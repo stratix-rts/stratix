@@ -1,6 +1,7 @@
 /**
  * 文件职责：world-sync 的**端点**（前后端分离 B2 / task_082）—— gateway 侧的传输实现：
  *   统一发号（seq）、快照节流广播、命令面回读核对落点、事件面投递（@since task_156）、
+ *   **下行事件广播**（@since task_216 / IX-02：core 裁决产物 → 全体客户端）、
  *   心跳踢死链、多客户端广播。
  * 输入：一条 WS 连接（生产 = `ws` 的 WebSocket；单测 = 注入的内存 duplex socket）、
  *   core store（真相源）与命令投递口（core 总线）。
@@ -11,6 +12,7 @@
  *   3. 按连接分别发号 —— seq 全 service 统一发号（协议 §3.1），两个客户端看到的 seq 必须可比；
  *   4. 状态面未附着时改发空 snapshot —— 未附着 = 没有真相，如实报 not_attached（协议 §1.3）；
  *   5. 假装成功 —— 命令无落点一律回 internal_error 回执（铁律 4）。
+ *   6. 在端点里自行决定「推什么」—— 下行白名单在协议层（createEventPushMessage 判），端点只负责广播。
  *
  * ============ 节流（协议 §3.7 / 任务要求 3）============
  * store 每次变更都推一份全量快照会把带宽与渲染成本打爆 —— 故按 100ms 窗口**合并**：
@@ -46,6 +48,7 @@ import {
   WORLD_SYNC_ACK_TIMEOUT_MS,
   WORLD_SYNC_PATH,
   WORLD_SYNC_SEQ_START,
+  createEventPushMessage,
   createFailedAck,
   createNotAttachedAck,
   createOkAck,
@@ -187,6 +190,19 @@ export interface WorldSyncEndpointOptions {
    * 缺省 = **不投递**（端点没有总线就没有裁决方 —— 事件无处可去，如实丢弃不假装生效）。
    */
   readonly dispatchEvent?: (event: WorldEvent) => void;
+  /**
+   * **下行事件流**的订阅口（@since v3.3，task_216 / IX-02；生产 = core 总线的 onWorldEvent）。
+   *
+   * why 注入而不是端点内部直接 import core/bus：端点是**传输层**（协议层纪律：不引业务依赖），
+   *   且单测要能起一个「内存 service 实例」而不牵动全局总线单例。
+   * 缺省 = **不订阅**（没有下行源就没有下行事件 —— 如实不推，不假装有）。
+   *
+   * 语义：端点把 core 总线上**下行白名单内**的事件（首批只放 `unit.position`）广播给
+   *   所有已 hello 的连接；白名单外的一律不推（纯视图事件 + 防回环的第一道闸）。
+   */
+  readonly subscribeWorldEvents?: (
+    handler: (event: WorldEvent) => void,
+  ) => () => void;
   /** 命令回执超时（ms）。缺省 = WORLD_SYNC_ACK_TIMEOUT_MS。 */
   readonly ackTimeoutMs?: number;
   /** 快照节流窗口（ms）。缺省 = 100。 */
@@ -230,6 +246,9 @@ export class WorldSyncEndpoint implements WorldSyncEndpointPort {
   /** 世界事件投递口（@since v3.3，task_156；缺省 = 无裁决方，事件无处可去）。 */
   private readonly dispatchEvent: ((event: WorldEvent) => void) | null;
 
+  /** 下行事件流的订阅退订（@since v3.3，task_216 / IX-02；null = 未订阅）。 */
+  private unsubscribeWorldEvents: (() => void) | null;
+
   /** 命令回执超时（ms）。 */
   private readonly ackTimeoutMs: number;
 
@@ -270,6 +289,7 @@ export class WorldSyncEndpoint implements WorldSyncEndpointPort {
     this.store = options.store;
     this.dispatch = options.dispatch;
     this.dispatchEvent = options.dispatchEvent ?? null;
+    this.unsubscribeWorldEvents = null;
     this.ackTimeoutMs = options.ackTimeoutMs ?? WORLD_SYNC_ACK_TIMEOUT_MS;
     this.snapshotThrottleMs = options.snapshotThrottleMs ?? WORLD_SYNC_SNAPSHOT_THROTTLE_MS;
     this.heartbeatIntervalMs = options.heartbeatIntervalMs ?? WORLD_SYNC_HEARTBEAT_INTERVAL_MS;
@@ -278,6 +298,11 @@ export class WorldSyncEndpoint implements WorldSyncEndpointPort {
     if (this.store) {
       // 状态面一变就记一笔：先判落点探针，再排节流广播（顺序固定：命令回执早于广播）。
       this.unsubscribeStore = this.store.subscribe((state) => this.handleStateChange(state));
+    }
+    // 下行事件流（@since v3.3，task_216 / IX-02）：订阅 core 总线 → 白名单内的事件广播给全体客户端。
+    const subscribe = options.subscribeWorldEvents;
+    if (subscribe) {
+      this.unsubscribeWorldEvents = subscribe((event) => this.pushWorldEvent(event));
     }
     this.startHeartbeat();
   }
@@ -423,6 +448,35 @@ export class WorldSyncEndpoint implements WorldSyncEndpointPort {
     }
   }
 
+  /**
+   * 下行事件面（@since v3.3，task_216 / IX-02）：把 core 总线上的**裁决产物**广播给全体客户端。
+   *
+   * why 要这条通道：service 侧的 core 裁决右击移动后，会在自己的总线上广播 `unit.position`
+   *   （编队终值）。协议原先只有 `event.forward`（上行）⇒ 那条广播**无人可收** ⇒
+   *   客户端没有 tween、没有小地图更新、也没有落库（画布"点了没反应"）。
+   *
+   * why 白名单在协议层（`createEventPushMessage` 判）：纯视图事件（camera.moved / fx.sound …）
+   *   不推（service 的相机姿态对客户端无意义，且纯属烧带宽）；**更重要的是防回环** ——
+   *   下行白名单与上行白名单**互斥**（protocol.ts 的编译期断言）⇒ 推下去的事件
+   *   客户端不会又上行回来（上行那条路由 `FORWARDABLE_WORLD_EVENT_TYPES` 挡死）。
+   *
+   * 返回 true = 已广播；false = 白名单外 / 无连接（如实丢弃，不假装推过）。
+   */
+  pushWorldEvent(event: WorldEvent): boolean {
+    const message = createEventPushMessage(event);
+    if (!message) {
+      // 白名单外（纯视图事件 / 上行语义事件）—— 不推（防回环的第一道闸）。
+      return false;
+    }
+    let sent = false;
+    for (const session of Array.from(this.sessions)) {
+      if (!session.registered) continue;
+      session.send(message);
+      sent = true;
+    }
+    return sent;
+  }
+
   /** 收干净：停定时器 → 退 store 订阅 → 断连接 → 跑收尾钩子。幂等。 */
   close(): void {
     if (this.closed) return;
@@ -437,6 +491,8 @@ export class WorldSyncEndpoint implements WorldSyncEndpointPort {
     }
     this.unsubscribeStore?.();
     this.unsubscribeStore = null;
+    this.unsubscribeWorldEvents?.();
+    this.unsubscribeWorldEvents = null;
     for (const session of Array.from(this.sessions)) {
       try {
         session.socket.terminate?.();

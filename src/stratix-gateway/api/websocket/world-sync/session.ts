@@ -191,7 +191,8 @@ export class WorldSyncSession {
         this.handleEventForward(message);
         return;
       default:
-        // snapshot / command.ack / error 都是 service → 客户端方向；客户端发它们 = 方向搞反了。
+        // snapshot / command.ack / event.push / error 都是 service → 客户端方向；
+        //   客户端发它们 = 方向搞反了（含 event.push —— 它是**下行**通道，客户端只能收不能发）。
         this.sendError(
           'malformed_message',
           `客户端不得发送 ${message.type}（该消息型是 service → 客户端方向）`
