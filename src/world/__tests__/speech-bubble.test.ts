@@ -11,8 +11,8 @@
  */
 
 import { VISUAL_METRICS } from '../../core/theme/visual-spec';
+import { SPEECH_STATE_POOLS } from '../../core/theme/bubble-copy';
 import { SPEECH_BUBBLE_SPEC } from '../speech-spec';
-import { SPEECH_POOLS } from '../speech-templates';
 import {
   SpeechBubbleBoard,
   bubbleAnimationAt,
@@ -53,22 +53,22 @@ describe('speech-spec 规格常量', () => {
 describe('SpeechBubbleBoard 频率控制', () => {
   it('首个请求立刻冒泡，气泡内容来自对应句库', () => {
     const board = new SpeechBubbleBoard({ random: FIXED_RANDOM });
-    expect(board.request('u1', 'start', 0)).toBe('shown');
+    expect(board.request('u1', 'working', 0)).toBe('shown');
     const bubbles = board.bubbles();
     expect(bubbles).toHaveLength(1);
     expect(bubbles[0]?.unitId).toBe('u1');
-    expect(bubbles[0]?.kind).toBe('start');
+    expect(bubbles[0]?.kind).toBe('working');
     expect(bubbles[0]?.phase).toBe('entering');
-    // 抽到的句子来自开工池（具体是哪一句取决于注入的随机源）。
-    expect(SPEECH_POOLS.start).toContain(bubbles[0]?.text);
+    // 抽到的句子来自「工作中」状态池（具体是哪一句取决于注入的随机源）。
+    expect(SPEECH_STATE_POOLS.working).toContain(bubbles[0]?.text);
   });
 
   it('同屏最多 3 个：第 4 个排队，不挤掉新的', () => {
     const board = new SpeechBubbleBoard({ random: FIXED_RANDOM });
-    expect(board.request('u1', 'start', 0)).toBe('shown');
+    expect(board.request('u1', 'working', 0)).toBe('shown');
     expect(board.request('u2', 'complete', 0)).toBe('shown');
     expect(board.request('u3', 'error', 0)).toBe('shown');
-    expect(board.request('u4', 'assigned', 0)).toBe('queued');
+    expect(board.request('u4', 'thinking', 0)).toBe('queued');
     expect(board.count()).toBe(3);
     expect(board.pendingCount()).toBe(1);
     // 排队的那条还没上屏。
@@ -77,10 +77,10 @@ describe('SpeechBubbleBoard 频率控制', () => {
 
   it('「旧的优先收」：最旧的一枚先退场，位置让给排队的那条', () => {
     const board = new SpeechBubbleBoard({ random: FIXED_RANDOM });
-    board.request('u1', 'start', 0);
+    board.request('u1', 'working', 0);
     board.request('u2', 'complete', 0);
     board.request('u3', 'error', 0);
-    board.request('u4', 'assigned', 0);
+    board.request('u4', 'thinking', 0);
 
     // 退场中：最旧的一枚进入 exiting，但仍然占位（≤3 是硬上限）。
     expect(board.bubbles().find((b) => b.unitId === 'u1')?.phase).toBe('exiting');
@@ -96,7 +96,7 @@ describe('SpeechBubbleBoard 频率控制', () => {
 
   it('同单位 5s 内不重复冒泡（冷却）', () => {
     const board = new SpeechBubbleBoard({ random: FIXED_RANDOM });
-    expect(board.request('u1', 'start', 0)).toBe('shown');
+    expect(board.request('u1', 'working', 0)).toBe('shown');
     expect(board.request('u1', 'complete', 1000)).toBe('cooldown');
     expect(board.request('u1', 'error', 4999)).toBe('cooldown');
     expect(board.count()).toBe(1);
@@ -104,20 +104,20 @@ describe('SpeechBubbleBoard 频率控制', () => {
 
   it('同单位冷却满 5s 后可以再说一次', () => {
     const board = new SpeechBubbleBoard({ random: FIXED_RANDOM });
-    board.request('u1', 'start', 0);
+    board.request('u1', 'working', 0);
     expect(board.request('u1', 'complete', 5000)).toBe('shown');
     expect(board.count()).toBe(2);
   });
 
   it('冷却只挡同一个单位，不影响别的单位', () => {
     const board = new SpeechBubbleBoard({ random: FIXED_RANDOM });
-    board.request('u1', 'start', 0);
-    expect(board.request('u2', 'start', 100)).toBe('shown');
+    board.request('u1', 'working', 0);
+    expect(board.request('u2', 'working', 100)).toBe('shown');
   });
 
   it('排队中的请求在提升时再查一次冷却（期间它自己又说过了 → 直接丢，不补说）', () => {
     const board = new SpeechBubbleBoard({ random: FIXED_RANDOM, maxOnScreen: 1 });
-    board.request('u1', 'start', 0); // 上屏
+    board.request('u1', 'working', 0); // 上屏
     board.request('u2', 'complete', 0); // 同屏满了 → 排队
     board.request('u2', 'error', 0); // 同单位的第二条 → 也排队
     // u1 退场完 → u2 提升冒泡（此刻起 u2 进入 5s 冷却）。
@@ -132,7 +132,7 @@ describe('SpeechBubbleBoard 频率控制', () => {
 
   it('存活 4s 自动收起（到点进入退场，退场完移除）', () => {
     const board = new SpeechBubbleBoard({ random: FIXED_RANDOM });
-    board.request('u1', 'start', 0);
+    board.request('u1', 'working', 0);
     board.tick(250);
     expect(board.bubbles()[0]?.phase).toBe('alive');
     board.tick(3999);
@@ -153,7 +153,7 @@ describe('SpeechBubbleBoard 频率控制', () => {
 
   it('单位离场：它的气泡与排队请求一并清掉', () => {
     const board = new SpeechBubbleBoard({ random: FIXED_RANDOM, maxOnScreen: 1 });
-    board.request('u1', 'start', 0);
+    board.request('u1', 'working', 0);
     board.request('u2', 'complete', 0);
     board.clearUnit('u2');
     expect(board.pendingCount()).toBe(0);
@@ -163,11 +163,11 @@ describe('SpeechBubbleBoard 频率控制', () => {
 
   it('队列有界：超出上限时丢最老的一条排队请求', () => {
     const board = new SpeechBubbleBoard({ random: FIXED_RANDOM, maxOnScreen: 1, maxQueue: 2 });
-    board.request('u1', 'start', 0);
+    board.request('u1', 'working', 0);
     expect(board.request('u2', 'complete', 0)).toBe('queued');
     expect(board.request('u3', 'error', 0)).toBe('queued');
     // 队列已满 → 丢最老的一条排队请求（u2），u3 留在队里。
-    expect(board.request('u4', 'assigned', 0)).toBe('dropped');
+    expect(board.request('u4', 'thinking', 0)).toBe('dropped');
     expect(board.pendingCount()).toBe(1);
   });
 });
@@ -278,7 +278,7 @@ describe('气泡板与动画的接缝', () => {
 
   it('板子进入驻留的时刻 = 入场时长', () => {
     const board = new SpeechBubbleBoard({ random: FIXED_RANDOM });
-    board.request('u1', 'start', 0);
+    board.request('u1', 'working', 0);
     board.tick(249);
     expect(board.bubbles()[0]?.phase).toBe('entering');
     board.tick(250);

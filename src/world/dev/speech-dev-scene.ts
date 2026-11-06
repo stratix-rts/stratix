@@ -18,11 +18,11 @@
 
 import Phaser from 'phaser';
 
+import type { SpeechKey } from '../../core/theme/bubble-copy';
 import type { Point, UnitView } from '../../core/types';
 import { SpeechBubbleBoard } from '../objects/speech-bubble';
 import { SpeechBubbleLayer } from '../objects/speech-bubble-layer';
 import { UnitRegistry } from '../objects/unit-registry';
-import type { SpeechKind } from '../speech-templates';
 import { WORLD_PALETTE } from '../theme';
 
 /** 场景 key（main.ts 用它取场景实例）。 */
@@ -82,7 +82,7 @@ export class SpeechDevScene extends Phaser.Scene {
   }
 
   /** 让某个单位按类别说一句（kind → 离线句库抽句）。 */
-  speak(kind: SpeechKind): void {
+  speak(kind: SpeechKey): void {
     const unit = this.nextUnit();
     if (!unit) return;
     this.layer.speak(unit.id, kind);
@@ -106,9 +106,9 @@ export class SpeechDevScene extends Phaser.Scene {
 
   /** 事件风暴：五个单位同时开口 —— 用来人眼验收「同屏 ≤3 + 新的排队 + 旧的优先收」。 */
   burst(): void {
-    const kinds: SpeechKind[] = ['start', 'complete', 'error', 'assigned', 'support'];
+    const kinds: SpeechKey[] = ['working', 'complete', 'error', 'thinking', 'support'];
     this.unitRegistry.list().forEach((unit, index) => {
-      this.layer.speak(unit.id, kinds[index % kinds.length] ?? 'start');
+      this.layer.speak(unit.id, kinds[index % kinds.length] ?? 'working');
     });
   }
 

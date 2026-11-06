@@ -40,9 +40,9 @@ import {
   patrolPose,
 } from '../camera/director-policy';
 import { SPEECH_BUBBLE_SPEC } from '../speech-spec';
+import { SPEECH_EVENT_POOLS } from '../../core/theme/bubble-copy';
 import { SpeechBubbleBoard, bubbleAnimationAt } from '../objects/speech-bubble';
 import {
-  INTERACTION_BUBBLE_TEXT,
   cardFlipShowsFront,
   flagPoleProgress,
   flowFadeAlpha,
@@ -133,10 +133,10 @@ describe('§4 F1 · 单位气泡（世界层，规格不变）', () => {
     expect(board.cooldownMs).toBe(5000);
 
     // 同屏 3 个：第 4 个排队（不挤掉在屏的）。
-    expect(board.request('u1', 'start', 0)).toBe('shown');
+    expect(board.request('u1', 'working', 0)).toBe('shown');
     expect(board.request('u2', 'complete', 0)).toBe('shown');
     expect(board.request('u3', 'error', 0)).toBe('shown');
-    expect(board.request('u4', 'assigned', 0)).toBe('queued');
+    expect(board.request('u4', 'thinking', 0)).toBe('queued');
     expect(board.count()).toBe(3);
     expect(board.pendingCount()).toBe(1);
 
@@ -286,9 +286,10 @@ describe('§4 G5 · 框选 / 指令 / 翻卡 / 插旗 / 集火特效', () => {
     expect(footPulseAlpha(0)).toBe(1);
     expect(footPulseAlpha(1)).toBe(0);
 
-    // 集火 / 指令的文案（战场气泡）。
-    expect(INTERACTION_BUBBLE_TEXT.command).toBe('收到');
-    expect(INTERACTION_BUBBLE_TEXT.focus).toBe('来了来了');
+    // 集火 / 指令的文案（战场气泡）—— @since v3.3，task_219 / IX-06：
+    //   常量「收到」/「来了来了」已退役，改为 core/theme/bubble-copy.ts 的事件池。
+    expect(SPEECH_EVENT_POOLS.move.length).toBeGreaterThanOrEqual(4);
+    expect(SPEECH_EVENT_POOLS.support.length).toBeGreaterThanOrEqual(4);
   });
 });
 

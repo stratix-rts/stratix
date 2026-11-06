@@ -5,7 +5,7 @@
  *   ② 出入场动画曲线 bubbleAnimationAt：入场 scale 0→1（Back.Out，锚点在尾巴）/
  *      出场上浮 10px + alpha→0（Cubic.In）—— 渲染层只把这条曲线写进显示对象；
  *   ③ 文本排版 layoutSpeechText：最大宽 160px、最多 2 行、超出省略号截断。
- * 输入：单位 id + 话语类别（SpeechKind）+ 时钟（可注入）+ 随机源（可注入）。
+ * 输入：单位 id + 话语类别（SpeechKey）+ 时钟（可注入）+ 随机源（可注入）。
  * 输出：SpeechBubbleBoard（板子）+ bubbleAnimationAt（动画帧）+ layoutSpeechText（排版结果）。
  * 禁止事项：
  *   1. import phaser —— 本文件零渲染引擎依赖（node 单测直接 import，与 task-fx.ts 同纪律）；
@@ -23,8 +23,12 @@
  * @since v3.3（task_076）。
  */
 
+import {
+  createSpeechCopyPicker,
+  type SpeechCopyPicker,
+  type SpeechKey,
+} from '../../core/theme/bubble-copy';
 import { SPEECH_BUBBLE_SPEC } from '../speech-spec';
-import { pickSpeechText, type SpeechKind } from '../speech-templates';
 
 /** 气泡相位：入场 → 驻留 → 退场。 */
 export type SpeechBubblePhase = 'entering' | 'alive' | 'exiting';
@@ -36,7 +40,7 @@ export interface SpeechBubble {
   /** 说话单位 id。 */
   readonly unitId: string;
   /** 话语类别（null = 显式文案气泡，原样说，不属于任何句库池）。 */
-  readonly kind: SpeechKind | null;
+  readonly kind: SpeechKey | null;
   /** 实际说出的那句话（离线句库抽的）。 */
   readonly text: string;
   /** 当前相位。 */
@@ -63,6 +67,11 @@ export interface SpeechBubbleBoardOptions {
   readonly now?: () => number;
   /** 随机源注入（默认 Math.random）：单测确定性选句。 */
   readonly random?: () => number;
+  /**
+   * 抽取器注入（默认按 random 自建一份）。
+   * why 暴露它：整个气泡系统**共用一份抽取器** ⇒ 跨池也不重样（同一句不会在相邻两枚气泡里出现）。
+   */
+  readonly picker?: SpeechCopyPicker;
   /** 同屏上限（默认 3）。 */
   readonly maxOnScreen?: number;
   /** 同单位冷却（ms，默认 5000）。 */
@@ -77,7 +86,7 @@ export interface SpeechBubbleBoardOptions {
 interface PendingSpeech {
   readonly unitId: string;
   /** 话语类别（null = 显式文案，原样说）。 */
-  readonly kind: SpeechKind | null;
+  readonly kind: SpeechKey | null;
   /** 显式文案（null = 到提升时按类别抽句）。 */
   readonly text: string | null;
 }
@@ -87,7 +96,7 @@ interface SpeechBubbleRecord {
   readonly id: number;
   readonly unitId: string;
   /** 话语类别（null = 显式文案气泡，不属于任何句库池）。 */
-  readonly kind: SpeechKind | null;
+  readonly kind: SpeechKey | null;
   readonly text: string;
   phase: SpeechBubblePhase;
   readonly shownAtMs: number;
@@ -103,6 +112,8 @@ interface SpeechBubbleRecord {
 export class SpeechBubbleBoard {
   private readonly nowFn: () => number;
   private readonly randomFn: () => number;
+  /** 文案抽取器（唯一事实源在 core/theme/bubble-copy.ts）—— 同屏共用一份，跨池不重样。 */
+  private readonly picker: SpeechCopyPicker;
   private readonly records: SpeechBubbleRecord[] = [];
   private readonly pending: PendingSpeech[] = [];
   private readonly lastSpokenAt = new Map<string, number>();
@@ -124,6 +135,7 @@ export class SpeechBubbleBoard {
   constructor(options: SpeechBubbleBoardOptions = {}) {
     this.nowFn = options.now ?? ((): number => Date.now());
     this.randomFn = options.random ?? Math.random;
+    this.picker = options.picker ?? createSpeechCopyPicker({ random: this.randomFn });
     this.maxOnScreen = options.maxOnScreen ?? SPEECH_BUBBLE_SPEC.maxOnScreen;
     this.cooldownMs = options.cooldownMs ?? SPEECH_BUBBLE_SPEC.unitCooldownMs;
     this.lifeMs = options.lifeMs ?? SPEECH_BUBBLE_SPEC.lifeMs;
@@ -137,7 +149,7 @@ export class SpeechBubbleBoard {
    *
    * @returns 'shown' 立刻冒泡 / 'queued' 排队 / 'cooldown' 冷却挡下
    */
-  request(unitId: string, kind: SpeechKind, nowMs?: number): SpeechRequestOutcome {
+  request(unitId: string, kind: SpeechKey, nowMs?: number): SpeechRequestOutcome {
     return this.place(unitId, kind, null, nowMs);
   }
 
@@ -224,7 +236,7 @@ export class SpeechBubbleBoard {
    */
   private place(
     unitId: string,
-    kind: SpeechKind | null,
+    kind: SpeechKey | null,
     text: string | null,
     nowMs?: number
   ): SpeechRequestOutcome {
@@ -253,7 +265,7 @@ export class SpeechBubbleBoard {
   /** 冒泡（抽句 + 落板 + 记冷却起点）。 */
   private spawn(
     unitId: string,
-    kind: SpeechKind | null,
+    kind: SpeechKey | null,
     text: string | null,
     now: number
   ): void {
@@ -261,7 +273,8 @@ export class SpeechBubbleBoard {
       id: this.nextId,
       unitId,
       kind,
-      text: text ?? (kind === null ? '' : pickSpeechText(kind, this.randomFn)),
+      // 抽句走 core/theme/bubble-copy.ts 的抽取器（同池连续两次必不同 —— task_219 acceptance ①）。
+      text: text ?? (kind === null ? '' : this.picker.pick(kind)),
       phase: 'entering',
       shownAtMs: now,
       exitAtMs: null,

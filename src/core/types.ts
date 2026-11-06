@@ -2180,8 +2180,9 @@ export type WorldEvent =
   /**
    * @since v3.3（task_077）单位气泡事件：战场侧要求某个单位冒一句话。
    *   发出方是 world 层（下达指令 / 集火支援时，DEMO-PLAN §4「单位统一冒『收到』类气泡」）。
-   *   消费者是**气泡系统**（task_076，world/speech-templates.ts 的句库 + 渲染层）——
-   *   气泡系统尚未合入，故本任务只发事件不自己画（接线位见 world/objects/task-fx-layer.ts）。
+   *   消费者是**气泡系统**（task_076，渲染层 world/objects/speech-bubble-layer.ts；
+   *   文案池见 core/theme/bubble-copy.ts —— @since v3.3 task_219 / IX-06 迁到 core/theme，
+   *   原 world/speech-templates.ts 已退役）。
    *   core 状态机不消费（气泡是瞬态表现，不写 WorldState）—— runtime 的 handleWorldEvent
    *   显式接地（同 unit.speaking 惯例，不进 onUnhandled）。
    *   payload 只携单位 id 与一句短文本（不雪球句库 id —— 句库归气泡系统所有）。

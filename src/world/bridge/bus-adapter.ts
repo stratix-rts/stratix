@@ -43,6 +43,7 @@
 
 import { emitWorldEvent, onState, onWorldEvent } from '../../core/bus';
 import { scopeOf } from '../../core/project/entity-scope';
+import type { SpeechKey } from '../../core/theme/bubble-copy';
 import {
   DEFAULT_INSTANCE_ID,
   type Bounds,
@@ -61,7 +62,6 @@ import {
 } from '../../core/types';
 import type { DirectorEventKind } from '../camera/director-policy';
 import type { TaskFxPhase } from '../objects/task-fx';
-import type { SpeechKind } from '../speech-templates';
 
 export type { TaskFxPhase } from '../objects/task-fx';
 
@@ -138,13 +138,17 @@ export interface WorldScenePort {
    */
   syncTasks?(missions: readonly MissionView[], tasks: readonly CharacterTask[]): void;
   /**
-   * 任务气泡钩子（@since v3.3，task_076）：world 通道上的 task.queued / started / completed / failed
-   * 转发进场景 —— 单位头顶冒离线模板气泡（句库见 world/speech-templates.ts）。
+   * 任务气泡钩子（@since v3.3，task_076；@since v3.3，task_219 / IX-06 改口径）：
+   * world 通道上的 task.queued / started / completed / failed 转发进场景 —— 单位头顶冒气泡。
+   * kind 分两类（口径见 core/theme/bubble-copy.ts）：
+   *   - **状态键**（'thinking' / 'working'）：任务派下 / 开工 ⇒ 交给场景的触发链裁决时机
+   *     （沉降期 + 同状态节流由 world/objects/speech-trigger.ts 负责，桥接层不替它决定）。
+   *   - **事件键**（'complete' / 'error'）：任务完成 / 报错 ⇒ 直接冒一句播报。
    * 可选成员：不实现不破编译（同 syncTaskEvent 惯例）。
    * why 走 world 通道：任务生命周期事件本来就在这条通道上（core/task 发出），
    *   气泡只是这些事件的**表现投影** —— world 只消费不生产（总线铁律）。
    */
-  syncTaskSpeech?(task: CharacterTask, kind: SpeechKind): void;
+  syncTaskSpeech?(task: CharacterTask, kind: SpeechKey): void;
   /**
    * 指定文案气泡钩子（@since v3.3，task_076）：world 通道上的 unit.bubble
    * （world 层当场指挥，原话已定 —— 例如「收到」）转发进场景，按原话冒泡。
@@ -352,8 +356,9 @@ export function createWorldBridge(
         // 切副本后，上一个副本的任务事件不该再驱动当前场景的表现（工作环 / 气泡 / 镜头）。
         if (!inScope(event.task.instanceId)) break;
         port.syncTaskEvent?.(event.task, 'started');
-        // 开工气泡（task_076）：任务落到谁头上，谁说一句开工话。
-        port.syncTaskSpeech?.(event.task, 'start');
+        // 开工气泡（task_219 / IX-06）：任务落到谁头上，谁说一句开工话。
+        // why 是「状态键」而不是事件键：这一刻 agent 真的在干活 ⇒ 状态气泡（agent 自述口吻）。
+        port.syncTaskSpeech?.(event.task, 'working');
         // 导演镜头（task_081）：开工事件 → 镜头去看事件点。
         port.syncDirectorEvent?.(event.task, 'started');
         break;
@@ -373,11 +378,12 @@ export function createWorldBridge(
         // 导演镜头（task_081）：报错还附带红色渐晕脉冲（在导演控制器里触发）。
         port.syncDirectorEvent?.(event.task, 'failed');
         break;
-      // 派活气泡（task_076）：任务入队 = 派到人手上 → 「收到新任务」。
+      // 派活气泡（task_219 / IX-06）：任务入队 = 派到人手上 → agent 进入「思考中」。
+      // why 是「状态键」而不是事件键：这一刻 agent 真的接了活 ⇒ 状态气泡（agent 自述口吻）。
       // why task.queued 不进 syncTaskEvent：它还不是「在干活」，不该挂工作环。
       case 'task.queued':
         if (!inScope(event.task.instanceId)) break;
-        port.syncTaskSpeech?.(event.task, 'assigned');
+        port.syncTaskSpeech?.(event.task, 'thinking');
         break;
       // 审批门（task_049）：挂起画 ?（黄色问号，驻留到裁决）；批准折算成 started 相位 ——
       // 批准是同一段执行的续段，表现上回到工作环（场景不需要新的相位词）。

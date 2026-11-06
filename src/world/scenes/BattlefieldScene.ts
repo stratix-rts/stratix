@@ -74,6 +74,12 @@ import Phaser from 'phaser';
 // 副本展示口径（@since v3.3，task_188 / M1-14）：「路径尾段」「在办任务数」搬到 core ——
 //   HUD 的大厅卡片（M1-14）要用**同一份**口径，而 HUD 不得 import world（铁律）⇒ 共同口径落 core。
 import { countActiveTasks, pathTailOf } from '../../core/project/instance-display';
+import {
+  createSpeechCopyPicker,
+  isSpeechStateKey,
+  type SpeechCopyPicker,
+  type SpeechKey,
+} from '../../core/theme/bubble-copy';
 import type {
   Bounds,
   CharacterTask,
@@ -134,13 +140,13 @@ import { ReplayBoard, replayAnchorId, replayAvatarPosition } from '../objects/re
 import { SelectionBox } from '../objects/selection-box';
 import { SpeechBubbleBoard } from '../objects/speech-bubble';
 import { SpeechBubbleLayer } from '../objects/speech-bubble-layer';
+import { SpeechTrigger } from '../objects/speech-trigger';
 import { MapBoard, BUILDING_SIZE, type MapSyncResult } from '../objects/task-building';
-import { INTERACTION_BUBBLE_TEXT, TaskFxBoard, applyTaskFxEvent, fxKindForTaskPhase } from '../objects/task-fx';
+import { TaskFxBoard, applyTaskFxEvent, fxKindForTaskPhase } from '../objects/task-fx';
 import { TaskFxLayer } from '../objects/task-fx-layer';
 import { UnitLayer } from '../objects/unit-layer';
 import { UnitRegistry, resolvePositionSeed } from '../objects/unit-registry';
 import { UNIT_SPRITE_SOURCE_KEY, type UnitSpriteSource } from '../objects/unit-sprite-source';
-import type { SpeechKind } from '../speech-templates';
 import { CAMERA_METRICS, REPLAY_METRICS, WORLD_PALETTE } from '../theme';
 
 export const BATTLEFIELD_SCENE_KEY = 'battlefield';
@@ -220,6 +226,16 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   private speechBoard!: SpeechBubbleBoard;
   /** 气泡渲染层（@since v3.3，task_076）：单位头顶的圆角气泡。 */
   private speechLayer!: SpeechBubbleLayer;
+  /**
+   * 话术抽取器（@since v3.3，task_219 / IX-06）：全系统**共用一份** ⇒ 跨池也不重样
+   * （同一句不会在相邻两枚气泡里出现）。文案池本身在 core/theme/bubble-copy.ts。
+   */
+  private speechPicker!: SpeechCopyPicker;
+  /**
+   * 话术触发链（@since v3.3，task_219 / IX-06）：agent 状态 → 一句话 + 闲置彩蛋的时机裁决。
+   * why 与气泡板分家：板子管「屏幕上有几枚气泡」，触发链管「谁该开口、什么时候开口」。
+   */
+  private speechTrigger!: SpeechTrigger;
   /**
    * 小云层（@since v3.3，task_079）：每 30-60s 从地图边缘飘过一朵慢速小云（氛围彩蛋）。
    * why 是装饰层：它不发总线事件（彩蛋不改变任何业务状态）。
@@ -400,8 +416,12 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
     // 气泡层（@since v3.3，task_076）：单位头顶的说话气泡（离线模板句库）。
     // 板子用场景时钟（this.time.now）—— 与渲染层的 tick 同一把钟，不混用墙钟。
-    this.speechBoard = new SpeechBubbleBoard({ now: () => this.time.now });
+    // 话术抽取器（@since v3.3，task_219 / IX-06）：板子与触发链**共用一份** ⇒ 跨池也不重样。
+    this.speechPicker = createSpeechCopyPicker();
+    this.speechBoard = new SpeechBubbleBoard({ now: () => this.time.now, picker: this.speechPicker });
     this.speechLayer = new SpeechBubbleLayer(this, this.units, this.speechBoard);
+    // 触发链（@since v3.3，task_219 / IX-06）：agent 状态 → 一句话 + 闲置彩蛋的时机裁决。
+    this.speechTrigger = new SpeechTrigger({ now: () => this.time.now, picker: this.speechPicker });
 
     // 任务建筑层（@since v3.3，task_078）：地图上的任务建筑三态 + 区域点亮。
     // 数据源是 core 广播的 missions/tasks（经桥接层 syncTasks 转发），场景只被驱动。
@@ -507,6 +527,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       if (position) this.fxRouter.play('despawn', position.x, position.y);
     }
     this.taskFxLayer.sync();
+    // 话术触发链（@since v3.3，task_219 / IX-06）：在场清单交给触发链 ——
+    //   离场的单位不该再驱动气泡，触发链据此把它的状态记录摘掉。
+    this.speechTrigger.syncUnits(units.map((unit) => unit.id));
     // 失焦（@since v3.4，task_092）：被锁定的单位离场 → 弧线与描边一并收掉
     // （表现不许指着一个已经不存在的单位）。
     const focusedId = this.focusLink.unitId;
@@ -609,9 +632,14 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    * 单位说话状态（@since v3.37，task_062；由桥接层转发 world 通道的 unit.speaking）。
    * app 层 chat-service 在流式期间发 true / 收尾发 false —— 场景只转交给单位层
    * （头顶「···」气泡起止），不持有第二份状态。
+   *
+   * why 也喂给话术触发链（@since v3.3，task_219 / IX-06）：流式吐字 = agent 处在
+   *   「LLM 吞吐中」⇒ 该冒一句「正在吐字…」。触发链是状态的**唯一**持有者，
+   *   场景不自己存这份状态（存两份 = 两份真相）。
    */
   syncUnitSpeaking(unitId: string, speaking: boolean): void {
     this.unitLayer.setSpeaking(unitId, speaking);
+    this.speechTrigger.setSpeaking(unitId, speaking);
   }
 
   /**
@@ -700,16 +728,38 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   }
 
   /**
-   * 任务生命周期 → 说话气泡（@since v3.3，task_076；由桥接层转发 task.queued / started /
-   * completed / failed）。事件带的是 characterId，战场认单位 —— 按 characterId 反查，
-   * 命中的单位各自冒一句（句库见 world/speech-templates.ts）。
+   * 任务生命周期 → 说话气泡（@since v3.3，task_076；@since v3.3，task_219 / IX-06 改口径）。
+   * 由桥接层转发 task.queued / started / completed / failed。事件带的是 characterId，
+   * 战场认单位 —— 按 characterId 反查，命中的单位各自冒一句（句库见 core/theme/bubble-copy.ts）。
    * 频率规则（同屏 ≤3 / 同单位 5s 冷却）由气泡板裁决，本层只管「谁说」。
+   *
+   * why 分两路（@since task_219）：**状态键**交给触发链裁决时机（沉降期 + 同状态节流），
+   *   **事件键**直接冒一句（完成 / 报错是瞬时事件，节流只会让它迟到）。
+   *   状态键走触发链还有一个好处：「接了活」常常几百毫秒后就变成「开工了」——
+   *   两句连着冒会互相打脸，触发链的沉降期会把前一句作废。
    */
-  syncTaskSpeech(task: CharacterTask, kind: SpeechKind): void {
-    for (const unit of this.units.list()) {
-      if (unit.characterId !== task.characterId) continue;
+  syncTaskSpeech(task: CharacterTask, kind: SpeechKey): void {
+    const units = this.units.list().filter((unit) => unit.characterId === task.characterId);
+    if (units.length === 0) return;
+    for (const unit of units) {
+      if (kind === 'thinking') {
+        // 接了活还没开工 —— 状态由触发链持有，本层只喂信号。
+        this.speechTrigger.setThinking(unit.id, true);
+        continue;
+      }
+      if (kind === 'working') {
+        // 开工了 —— 「工作中」是 agent 自述口吻（状态池）。
+        this.speechTrigger.setThinking(unit.id, false);
+        this.speechTrigger.setBusy(unit.id, true);
+        continue;
+      }
+      // 完成 / 报错：任务结束 ⇒ 这个单位不再忙也不再思考（状态归零）。
+      this.speechTrigger.setThinking(unit.id, false);
+      this.speechTrigger.setBusy(unit.id, false);
       this.speechLayer.speak(unit.id, kind);
     }
+    // 事件气泡也是「有事发生」—— 闲置彩蛋的静默门槛看它。
+    if (!isSpeechStateKey(kind)) this.speechTrigger.noteActivity();
   }
 
   /**
@@ -855,7 +905,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 半频气泡：每 N 拍才冒一次（规格钦定 2）。计数在 reset 时归零（一次回放一套节奏）。
     this.replayBubbleTick += 1;
     if (this.replayBubbleTick % REPLAY_METRICS.bubbleEveryN !== 0) return;
-    if (avatar.phase === 'spawn') this.speechLayer.speak(anchorId, 'start');
+    // 回放化身的三相（@since v3.3，task_219 / IX-06）：话语键按新口径 ——
+    //   'working' = 工作中（agent 自述），'complete' / 'error' = 事件播报。
+    if (avatar.phase === 'spawn') this.speechLayer.speak(anchorId, 'working');
     else if (avatar.phase === 'done') this.speechLayer.speak(anchorId, 'complete');
     else if (avatar.phase === 'error') this.speechLayer.speak(anchorId, 'error');
     else if (avatar.label) this.speechLayer.speakText(anchorId, avatar.label);
@@ -998,6 +1050,10 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
         // 单击 = **选中**（task_214 / IX-03）：unit.click 是选择的锚 —— 右键移动、键盘操作都建立在它之上。
         // why 每一击都发：第一击就是一次普通单击选中，双击的第一击**照常选中**（不产生第二种选中态）。
         this.bridge.unitClick(hit.id, readModifiers(pointer));
+        // 选中气泡（@since v3.3，task_219 / IX-06）：「选中」也是一个交互事件 ⇒ 有一池播报文案。
+        // why 走 speechLayer 而不是桥：这是场景自己的当场表现，不必绕总线一圈。
+        // 频率不用场景操心：气泡板同屏 ≤3 + 同单位 5s 冷却自己兜底。
+        this.speechLayer.speak(hit.id, 'select');
         // 点击语义判定（task_214 / IX-03）：单击 = 选中 / 双击 = 打开该 agent 的单独聊天框。
         //   双击窗口复用 CAMERA_METRICS.doubleClickWindowMs 同源常量（判定在 click-semantics 纯函数里）。
         const stamp: ClickStamp = {
@@ -1028,8 +1084,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    * 右键短按 → unit.move（task_045）+ 下达指令的特效（task_077 / DEMO-PLAN §4）：
    *   ① 每个选中单位脚下到目标点拉**流动虚线**（青→目标色渐变，800ms 后淡出）；
    *   ② 目标点**双重涟漪**（两圈先后 300ms 扩散）；
-   *   ③ 单位头顶统一冒「收到」类气泡（气泡系统 task_076 未合入 → 这里只发事件）；
-   *   ④ 右键落在**卡住**的单位上 = 集火支援：气泡换成「来了来了」+ 脚下位移脉冲一次。
+   *   ③ 单位头顶冒一句「移动指令已下达」类气泡（@since v3.3，task_219 / IX-06：从
+   *      core/theme/bubble-copy.ts 的移动指令池随机抽，不再是常量「收到」）；
+   *   ④ 右键落在**卡住**的单位上 = 集火支援：换成支援池的一句 + 脚下位移脉冲一次。
    *   ⑤ 目标点升起**信号弹**（@since v3.3，task_161：sheet 动画特效）。
    * 指令上报（编队落位在 core 算）与特效同一次动作发出 —— 画面与逻辑同帧，不分先后。
    */
@@ -1051,13 +1108,16 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     // 集火判定：右键命中一个**卡住**（error）的单位 = 支援它（不是单纯移动）。
     const hit = this.unitLayer.hitTest(target.x, target.y);
     const focusFire = hit !== null && hit.status === 'error';
-    const bubbleText = focusFire ? INTERACTION_BUBBLE_TEXT.focus : INTERACTION_BUBBLE_TEXT.command;
+    // 话术键（@since v3.3，task_219 / IX-06）：移动指令 / 集火支援各有一池文案。
+    // why 不再是常量「收到」：同一句反复出现像卡带（文案池见 core/theme/bubble-copy.ts）。
+    const bubbleKind: SpeechKey = focusFire ? 'support' : 'move';
 
     for (const unitId of this.selectedUnitIds) {
       const unit = this.units.get(unitId);
       if (!unit) continue;
       this.taskFxLayer.commandFlow(unit.position, target);
-      this.bridge.unitBubble(unitId, bubbleText);
+      // 每个单位各抽一句（抽取器保证同一池内连续两次必不同）。
+      this.bridge.unitBubble(unitId, this.speechPicker.pick(bubbleKind));
       if (focusFire) this.taskFxLayer.footPulse(unit.position.x, unit.position.y);
     }
 
@@ -1407,6 +1467,9 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     //   （护栏在层内自适应，见 objects/code-fx-layer.ts）。
     // why 排在最前：下面的分支有提前 return（无跟随目标时）—— 特效不能因此停推。
     this.codeFxLayer.tick(this.time.now);
+    // 话术触发链（@since v3.3，task_219 / IX-06）：agent 状态迁移 / 闲置彩蛋 → 一句话。
+    // why 排在跟随判定的 early return 之前：镜头在不在跟随，都不该让气泡停摆。
+    this.tickSpeechTrigger();
     // 导演巡视（@since v3.3，task_081）：静默超过 8s 时镜头缓慢漂移（漂移 pan）。
     // why 先于跟随判定：导演开启时跟随已让位（见 syncDirectorMode），两者不会同时写镜头。
     this.director.update();
@@ -1424,6 +1487,20 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       center: { x: unit.position.x, y: unit.position.y },
       zoom: this.view.current.zoom,
     });
+  }
+
+  /**
+   * 推进话术触发链（@since v3.3，task_219 / IX-06）—— 本帧该冒的泡。
+   *
+   * why 每帧调：触发链内部按沉降期 / 静默门槛自己裁决「这一帧说不说话」，
+   *   场景只把裁决结果交给气泡层（气泡层再按同屏上限 / 同单位冷却排布）。
+   * why 传显式文案而不是话语键：触发链已经把句子抽好了（抽句在 core/theme 的抽取器里）。
+   */
+  private tickSpeechTrigger(): void {
+    const events = this.speechTrigger.tick(this.time.now);
+    for (const event of events) {
+      this.speechLayer.speakText(event.unitId, event.text);
+    }
   }
 
   private onShutdown(): void {

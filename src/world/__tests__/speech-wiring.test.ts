@@ -1,7 +1,9 @@
 /**
- * 测试职责：**总线事件 → 气泡说话系统的接线**（task_076 / DEMO-PLAN.md §3）——
+ * 测试职责：**总线事件 → 气泡说话系统的接线**（task_076 / DEMO-PLAN.md §3；
+ *   @since v3.3，task_219 / IX-06 改口径）——
  *   core 在 world 通道上发的任务生命周期事件（派活 / 开工 / 完成 / 报错），
- *   桥接层要转成对应的话语类别；world 层当场指挥的 unit.bubble 事件按原话转发。
+ *   桥接层要转成对应的话语类别：**状态键**（thinking / working）与**事件键**（complete / error）；
+ *   world 层当场指挥的 unit.bubble 事件按原话转发。
  * 输入：被测模块 src/world/bridge/bus-adapter.ts（真实 core/bus 单例，不 mock 总线）。
  * 输出：断言（无返回值）。
  * 禁止事项：
@@ -13,8 +15,8 @@
 
 import { emitWorldEvent, resetBus, type Unsubscribe } from '../../core/bus';
 import type { CharacterTask } from '../../core/types';
+import type { SpeechKey } from '../../core/theme/bubble-copy';
 import { createWorldBridge, type WorldScenePort } from '../bridge/bus-adapter';
-import type { SpeechKind } from '../speech-templates';
 
 /** 一条够用的角色任务夹具（只用到气泡接线关心的字段）。 */
 function makeTask(id = 't1'): CharacterTask {
@@ -32,7 +34,7 @@ function makeTask(id = 't1'): CharacterTask {
 
 /** 记录端口收到的气泡请求。 */
 function createFakePort() {
-  const speeches: { task: CharacterTask; kind: SpeechKind }[] = [];
+  const speeches: { task: CharacterTask; kind: SpeechKey }[] = [];
   const bubbles: { unitId: string; text: string }[] = [];
   const taskEvents: { task: CharacterTask; phase: string }[] = [];
   const port: WorldScenePort = {
@@ -59,7 +61,7 @@ afterEach(() => {
 });
 
 describe('任务生命周期事件 → 气泡话语类别', () => {
-  test('task.queued → 被派活（assigned）', () => {
+  test('task.queued → 思考中（thinking，状态键）', () => {
     const { port, speeches } = createFakePort();
     const bridge = createWorldBridge(port);
     stops.push(() => bridge.destroy());
@@ -68,11 +70,11 @@ describe('任务生命周期事件 → 气泡话语类别', () => {
     emitWorldEvent({ type: 'task.queued', task });
 
     expect(speeches).toHaveLength(1);
-    expect(speeches[0]?.kind).toBe('assigned');
+    expect(speeches[0]?.kind).toBe('thinking');
     expect(speeches[0]?.task.id).toBe('t1');
   });
 
-  test('task.started → 开工（start）', () => {
+  test('task.started → 工作中（working，状态键）', () => {
     const { port, speeches } = createFakePort();
     const bridge = createWorldBridge(port);
     stops.push(() => bridge.destroy());
@@ -80,7 +82,7 @@ describe('任务生命周期事件 → 气泡话语类别', () => {
     emitWorldEvent({ type: 'task.started', task: makeTask() });
 
     expect(speeches).toHaveLength(1);
-    expect(speeches[0]?.kind).toBe('start');
+    expect(speeches[0]?.kind).toBe('working');
   });
 
   test('task.completed → 完成（complete）', () => {

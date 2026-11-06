@@ -16,8 +16,8 @@
  */
 
 import { INTERACTION_FX_METRICS } from '../../core/theme/visual-spec';
+import { SPEECH_EVENT_POOLS } from '../../core/theme/bubble-copy';
 import {
-  INTERACTION_BUBBLE_TEXT,
   INTERACTION_FX_STYLE,
   cardFlipScaleX,
   cardFlipShowsFront,
@@ -154,9 +154,13 @@ describe('集火脉冲与流线淡出', () => {
 });
 
 describe('交互特效的文案与样式', () => {
-  test('气泡文案：普通指令「收到」/ 集火支援「来了来了」', () => {
-    expect(INTERACTION_BUBBLE_TEXT.command).toBe('收到');
-    expect(INTERACTION_BUBBLE_TEXT.focus).toBe('来了来了');
+  test('气泡文案已迁到 core/theme/bubble-copy.ts（移动指令池 / 支援池，各 ≥4 条）', () => {
+    // @since v3.3，task_219 / IX-06：常量「收到」/「来了来了」退役 ——
+    //   同一句话反复出现像卡带 ⇒ 事件各有一池，随机抽。
+    expect(SPEECH_EVENT_POOLS.move.length).toBeGreaterThanOrEqual(4);
+    expect(SPEECH_EVENT_POOLS.support.length).toBeGreaterThanOrEqual(4);
+    expect(SPEECH_EVENT_POOLS.move).not.toContain('收到');
+    expect(SPEECH_EVENT_POOLS.support).not.toContain('来了来了');
   });
 
   test('样式：流线起点是青（我方主色），旗面是完成色', () => {

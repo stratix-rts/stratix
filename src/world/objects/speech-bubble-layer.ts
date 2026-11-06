@@ -23,9 +23,9 @@
 
 import Phaser from 'phaser';
 
+import type { SpeechKey } from '../../core/theme/bubble-copy';
 import type { Point } from '../../core/types';
 import { SPEECH_BUBBLE_SPEC } from '../speech-spec';
-import type { SpeechKind } from '../speech-templates';
 import { hexToNumber } from '../visual-spec';
 
 import {
@@ -90,7 +90,7 @@ export class SpeechBubbleLayer {
    * 让某个单位冒一句话（总线事件的落点）。
    * @returns 'shown' 立刻冒泡 / 'queued' 排队 / 'cooldown' 5s 冷却挡下
    */
-  speak(unitId: string, kind: SpeechKind): SpeechRequestOutcome {
+  speak(unitId: string, kind: SpeechKey): SpeechRequestOutcome {
     if (this.destroyed) return 'dropped';
     const outcome = this.board.request(unitId, kind, this.scene.time.now);
     this.reconcile();

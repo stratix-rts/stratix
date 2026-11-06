@@ -18,7 +18,7 @@
 | # | 决策 | 依据 |
 |---|---|---|
 | **D1** | **P0 缺口 = 右键移动的「位置事实」在远程模式下**单向丢失**（client → service 通，service → client 不通）**。修复方向 = **补一条下行事件通道**（service → client 推 `unit.position`），而不是让客户端乐观自演 | §1.2 逐段解剖；§4 拆单 IX-02 |
-| **D2** | **「收到」不是 agent 说的** —— 是世界层在下达指令时**本地伪造**的气泡文案（`src/world/objects/task-fx.ts:361`）。右击移动链路上**从头到尾没有任何 agent 参与**（不发 `chat.send`、不派任务、不经 agent-link） | §1.2.4；这正是用户「以为 agent 回了、其实没动」的认知来源 |
+| **D2** | **「收到」不是 agent 说的** —— 是世界层在下达指令时**本地伪造**的气泡文案（**@since v3.3，task_219 / IX-06：常量已退役，文案池落 `src/core/theme/bubble-copy.ts`，右击气泡改成不含 agent 口吻的播报措辞**）。右击移动链路上**从头到尾没有任何 agent 参与**（不发 `chat.send`、不派任务、不经 agent-link） | §1.2.4；这正是用户「以为 agent 回了、其实没动」的认知来源 |
 | **D3** | **双击 agent 的目标态 = 打开该 agent 的单独聊天框**（task_214 规格优先）；**现有「双击 = 跟随镜头」必须让位**，跟随镜头降级改绑（推荐「双击空白地面 = 回全景」） | §2 表 2.2 行 P3×O1；§3 冲突对 C-02 |
 | **D4** | **单击选中已经自带一个隐藏副作用**：HUD 聊天抽屉监听 `selection.revision`，**单选一个已关联角色的单位就会自动顶开抽屉**（`src/hud/components/chat-drawer/chat-drawer.ts:578`）—— 与「双击才开聊天框」的规格**语义重叠且时机相反**，必须裁决（推荐：取消「单选自动开抽屉」，改由双击 / HUD 卡片点击触发） | §3 冲突对 C-03；§4 拆单 IX-03 |
 
@@ -87,8 +87,8 @@
 pointerup(右键短按)
   └─ BattlefieldScene.ts:933   issueMoveCommand(pointer)
       └─ BattlefieldScene.ts:1004  issueMoveCommandAt(target)
-          ├─ BattlefieldScene.ts:1009  集火判定：命中「卡住(error)」的单位 ⇒ focus 气泡，否则 command 气泡
-          ├─ BattlefieldScene.ts:1016  bridge.unitBubble(unitId, '收到')   ← 世界层本地伪造气泡（不是 agent！）
+          ├─ BattlefieldScene.ts:1009  集火判定：命中「卡住(error)」的单位 ⇒ 支援池，否则移动指令池
+          ├─ BattlefieldScene.ts:1016  bridge.unitBubble(unitId, 抽句)   ← 世界层本地伪造气泡（不是 agent！）
           ├─ BattlefieldScene.ts:1020  目标点双重涟漪 + :1022 信号弹特效
           └─ BattlefieldScene.ts:1024  bridge.unitMove(selectedUnitIds, x, y)
                 └─ world/bridge/bus-adapter.ts:437   emitWorldEvent({type:'unit.move', …})
@@ -132,7 +132,7 @@ pointerup(右键短按)
 - 客户端的 world 层收不到 `unit.position` ⇒ `unit-layer.ts:666` 的 tween 从不触发 ⇒ **没有移动动画**；
 - 客户端的小地图位置表也停在原地（`src/app/main/main-entry.ts:1365` 同样只吃**本地**总线上的 `unit.position`）；
 - `unit_positions` 表也**不会**被更新（渲染进程的落库订阅者同样只听本地总线）—— 这次移动**连持久化都没留下**；
-- 而「收到」气泡是**世界层自己画的**（`world/objects/task-fx.ts:361` 的 `command: '收到'`），它在第 ③ 步之前就已经在本地播出了 ⇒ **用户看到的是「假回执」**。
+- 而「收到」气泡是**世界层自己画的**（**@since v3.3，task_219 / IX-06：文案池在 `src/core/theme/bubble-copy.ts`，右击气泡走「移动指令池 / 支援池」—— 播报口吻，不再是固定一句「收到」**），它在第 ③ 步之前就已经在本地播出了 ⇒ **用户看到的是「假回执」**。
 
 > **一句话根因**：右击移动的**指令**在远程模式下完整抵达了 service 并被裁决，但**裁决产物（每单位终值坐标）所在的 `unit.position` 事件没有任何回程通道** —— **client → service 通，service → client 断**。用户看到的「收到」是世界层本地伪造的固定文案，**agent 全程未被惊动**（移动链路上没有任何 `chat.send` / 派单 / agent-link 交互）。
 
@@ -147,7 +147,7 @@ pointerup(右键短按)
 | 事实 | 位置 |
 |---|---|
 | 右击移动只发 `unit.move` + `unit.bubble`，**不发** `chat.send` / `task.assign` | `BattlefieldScene.ts:1016`、`:1024` |
-| 气泡文案是**世界层常量**（`'收到'` / `'来了来了'`），不是 agent 的回复 | `world/objects/task-fx.ts:359-364` |
+| 气泡文案是**世界层本地取的**（@since task_219 / IX-06：`core/theme/bubble-copy.ts` 的「移动指令池 / 支援池」—— 播报口吻，不是 agent 的回复） | `src/core/theme/bubble-copy.ts` |
 | `unit.bubble` 只是让世界层按原话冒泡（**world 只消费不生产**） | `world/bridge/bus-adapter.ts:388-391` |
 
 ⇒ 「agent 收到指令」在当前代码里**不存在**。若产品语义是「右击 = 给 agent 下达移动指令（agent 自己走位）」，那是一条**尚未实现**的能力（§4 IX-06 标注为 OPEN）。
@@ -256,7 +256,7 @@ pointerup(右键短按)
 | **P3** | O2 空白 | 无（`lastClick` 置空，`:978`） | **回全景**（等价 ESC） | 跟随镜头的「去处」 |
 | **P3** | O3/O4 | ≡ O2 | ≡ O2 | — |
 | **P4** | O2 空白 | 对选中编队发 `unit.move`（有选中才发） | **不变**（选中为空 ⇒ 无操作） | 与 §1.2.4 的「agent 语义」分开（§4 IX-06 OPEN） |
-| **P4** | O1 单位 | 同上；**且**若命中单位处于 `error` 态 ⇒ 气泡换「来了来了」（集火） | **不变** | `BattlefieldScene.ts:1009` |
+| **P4** | O1 单位 | 同上；**且**若命中单位处于 `error` 态 ⇒ 气泡换**支援池**一句（集火） | **不变** | `BattlefieldScene.ts:1009` |
 | **P5** | 任意 | 平移（橡皮筋回弹） | **不变** | — |
 | **P6** | 任意 | 平移 | **不变** | 中键**短按 = 空操作**（保持现状，§3 C-06 记录） |
 | **P7** | 任意 | 缩放 0.6–1.6x | **不变** | — |
@@ -381,10 +381,31 @@ pointerup(右键短按)
 
 | 项 | 内容 |
 |---|---|
-| **问题** | 用户原话是「右击某个位置，**agent 回复收到**」—— 暗示「右击 = 让 agent 走到那儿」。但今天的右击移动**不惊动 agent**（§1.2.4），「收到」是世界层伪造的气泡（`task-fx.ts:361`）。两条路：**A. 保持纯表现语义**（右击 = 视觉调度，不惊动 agent；把气泡文案改成不冒充 agent 的措辞，如「移动」）；**B. 真的下达给 agent**（右击 ⇒ 给该 agent 发一条指令 / 派单，agent 自己走位 ⇒ 需要 `chat.send` 或新的 `unit.dispatch` 命令 + agent-link 通道 + 失败回执 UI） |
+| **问题** | 用户原话是「右击某个位置，**agent 回复收到**」—— 暗示「右击 = 让 agent 走到那儿」。但今天的右击移动**不惊动 agent**（§1.2.4），「收到」是世界层伪造的气泡（**@since task_219 / IX-06：该常量已退役，现从 `core/theme/bubble-copy.ts` 的「移动指令池」抽句**）。两条路：**A. 保持纯表现语义**（右击 = 视觉调度，不惊动 agent；把气泡文案改成不冒充 agent 的措辞，如「移动」）；**B. 真的下达给 agent**（右击 ⇒ 给该 agent 发一条指令 / 派单，agent 自己走位 ⇒ 需要 `chat.send` 或新的 `unit.dispatch` 命令 + agent-link 通道 + 失败回执 UI） |
 | **推荐** | **A**（本期）：气泡文案改为**不含 agent 口吻**的措辞，避免「假回执」继续误导；B 作为独立大单（涉及 agent 会话与失败语义，不该混进交互整理） |
 | **验收** | ① 右击后单位头顶气泡文案**不再**是「收到」；② 文档与 UI 不再暗示「agent 已确认」；③（若选 B）agent 侧确实收到指令且能回执 |
 | **依赖** | IX-02（先把通道修通） |
+
+#### IX-06 实施口径（@since v3.3，task_219「气泡话术层」已落地）
+
+**裁决**：走推荐 **A**（保持纯表现语义，右击气泡不含 agent 口吻）。B（真下达给 agent）仍是独立大单。
+
+落地后的四族话术（**唯一事实源：`src/core/theme/bubble-copy.ts`**）：
+
+| 族 | 话语键 | 口吻 | 触发源 |
+|---|---|---|---|
+| **事件池** | `move` / `select` / `support` / `complete` / `error` | **指挥台播报**（「移动指令已下达」）—— 不冒充 agent | 右击移动 / 左键选中 / 集火支援 / 任务完成 / 任务报错 |
+| **状态池** | `thinking` / `working` / `streaming` | **agent 自述**（「这个我来！」）—— 此刻确实有 agent 在干活，说「我」不假 | 任务派下（queued）/ 任务开工（started）/ LLM 流式输出（`unit.speaking`） |
+| **闲置池** | — | Stratix 命令技巧 + 世界观小知识 | 全场静默 ≥15s 后，按 30–60s 随机间隔抛一条 |
+| **性格彩蛋池** | — | agent 自述时的闲话（20% 概率**替换**当次台词） | 只作用于状态池（播报里插闲话会变成噪音） |
+
+**验收对照**：① 右击后气泡文案不再是「收到」—— ✅ 移动指令池 4 条里没有「收到」，且**同池连续两次必不同**（洗牌牌堆抽取器）；
+② 文档与 UI 不再暗示「agent 已确认」—— ✅ 事件池全部改成播报口吻；③（选 B）—— 不适用。
+
+> **★ OPEN（气泡触发节奏，矩阵 §2 未定义）**：交互矩阵**没有**规定气泡的触发节奏（多久能冒一次、
+>   闲置多久才抛彩蛋）。本单先给**默认值**（克制优先，不刷屏），集中在
+>   `SPEECH_COPY_METRICS`（core/theme/bubble-copy.ts）：状态气泡沉降期 1.2s / 同状态最小间隔 15s；
+>   闲置彩蛋静默门槛 15s、间隔随机落在 30–60s。**等矩阵补齐后再对齐**。
 
 ### IX-07 · 事件矩阵回归测试（矩阵即测试清单）
 
@@ -515,7 +536,7 @@ world 现在**不知道**「聊天框正开着、用户在打字」⇒ 它的 ES
 | R02 | `src/world/scenes/BattlefieldScene.ts:886` | 起点命中单位 ⇒ `'click'`，否则 `'box'` | ✅ |
 | R03 | `src/world/scenes/BattlefieldScene.ts:933` | 右键短按 ⇒ `issueMoveCommand` | ✅ |
 | R04 | `src/world/scenes/BattlefieldScene.ts:1024` | `bridge.unitMove(...)` | ✅ |
-| R05 | `src/world/scenes/BattlefieldScene.ts:1016` | `bridge.unitBubble(unitId, bubbleText)`（本地伪造气泡） | ✅ |
+| R05 | `src/world/scenes/BattlefieldScene.ts:1016` | `bridge.unitBubble(unitId, bubbleText)`（本地气泡；@since task_219 / IX-06：文案从 `core/theme/bubble-copy.ts` 的池子里抽） | ✅ |
 | R06 | `src/world/bridge/bus-adapter.ts:439` | `emitWorldEvent({ type: 'unit.move', … })` | ✅ |
 | R07 | `src/core/runtime.ts:355` / `:359` | `applyUnitMove` → 逐单位 `emitWorldEvent('unit.position')` | ✅ |
 | R08 | `src/core/runtime.ts:937` | `handleWorldEvent` 的 `case 'unit.move'` | ✅ |

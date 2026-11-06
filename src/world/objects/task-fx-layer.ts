@@ -21,9 +21,9 @@
  *   - flipCard：任务被认领时的 3D 翻卡（背面灰 → 正面亮色 + 图标）；
  *   - raiseFlag：任务完成插旗（旗杆升起 0.5s + 旗面 Back.Out 弹性展开，**驻留**）；
  *   - footPulse：集火支援时选中群脚下的位移脉冲。
- * why 气泡不在这层画：气泡系统（task_076，world/speech-templates.ts）尚未合入，
- *   本任务按规格只**发事件**（unit.bubble，见 bridge/bus-adapter）不自己渲染 ——
- *   接线注释见下方 bubble 钩子。
+ * why 气泡不在这层画：气泡系统已合入（task_076，渲染层 objects/speech-bubble-layer.ts，
+ *   文案池 core/theme/bubble-copy.ts）—— 本层只**发事件**（unit.bubble，见
+ *   bridge/bus-adapter）不自己渲染，接线注释见下方 bubble 钩子。
  *
  * ============ 精灵特效（@since v3.3，task_161）============
  * 本层同时是「sheet 动画特效」（sprite FX）的播放口 —— 只走 Phaser 纹理帧动画，

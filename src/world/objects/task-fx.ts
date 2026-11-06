@@ -350,18 +350,9 @@ export const INTERACTION_FX_STYLE: InteractionFxStyle = Object.freeze({
   focusPulseColor: WORLD_PALETTE.danger,
 });
 
-/**
- * 指令 / 集火时冒的气泡文案。
- * why 现在就写死：气泡系统（task_076，world/speech-templates.ts）尚未合入，
- *   本任务按规格只**发事件**（unit.bubble）不自己渲染气泡 —— 文案暂放这里，
- *   task_076 合入后由句库接管（接线注释见 objects/task-fx-layer.ts 的 bubble 钩子）。
- */
-export const INTERACTION_BUBBLE_TEXT = Object.freeze({
-  /** 普通指令：单位统一回一句「收到」。 */
-  command: '收到',
-  /** 集火支援：选中群同时冒「来了来了」。 */
-  focus: '来了来了',
-});
+// ★ 指令 / 集火的气泡文案**不在这里**了（@since v3.3，task_219 / IX-06）：
+//   常量「收到」/「来了来了」已退役 —— 文案池的唯一事实源是 core/theme/bubble-copy.ts
+//   （移动指令池 / 支援池），这里不再留第二份。
 
 /** 波浪式弹选择环的一个位次。 */
 export interface SelectionWaveSlot {
