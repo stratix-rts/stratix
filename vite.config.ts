@@ -3,7 +3,9 @@ import vue from '@vitejs/plugin-vue';
 import { resolve, relative, isAbsolute, sep, basename } from 'path';
 import { existsSync, readFileSync, readdirSync, statSync, createReadStream } from 'fs';
 import { NEW_ENTRY_HTML } from './src/app/entry-paths';
-import { bakeFxRelease } from './scripts/lib/fx-release-bake';
+import { FX_DIR_NAME } from './src/world/appearance/fx-asset-path';
+import { bakeFxRelease, FX_BAKE_MANIFEST_NAME } from './scripts/lib/fx-release-bake';
+import { buildFxSnapshotManifest, fxSnapshotFingerprint } from './scripts/lib/fx-snapshot-manifest';
 
 const ANALYZE = process.env.ANALYZE === 'true';
 
@@ -134,6 +136,110 @@ function sfxAssetsPlugin(root: string): Plugin {
 }
 
 /**
+ * **dev 态 fx 清单接线**（@since v3.3，task_211 / AP-05）——
+ *   让 vite dev server（7523）按**发布期同构**的清单把特效素材喂给渲染层。
+ *
+ * ★ 为什么必须有这一步（dev 态 fx 报错的根因，实测口径）：
+ *   发布期烘焙产物在 `dist/frontend/fx/`（不入库），dev server 没有 ⇒ 渲染层请求
+ *   `<素材根>/fx-bake-manifest.json` 时静态中间件找不到文件 → **SPA 兜底改写成 index.html**
+ *   （200 text/html）→ Phaser 的 JSONFile 解析 HTML 抛 `Unexpected token '<'`，
+ *   并且它解析失败会 **rethrow**（phaser/src/loader/filetypes/JSONFile.js:109）。
+ *   实测（Playwright 探针，dev 窗口）：
+ *     · renderer 报 `Unexpected token '<'` + `Failed to process file: json fx:bake-manifest`；
+ *     · 因为 rethrow 发生在 `onProcessComplete` **之前**，LoaderPlugin 不会推进这个文件
+ *       ⇒ **素材加载场景的 loader 永远不完成** ⇒ 它的 create() 不会跑
+ *       （变体清单的登记在那一步，见 src/world/scenes/fx-asset-scene.ts）；
+ *     · 渲染循环本身还活着（实测 rAF 61 帧/秒），所以画面不是「冻住」，
+ *       而是**清单这一段管线静悄悄地半瘫** —— 这种错最难自己发现。
+ *
+ * how dev 的清单怎么来：**仓内快照**（`assets/fx/`，task_161 的入库产物）如实派生
+ *   （scripts/lib/fx-snapshot-manifest.ts）—— 字段口径与发布期 manifest 同构
+ *   （共用 `buildFxBakeManifest`），运行时那一套消费代码
+ *   （src/world/appearance/fx-variants.ts）**不感知 dev/release**（AP-05 的核心诉求）。
+ * why 不在 dev 态即时烘焙：快照是**入库的既有事实**（读盘 + 算哈希几十毫秒），
+ *   即时烘焙要跑 pixelfx 渲染（两套皮肤 24 张 sheet ≈ 24s），挂在启动路径上
+ *   等于给每次起服务加冷启动 —— 而且快照的 PNG 与发布期烘焙产物**逐像素相同**
+ *   （实测：六个效果全帧 0 字节差，只有 PNG 编码不同），dev 看到的画面与线上一致。
+ *
+ * why 素材也由本中间件自己发（不交给 publicDir 的静态中间件）：
+ *   publicDir 的静态中间件对**缺失**的文件会 next() → 落到 SPA 兜底 → 又是 200 的 HTML。
+ *   特效图/清单一旦取不到必须是**真 404**（Phaser 才会走「文件失败」而不是「解析炸掉」）。
+ *   顺带把 content-type 定死：清单是 `application/json`（Phaser 按文本读，按 content-type 无妨，
+ *   但排查时一眼能看出返回的是不是 JSON）。
+ */
+function fxDevAssetsPlugin(root: string): Plugin {
+  const assetsRoot = resolve(root, 'assets', FX_DIR_NAME);
+  const assetsRootPrefix = assetsRoot + sep;
+  const urlPrefix = `/${FX_DIR_NAME}/`;
+  const manifestUrl = `${urlPrefix}${FX_BAKE_MANIFEST_NAME}`;
+
+  // 清单缓存：按快照指纹失效（用户重跑 fx:generate 换了图 → 指纹变 → 重算）。
+  let cached: { fingerprint: string; body: string } | null = null;
+  const manifestBody = (): string => {
+    const fingerprint = fxSnapshotFingerprint(assetsRoot);
+    if (!cached || cached.fingerprint !== fingerprint) {
+      const manifest = buildFxSnapshotManifest({ rootDir: root, assetsRoot });
+      cached = { fingerprint, body: `${JSON.stringify(manifest, null, 2)}\n` };
+    }
+    return cached.body;
+  };
+
+  return {
+    name: 'stratix:fx-dev-assets',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = (req.url ?? '').split('?')[0];
+        if (!url.startsWith(urlPrefix)) return next();
+
+        // ① 清单：永远返回**真 JSON**（哪怕快照是空的）——
+        //   返回 HTML 会让 Phaser 解析炸掉并冻住整个游戏循环（见文件头）。
+        if (url === manifestUrl) {
+          const body = manifestBody();
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Content-Length', Buffer.byteLength(body));
+          res.end(req.method === 'HEAD' ? undefined : body);
+          return;
+        }
+
+        // ② 素材：只放行快照目录下的直系文件（防目录穿越）。
+        let relativePath: string;
+        try {
+          relativePath = decodeURIComponent(url.slice(urlPrefix.length));
+        } catch {
+          // 百分号编码坏了 ⇒ 当作不存在（不能让一个坏 URL 把 dev server 带崩）。
+          res.statusCode = 404;
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          res.end('404 fx asset not found');
+          return;
+        }
+        const file = resolve(assetsRoot, relativePath);
+        if (!file.startsWith(assetsRootPrefix) || !existsSync(file) || !statSync(file).isFile()) {
+          res.statusCode = 404;
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          res.end('404 fx asset not found');
+          return;
+        }
+        res.statusCode = 200;
+        res.setHeader('Content-Type', fxContentType(file));
+        res.setHeader('Content-Length', statSync(file).size);
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
+        createReadStream(file).pipe(res);
+      });
+    },
+  };
+}
+
+/** 特效素材的 content-type（只认两种扩展名 —— 特效素材就这两种）。 */
+function fxContentType(filePath: string): string {
+  return filePath.endsWith('.png') ? 'image/png' : 'application/json; charset=utf-8';
+}
+
+/**
  * **发布期特效烘焙**（@since v3.3，task_192 / AP-02）—— 构建期把 pixelfx 特效烘成 sprite sheet。
  *
  * why 挂在 closeBundle（构建产物写完之后）：vite 在 renderStart 阶段就把 publicDir（= assets/）
@@ -177,6 +283,7 @@ export default defineConfig(async () => {
     hmrFullReloadGuard(__dirname),
     legacyEntryRedirect(),
     sfxAssetsPlugin(__dirname),
+    fxDevAssetsPlugin(__dirname),
     fxReleaseBakePlugin(),
   ];
 

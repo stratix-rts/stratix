@@ -282,6 +282,33 @@ export function assertBakeOutDir(rootDir: string, outDir: string): void {
 }
 
 /**
+ * 构造 manifest（**发布期烘焙与 dev 快照共用同一份口径** —— @since v3.3，task_211 / AP-05）。
+ *
+ * why 抽成共用构造器：manifest 是运行时的**唯一契约面**（src/world/appearance/fx-variants.ts
+ *   按 `artifacts[]` 逐条解析）。发布期与 dev 态若各写各的字段清单，早晚会漂 ——
+ *   漂的表现是「dev 好好的，release 解析不出来」这种只在发布当天现形的问题。
+ *   共用一个构造器 ⇒ 字段口径只有一份，dev/release 的消费代码天然同一套。
+ *
+ * @param params 产物清单 / 皮肤闭集 / 变体数。
+ * @returns manifest（不含时间戳与绝对路径 ⇒ 同输入同字节）。
+ */
+export function buildFxBakeManifest(params: {
+  readonly artifacts: readonly FxBakeArtifact[];
+  readonly skins: readonly string[];
+  readonly seedVariants: number;
+}): FxBakeManifest {
+  return {
+    bakeVersion: FX_BAKE_MANIFEST_VERSION,
+    fps: RENDER_FPS,
+    skins: [...params.skins],
+    seedVariants: params.seedVariants,
+    seedStride: FX_BAKE_SEED_STRIDE,
+    paramPlan: FX_BAKE_PARAM_PLAN,
+    artifacts: params.artifacts,
+  };
+}
+
+/**
  * 烘焙一次（发布期）。
  *
  * 幂等：产物目录先清空再重写 —— 同样的输入跑两次，目录内容与文件内容逐字节相同。
@@ -379,15 +406,11 @@ export function bakeFxRelease(options: FxBakeOptions): FxBakeManifest {
   }
 
   const skins = options.skins ?? FX_BAKE_SKINS;
-  const manifest: FxBakeManifest = {
-    bakeVersion: FX_BAKE_MANIFEST_VERSION,
-    fps: RENDER_FPS,
-    skins: [...skins],
-    seedVariants: options.seedVariants ?? FX_BAKE_SEED_VARIANTS,
-    seedStride: FX_BAKE_SEED_STRIDE,
-    paramPlan: FX_BAKE_PARAM_PLAN,
+  const manifest = buildFxBakeManifest({
     artifacts,
-  };
+    skins,
+    seedVariants: options.seedVariants ?? FX_BAKE_SEED_VARIANTS,
+  });
   fs.writeFileSync(
     path.join(outDir, FX_BAKE_MANIFEST_NAME),
     `${JSON.stringify(manifest, null, 2)}\n`,

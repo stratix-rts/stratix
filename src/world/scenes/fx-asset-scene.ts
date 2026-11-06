@@ -23,7 +23,8 @@
  * 发布期烘焙（task_192 / AP-02）每个效果还烘了 `__s1` 变体（同效果、另一套 seed 分布）——
  *   运行时在「基础变体 + 变体」里随机挑一套播（见 objects/sprite-fx-layer.ts）。
  *   变体清单来自烘焙 manifest（fx-bake-manifest.json）：**清单说有、文件才在** ——
- *   dev 环境没有 manifest ⇒ 一次 404（静默）⇒ 没有变体 ⇒ 行为与 task_161 完全一致。
+ *   dev 态的清单由 vite 中间件从仓内快照如实派生（@since v3.3，task_211 / AP-05），
+ *   快照只有基础变体 ⇒ dev 没有变体 ⇒ 行为与 task_161 完全一致（release 才有 `__s1` 变体）。
  */
 
 import Phaser from 'phaser';
@@ -66,8 +67,11 @@ export class FxAssetScene extends Phaser.Scene {
         fxAssetUrl(base, source.jsonPath)
       );
     }
-    // 变体清单（发布期烘焙产物）：dev 没有这个文件 ⇒ 404 ⇒ 静默（Phaser 的 File 失败不打日志）
-    //   ⇒ 没有变体 ⇒ sheet 路由只播基础变体（行为与 task_161 一致）。
+    // 变体清单（发布期烘焙产物）：
+    //   dev 态由 vite 中间件供真 JSON（@since v3.3，task_211 / AP-05 —— 此前 dev 拿到的是
+    //   SPA 兜底的 index.html，JSON.parse 直接抛 'Unexpected token <'，loader 永不完成）；
+    //   release 态是构建产物里的真文件。
+    //   清单里没有变体（快照只有基础变体）⇒ 运行时只播基础变体（行为与 task_161 一致）。
     this.load.json(FX_BAKE_MANIFEST_CACHE_KEY, fxAssetUrl(base, FX_BAKE_MANIFEST_NAME));
   }
 
