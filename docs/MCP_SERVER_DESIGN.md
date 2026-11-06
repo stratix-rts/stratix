@@ -115,8 +115,8 @@ stratix-mcp --transport stdio
 
 ### 方案 B：SSE over HTTP（推荐用于远程）
 ```
-GET http://localhost:3010/mcp/sse
-POST http://localhost:3010/mcp/messages
+GET http://localhost:7524/mcp/sse
+POST http://localhost:7524/mcp/messages
 ```
 - 优点：远程访问、多 Client 共享
 - 缺点：需要 Gateway 运行

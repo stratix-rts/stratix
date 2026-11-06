@@ -152,7 +152,7 @@ npm run start:web        # 生产模式
 
 **特点**:
 - ✅ 独立 HTTP 服务
-- ✅ 监听端口 3010
+- ✅ 监听端口 7524
 - ✅ 支持远程访问
 - ❌ 需要单独运行
 
@@ -227,7 +227,7 @@ npm run electron:build   # 构建应用
 
 ```typescript
 interface GatewayServiceOptions {
-  port?: number;              // 端口号 (默认 3010)
+  port?: number;              // 端口号 (默认 7524)
   bindAddress?: string;       // 监听地址 (默认 '0.0.0.0')
   dataDir?: string;           // 数据目录 (默认 './stratix-data')
   mode?: 'standalone' | 'embedded'; // 运行模式
@@ -238,8 +238,8 @@ interface GatewayServiceOptions {
 
 ```bash
 # Gateway 服务
-PORT=3010                     # HTTP 端口
-WS_PORT=3011                  # WebSocket 端口
+PORT=7524                     # HTTP 端口
+WS_PORT=7525                  # WebSocket 端口
 DATA_DIR=./stratix-data       # 数据目录
 BIND_ADDRESS=0.0.0.0          # 监听地址
 STANDALONE_MODE=true          # 独立运行模式

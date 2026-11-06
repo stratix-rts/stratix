@@ -18,7 +18,7 @@
  *   [4] link.close → closing → closed，/disconnect 被调用
  *
  * 与真实网关联调（需要真实 OpenClaw 实例时）：
- *   1) npm run dev:backend                      # 起 stratix-gateway（端口 3010）
+ *   1) npm run dev:backend                      # 起 stratix-gateway（端口 7524）
  *   2) 把本脚本的 START_GATEWAY_STUB 换成 false、AGENT_ENDPOINT 指向真实 OpenClaw 地址
  *   3) npm run smoke:agent-link -- --external   # 见文件末尾的分支说明
  */

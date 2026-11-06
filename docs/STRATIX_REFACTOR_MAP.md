@@ -237,7 +237,7 @@ index.ts · init.md · types/ · ui/
 
 | 文件 | Bug | 处理 |
 |------|-----|------|
-| `core/ZoneContextManager.ts:239,308` | 硬编码 `http://127.0.0.1:7524`（陈旧，实际 3010） | 改成从 config 读取 |
+| `core/ZoneContextManager.ts:239,308` | 硬编码 `http://127.0.0.1:7524`（陈旧，实际 7524） | 改成从 config 读取 |
 | `core/ZoneContextManager.ts:7` | `import from ../../stratix-agent/types`（deprecated 路径） | 改为 `stratix-adp/protocol/types` |
 | `core/SkillTree.ts:132` | root auto-unlock bug | 改写 |
 | `core/SoulTemplateRenderer.ts:115, 80-96 vs 152-180` | regex `g` flag + 重复 builder | 合并去重 |
@@ -533,7 +533,7 @@ npm run test -- stratix-database
 
 | # | 文件:行 | Bug | 处理优先级 | 关联决策 |
 |---|---------|-----|-----------|---------|
-| 1 | `stratix-character-creator/core/ZoneContextManager.ts:239,308` | 硬编码 `http://127.0.0.1:7524`（陈旧端口，实际 3010） | P0 必修 | character-creator 保留 |
+| 1 | `stratix-character-creator/core/ZoneContextManager.ts:239,308` | 硬编码 `http://127.0.0.1:7524`（陈旧端口，实际 7524） | P0 必修 | character-creator 保留 |
 | 2 | `stratix-character-creator/core/ZoneContextManager.ts:7` | `import from ../../stratix-agent/types`（deprecated 路径） | P0 必修 | stratix-agent 删除前必须解耦 |
 | 3 | `stratix-character-creator/core/SkillTree.ts:132` | root auto-unlock bug | P0 必修 | — |
 | 4 | `stratix-character-creator/core/SoulTemplateRenderer.ts:115` | regex `g` flag bug | P0 必修 | — |

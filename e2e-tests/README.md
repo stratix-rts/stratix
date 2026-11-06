@@ -43,7 +43,7 @@ e2e-tests/
    分进程启动（三个终端，或 `&` 后台）：
 
    ```bash
-   # ① backend（gateway，默认 3010 / WS 3011）
+   # ① backend（gateway，默认 7524 / WS 7525）
    npm run dev:backend
 
    # ② frontend（vite，7523）

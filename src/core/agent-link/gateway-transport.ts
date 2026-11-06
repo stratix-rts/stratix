@@ -37,7 +37,7 @@ import {
 } from './transport';
 
 export interface HttpControlPlaneOptions {
-  /** 网关基址；同源部署留空（如 'http://127.0.0.1:3010'）。 */
+  /** 网关基址；同源部署留空（如 'http://127.0.0.1:7524'）。 */
   readonly baseUrl?: string;
   /** 注入 fetch 便于单测 / 复用既有实例；缺省用全局 fetch。 */
   readonly fetchImpl?: typeof fetch;

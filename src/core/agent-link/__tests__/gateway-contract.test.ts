@@ -78,7 +78,7 @@ describe('REST 控制面对齐网关路由', () => {
 
   test('connect() 依次打 /connect 与 /ws-connect，请求体字段与路由一致', async () => {
     const { fetchImpl, requests } = createFetchStub({ responses: OK_RESPONSES });
-    const controlPlane = createHttpControlPlane({ baseUrl: 'http://127.0.0.1:3010', fetchImpl });
+    const controlPlane = createHttpControlPlane({ baseUrl: 'http://127.0.0.1:7524', fetchImpl });
 
     const result = await controlPlane.connect({
       endpoint: 'http://127.0.0.1:18080',
@@ -88,12 +88,12 @@ describe('REST 控制面对齐网关路由', () => {
 
     expect(result).toEqual({ connected: true, proxyKey: 'http___127_0_0_1_18080', deviceId: 'device_1a2b3c' });
     expect(requests[0]).toMatchObject({
-      url: 'http://127.0.0.1:3010/api/stratix/openclaw/connect',
+      url: 'http://127.0.0.1:7524/api/stratix/openclaw/connect',
       method: 'POST',
       body: { endpoint: 'http://127.0.0.1:18080', apiKey: 'sk-test' },
     });
     expect(requests[1]).toMatchObject({
-      url: 'http://127.0.0.1:3010/api/stratix/openclaw/ws-connect',
+      url: 'http://127.0.0.1:7524/api/stratix/openclaw/ws-connect',
       method: 'POST',
       body: { endpoint: 'http://127.0.0.1:18080', accountId: 'stratix', apiKey: 'sk-test' },
     });
@@ -193,14 +193,14 @@ describe('REST 控制面对齐网关路由', () => {
     const { fetchImpl, requests } = createFetchStub({
       responses: { 'GET /api/stratix/openclaw/test': { body: envelope(200, 'OpenClaw reachable') } },
     });
-    const controlPlane = createHttpControlPlane({ baseUrl: 'http://127.0.0.1:3010', fetchImpl });
+    const controlPlane = createHttpControlPlane({ baseUrl: 'http://127.0.0.1:7524', fetchImpl });
 
     await expect(controlPlane.test('http://127.0.0.1:18080', 'sk-test')).resolves.toEqual({
       ok: true,
       detail: 'OpenClaw reachable',
     });
     expect(requests[0].url).toBe(
-      'http://127.0.0.1:3010/api/stratix/openclaw/test?endpoint=http%3A%2F%2F127.0.0.1%3A18080&apiKey=sk-test'
+      'http://127.0.0.1:7524/api/stratix/openclaw/test?endpoint=http%3A%2F%2F127.0.0.1%3A18080&apiKey=sk-test'
     );
   });
 });
@@ -291,14 +291,14 @@ describe('WS 通道对齐网关代理地址', () => {
   test('连的是网关代理地址（/proxy/{proxyKey}/ws?clientId=…），不是 agent 直连地址', async () => {
     const { ctor, handle } = createLoopbackWebSocket();
     const openChannel = createWebSocketChannelFactory({
-      baseUrl: 'http://127.0.0.1:3010',
+      baseUrl: 'http://127.0.0.1:7524',
       WebSocketImpl: ctor as never,
       isNode: true,
     });
 
     const channel = await openChannel({ endpoint: 'http://127.0.0.1:18080', accountId: 'stratix', timeoutMs: 200 });
 
-    expect(handle.urls).toEqual([buildWsUrl('http://127.0.0.1:3010', 'http://127.0.0.1:18080', 'stratix')]);
+    expect(handle.urls).toEqual([buildWsUrl('http://127.0.0.1:7524', 'http://127.0.0.1:18080', 'stratix')]);
     expect(handle.urls[0]).toContain(`${GATEWAY_API_BASE}/proxy/http___127_0_0_1_18080/ws`);
     expect(channel).toBeDefined();
   });
@@ -306,7 +306,7 @@ describe('WS 通道对齐网关代理地址', () => {
   test('Node 侧透传鉴权头（浏览器无法设 WS 头，故浏览器走 query 鉴权）', async () => {
     const { ctor, handle } = createLoopbackWebSocket();
     const openChannel = createWebSocketChannelFactory({
-      baseUrl: 'http://127.0.0.1:3010',
+      baseUrl: 'http://127.0.0.1:7524',
       WebSocketImpl: ctor as never,
       isNode: true,
     });
@@ -340,13 +340,13 @@ describe('WS 通道对齐网关代理地址', () => {
   test('握手失败（onerror 先于 onopen）→ 建链被拒，错误带上网关地址', async () => {
     const { ctor } = createLoopbackWebSocket({ failBeforeOpen: true });
     const openChannel = createWebSocketChannelFactory({
-      baseUrl: 'http://127.0.0.1:3010',
+      baseUrl: 'http://127.0.0.1:7524',
       WebSocketImpl: ctor as never,
       isNode: true,
     });
 
     await expect(openChannel({ endpoint: 'http://127.0.0.1:18080', timeoutMs: 200 })).rejects.toThrow(
-      /websocket error while connecting to ws:\/\/127\.0\.0\.1:3010/
+      /websocket error while connecting to ws:\/\/127\.0\.0\.1:7524/
     );
   });
 
@@ -397,7 +397,7 @@ describe('控制面 + 通道 + 会话端到端（对网关协议）', () => {
     });
     const { ctor, handle } = createLoopbackWebSocket();
     const transport = createGatewayTransport({
-      baseUrl: 'http://127.0.0.1:3010',
+      baseUrl: 'http://127.0.0.1:7524',
       fetchImpl,
       WebSocketImpl: ctor as never,
       isNode: true,

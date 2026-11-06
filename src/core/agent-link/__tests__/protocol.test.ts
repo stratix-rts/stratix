@@ -31,9 +31,9 @@ describe('地址与脱敏', () => {
   });
 
   test('buildWsUrl 拼出网关代理地址并做协议升级 + clientId 编码', () => {
-    const url = buildWsUrl('http://127.0.0.1:3010', 'http://127.0.0.1:18080', 'account one');
+    const url = buildWsUrl('http://127.0.0.1:7524', 'http://127.0.0.1:18080', 'account one');
     expect(url).toBe(
-      'ws://127.0.0.1:3010/api/stratix/openclaw/proxy/http___127_0_0_1_18080/ws?clientId=account%20one'
+      'ws://127.0.0.1:7524/api/stratix/openclaw/proxy/http___127_0_0_1_18080/ws?clientId=account%20one'
     );
     // https → wss（现网 getWebSocketUrl 的 replace(/^http/, 'ws') 行为）
     expect(buildWsUrl('https://gw.example', 'https://agent.example', 'stratix')).toContain('wss://gw.example');

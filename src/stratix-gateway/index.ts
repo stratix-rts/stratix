@@ -73,7 +73,7 @@ let nocoDBServiceInstance: ReturnType<typeof createNocoDBService> | null = null;
  * Gateway 服务配置
  */
 export interface GatewayServiceOptions {
-  /** 服务端口 (默认 3010) */
+  /** 服务端口 (默认 7524 —— 与渲染层 / vite proxy 的硬编码口径对齐，见 startGatewayService 注释) */
   port?: number;
   /** 监听地址 (默认 '0.0.0.0') */
   bindAddress?: string;
@@ -121,16 +121,26 @@ export async function startGatewayService(
   // 加载环境变量
   dotenv.config({ path: path.resolve(__dirname, '.env') });
   
+  // 端口缺省值 = 7524 / 7525。
+  // why：整条链路的端口口径早已定在 7524/7525 —— 渲染层固定连
+  //   ws://127.0.0.1:7524/ws/world-sync（remote-store.ts DEFAULT_WORLD_SYNC_PORT）、
+  //   vite proxy 把 /api /textures 转发到 7524、/ws 转发到 7525、
+  //   Electron 主进程 BACKEND_PORT=7524、kill-ports.sh 清的就是 7523/7524/7525。
+  //   网关曾是唯一的例外（占位默认端口，见 task_212）⇒ 裸跑 `npm run dev:backend`
+  //   时后端落在别处，渲染层却去连 7524 ⇒ 界面报「服务未连接」。
+  //   把缺省值改成链路口径，任何入口（dev:backend / start:dev / start）零环境变量都自洽。
+  //   需要隔离端口的实例仍可用 PORT=7724 WS_PORT=7725 显式覆盖（环境变量优先于缺省值）。
   const {
-    port = parseInt(process.env.PORT || '3010', 10),
+    port = parseInt(process.env.PORT || '7524', 10),
     bindAddress = process.env.BIND_ADDRESS || '127.0.0.1',
     dataDir = process.env.DATA_DIR || 'stratix-data',
     mode = 'standalone',
   } = options;
-  
+
   // 创建 Express 应用
   const app = express();
-  const WS_PORT = parseInt(process.env.WS_PORT || '3011', 10);
+  // StatusSync（老的状态同步 WS）的端口：与 vite proxy 的 /ws → ws://127.0.0.1:7525 对齐。
+  const WS_PORT = parseInt(process.env.WS_PORT || '7525', 10);
   const TEXTURES_DIR = path.join(dataDir, 'textures');
   
   // 确保目录存在

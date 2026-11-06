@@ -61,7 +61,7 @@ import { createSwitchableTransportFactory, type PeerCliMode } from './peer-cli';
 
 /** HTTP / MCP / world-sync 端口（默认走备用端口，绝不碰 7523 / 7524 / 9222）。 */
 const PORT = Number(process.env.SX_SERVICE_PORT ?? 7817);
-/** 状态同步 WS 端口（与 HTTP 端口分开，避免占用用户实例的 3011）。 */
+/** 状态同步 WS 端口（与 HTTP 端口分开，避免占用用户实例的 7525）。 */
 const WS_PORT = Number(process.env.SX_WS_PORT ?? 7818);
 /** 数据目录（存档 / 纹理 / OpenClaw 配置）—— 剧本给一个临时目录，绝不碰用户的真实数据目录。 */
 const DATA_DIR = process.env.SX_DATA_DIR ?? 'stratix-data';

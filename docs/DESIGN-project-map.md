@@ -1069,7 +1069,7 @@ AGENTS.md · CLAUDE.md（已自动加载）
 | 每连接会话 | `src/stratix-gateway/api/websocket/world-sync/session.ts:107` `WorldSyncSession` | 「一条 WS 连接 = 一个会话」= **传输层**会话，与 core/session 的业务会话不是一回事 |
 | 挂载 | `endpoint.ts:552` `attachWorldSyncEndpoint` → 调用点 `src/stratix-gateway/index.ts:321` | 挂在 gateway 的**同一个 HTTP server** 上，路径 `/ws/world-sync`（`protocol.ts:47`） |
 | 客户端 | `src/app/services/remote-store/remote-store.ts:170` `createRemoteStore` | 浏览器原生 WebSocket，收 snapshot **全量覆盖** |
-| **端口** | `src/stratix-gateway/index.ts:114`（`PORT \|\| '3010'`）、dev 实跑 `scripts/restart-backend.sh:9`（`PORT=7524`）、客户端缺省 `remote-store.ts:152` `DEFAULT_WORLD_SYNC_PORT = 7524` | ⚠️ **不是 7525**（7525 是历史端口，见 `scripts/kill-ports.sh:8`；`WS_PORT` 3011 跑的是老的 `StatusSync`，`endpoint.ts:210-211` 明确不复用） |
+| **端口** | `src/stratix-gateway/index.ts`（`PORT \|\| '7524'`）、dev 实跑 `scripts/restart-backend.sh:9`（`PORT=7524`）、客户端缺省 `remote-store.ts:152` `DEFAULT_WORLD_SYNC_PORT = 7524` | ⚠️ **不是 7525**（7525 是历史端口，见 `scripts/kill-ports.sh:8`；`WS_PORT` 7525 跑的是老的 `StatusSync`，`endpoint.ts:210-211` 明确不复用） |
 
 **结论：协议**无任何 project / 订阅 / 房间概念** —— 消息型只有六种（`protocol.ts:62-68`），`hello` 只有 `protocolVersion` + `clientId`（`:128-134`），广播把**同一份** snapshot 推给所有连接（`endpoint.ts:479`），快照内容 = `store.getState()`（`:341-346`），命令/事件载荷**不带任何路由标识**。
 
@@ -1361,7 +1361,7 @@ transport 跑完/失败
 
 **B2：端口 0 = OS 分配（🔴）**：
 
-> 现状 world-sync 是**固定端口**（`src/stratix-gateway/index.ts:114` `PORT || '3010'`；dev 7524）。插件形态下一个 dsh 宿主进程里可能同时存在：dsh 自己的 webserver、**多个 Stratix 实例**、用户手动起的 dev 实例 ⇒ 固定端口必撞。
+> 现状 world-sync 是**固定端口**（`src/stratix-gateway/index.ts` `PORT || '7524'`；dev 7524）。插件形态下一个 dsh 宿主进程里可能同时存在：dsh 自己的 webserver、**多个 Stratix 实例**、用户手动起的 dev 实例 ⇒ 固定端口必撞。
 > ⇒ **world-sync 端点支持 `port: 0`（OS 分配）**，并把**实际端口**作为「能力面」的一部分公布。与 dsh 同构：`packages/host/webserver/src/index.ts:108-109`「zero requests an OS-assigned port」；`packages/boot/cmdline/src/index.ts:16` `port: !!js ctx.webStartup.port ?? 3080` ⇒ **配置项解析出来的实际值才是权威**。
 > ⇒ §4.1 适配点表补一行：**端口解析**是嵌入形态的独立适配点（不属于协议版本升级，但属于「同一宿主多实例」问题）。
 > ⇒ 同理，§2.5 #6/#18 的 `stratix:unit-position-seed` 全局键问题归口同一条线：**所有「宿主进程级全局键」在嵌入形态下都要按 session/scope 分区**。
