@@ -49,6 +49,12 @@
  *   素材由**独立场景**（scenes/fx-asset-scene.ts）并行预载 —— 本场景不 preload：
  *   战场是主屏，等素材才出画面等于给启动加延迟，还会错过「首帧补发状态」的手势（见该文件注释）。
  *
+ * 代码路由触点（@since v3.3，task_194 / AP-04）：触点不再直接调 sheet 路由，而是过**特效路由**
+ *   （objects/fx-router.ts）—— 走代码路由（运行时逐像素算，护栏全开）还是 sheet 路由，由路由裁决：
+ *   - pixelfx 没加载 / 效果缺失 / 效果自己炸了 ⇒ **静默回落 sheet 路由**（不弹错、不少演）；
+ *   - 用户开了 reduced-motion ⇒ 不播代码路由（沿用 world/motion.ts 的口径）；
+ *   - 其余 ⇒ 走代码路由（目前只有「角色升级」这一个触点 —— 它需要皮肤联动调色板与运行时变体）。
+ *
  * 禁止事项：
  *   1. import 任何 hud / vue / legacy(stratix-rts) 代码 —— 铁律：world 只认识 core/types 与 core/bus；
  *   2. 持有业务状态 —— 业务真相在 core；本场景只渲染 UnitView，并只把单位 id 回传上去；
@@ -74,6 +80,7 @@ import type {
   SelectionState,
   UnitView,
 } from '../../core/types';
+import { readCodeFxSources } from '../appearance/code-fx-sources';
 import { SPRITE_FX_SOURCES } from '../appearance/fx-sources.generated';
 import { taskPhaseView } from '../appearance/task-animation';
 import type { UnitTaskPhase } from '../appearance/unit-animation';
@@ -98,11 +105,17 @@ import {
 } from '../camera';
 import { DirectorController, type DirectorHost } from '../camera/director';
 import type { DirectorEventKind } from '../camera/director-policy';
+// 动效降级标志（@since v3.3，task_194 / AP-04）：reduced-motion ⇒ 不播代码路由（DESIGN §1.3）。
+import { readReducedMotion } from '../motion';
 import { isWarmHour } from '../objects/ambience-layout';
 import { BuildingLayer } from '../objects/building-layer';
 import { CloudLayer } from '../objects/cloud-layer';
+// 代码路由特效层（@since v3.3，task_194 / AP-04）：运行时逐像素算出来的特效（DESIGN §1.3）。
+import { CodeFxLayer } from '../objects/code-fx-layer';
 import { DirectorFrameLayer } from '../objects/director-frame-layer';
 import { FocusLinkLayer } from '../objects/focus-link-layer';
+// 特效路由（@since v3.3，task_194 / AP-04）：代码路由优先，播不成静默回落 sheet 路由。
+import { FxRouter } from '../objects/fx-router';
 import { GroundLayer, GROUND_DEPTH } from '../objects/ground-layer';
 import {
   InstanceNameplate,
@@ -175,6 +188,14 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   /** 任务表现状态板（task_038）：瞬态浮标（✓/!）的唯一真相，环由 busy 派生裁决。 */
   private readonly taskFx = new TaskFxBoard();
   private taskFxLayer!: TaskFxLayer;
+  /**
+   * 代码路由特效层（@since v3.3，task_194 / AP-04）：运行时逐像素算出来的特效。
+   * 效果源由组合根登记在 game.registry（world 不认 pixelfx，见 appearance/code-fx-sources.ts）；
+   * 没登记 ⇒ 这一层没有源 ⇒ 路由全程走 sheet 路由（静默，不缺演出）。
+   */
+  private codeFxLayer!: CodeFxLayer;
+  /** 特效路由（@since v3.3，task_194 / AP-04）：代码路由优先，播不成静默回落 sheet 路由。 */
+  private fxRouter!: FxRouter;
   private selectionBox!: SelectionBox;
   /** 地面层（@since v3.3，task_078）：格网 + 四角刻度 + 边缘渐晕（扫描光带已于 task_086 迁到 HUD）。 */
   private groundLayer!: GroundLayer;
@@ -353,6 +374,21 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       spriteFxSources: SPRITE_FX_SOURCES,
     });
 
+    // 代码路由特效层（@since v3.3，task_194 / AP-04）：运行时逐像素算的特效。
+    // 效果源从 registry 读（组合根装配 —— 只有它认识 pixelfx，world 只认契约）。
+    // 没有源（pixelfx 没加载 / 效果缺失）⇒ 本层空转 ⇒ 路由全程走 sheet 路由。
+    this.codeFxLayer = new CodeFxLayer(this, readCodeFxSources(this.registry));
+
+    // 特效路由（@since v3.3，task_194 / AP-04）：代码路由优先，播不成**静默**回落 sheet 路由
+    // （DESIGN §1.3「pixelfx 加载失败 / 效果缺失 ⇒ 静默回落 sheet 路由（不弹错不少演）」）。
+    // reduced-motion ⇒ 不播代码路由（沿用 world/motion.ts 的口径：每次现取，开关随时能改）。
+    this.fxRouter = new FxRouter({
+      codePlay: (codeKind, x, y) => this.codeFxLayer.play(codeKind, x, y),
+      sheetPlay: (sheetKind, x, y) => this.taskFxLayer.playFx(sheetKind, x, y),
+      hasCodeSource: (codeKind) => this.codeFxLayer.hasKind(codeKind),
+      reducedMotion: () => readReducedMotion(this.registry),
+    });
+
     // 气泡层（@since v3.3，task_076）：单位头顶的说话气泡（离线模板句库）。
     // 板子用场景时钟（this.time.now）—— 与渲染层的 tick 同一把钟，不混用墙钟。
     this.speechBoard = new SpeechBubbleBoard({ now: () => this.time.now });
@@ -457,7 +493,7 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       this.speechLayer.clearUnit(id);
       // 退场特效（task_161）：消散演出，落在单位最后的位置上。
       const position = positionsBefore.get(id);
-      if (position) this.taskFxLayer.playFx('despawn', position.x, position.y);
+      if (position) this.fxRouter.play('despawn', position.x, position.y);
     }
     this.taskFxLayer.sync();
     // 失焦（@since v3.4，task_092）：被锁定的单位离场 → 弧线与描边一并收掉
@@ -474,7 +510,7 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       if (!object) continue;
       this.bridge.unitPosition(id, object.position.x, object.position.y);
       // 上场特效（task_161）：传送门开启，落在单位的落位点上。
-      this.taskFxLayer.playFx('spawn', object.position.x, object.position.y);
+      this.fxRouter.play('spawn', object.position.x, object.position.y);
     }
   }
 
@@ -532,7 +568,7 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       // 旗子插在建筑脚下（旗杆从地面升起）。
       this.taskFxLayer.raiseFlag(id, building.x, building.y + BUILDING_SIZE / 2);
       // 庆祝特效（task_161）：任务建筑完工 —— 彩带落在楼顶。
-      this.taskFxLayer.playFx('celebrate', building.x, building.y - BUILDING_SIZE);
+      this.fxRouter.play('celebrate', building.x, building.y - BUILDING_SIZE);
       this.bridge.soundCue('complete');
     }
   }
@@ -624,7 +660,7 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
       const fxKind = fxKindForTaskPhase(phase);
       if (fxKind) {
         const unit = this.units.get(unitId);
-        if (unit) this.taskFxLayer.playFx(fxKind, unit.position.x, unit.position.y);
+        if (unit) this.fxRouter.play(fxKind, unit.position.x, unit.position.y);
       }
     }
     this.taskFxLayer.sync();
@@ -700,7 +736,7 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
   syncLevelUp(characterId: string, _toLevel: number): void {
     const unit = this.units.list().find((item) => item.characterId === characterId);
     if (!unit) return;
-    this.taskFxLayer.playFx('levelUp', unit.position.x, unit.position.y);
+    this.fxRouter.play('levelUp', unit.position.x, unit.position.y);
   }
 
   /**
@@ -983,7 +1019,7 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
 
     this.taskFxLayer.doubleRipple(target.x, target.y);
     // 指令特效（@since v3.3，task_161）：信号弹在目标点升起 —— 叠加在流动虚线之上。
-    this.taskFxLayer.playFx('command', target.x, target.y);
+    this.fxRouter.play('command', target.x, target.y);
     this.bridge.soundCue(focusFire ? 'focus' : 'command');
     this.bridge.unitMove(this.selectedUnitIds, target.x, target.y);
   }
@@ -1289,6 +1325,10 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
    *   会互相拉扯（画面抖）。补间结束后由跟随接管。
    */
   update(): void {
+    // 代码路由特效层推进（@since v3.3，task_194 / AP-04）：仿真每帧走，画面按 30Hz 抽帧
+    //   （护栏在层内自适应，见 objects/code-fx-layer.ts）。
+    // why 排在最前：下面的分支有提前 return（无跟随目标时）—— 特效不能因此停推。
+    this.codeFxLayer.tick(this.time.now);
     // 导演巡视（@since v3.3，task_081）：静默超过 8s 时镜头缓慢漂移（漂移 pan）。
     // why 先于跟随判定：导演开启时跟随已让位（见 syncDirectorMode），两者不会同时写镜头。
     this.director.update();
@@ -1315,6 +1355,8 @@ export class BattlefieldScene extends Phaser.Scene implements WorldScenePort {
     this.focusLink.destroy();
     this.directorFrame.destroy();
     this.taskFxLayer.destroy();
+    // 代码路由特效层（task_194 / AP-04）：显示对象 + 动态纹理一并回收（perf：资源必须可清理）。
+    this.codeFxLayer.destroy();
     // 气泡层（task_076）：定时器与显示对象一并回收（perf：资源必须可清理）。
     this.speechLayer.destroy();
     this.selectionBox.destroy();

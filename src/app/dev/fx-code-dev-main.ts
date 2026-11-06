@@ -35,8 +35,7 @@ import defaultCss from '../../hud/theme/tokens-default.css?inline';
 import pixelCss from '../../hud/theme/tokens-pixel.css?inline';
 import { FX_PALETTE_KEY, readFxPalette } from '../../world/appearance/fx-palette';
 import { CodeFxLayer, type CodeFxSource } from '../../world/objects/code-fx-layer';
-
-import { toCodeFxSource, type PixelfxEffectModule } from './fx-code-pixelfx';
+import { toCodeFxSource, type PixelfxEffectModule } from '../fx/fx-code-pixelfx';
 
 /** 沙盒世界尺寸（世界 px）—— 比视口大，相机能平移（证明世界锚定）。 */
 const WORLD_WIDTH = 1600;

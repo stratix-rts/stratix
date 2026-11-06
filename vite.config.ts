@@ -211,7 +211,10 @@ export default defineConfig(async () => {
         // why 仓内 vendor（task_191）：源码已随仓进 vendor/pixelfx（上游 commit 记在
         //   vendor/pixelfx/UPSTREAM）—— 别名指仓内，别的机器 clone 下来就能跑，
         //   server.fs.allow 的仓外特例随之删除（见下）。
-        // why 生产产物不受影响：正式入口（index.html）的模块图里没有 pixelfx —— 构建只打入口图。
+        // why 生产产物**会**带上它（@since v3.3，task_194 / AP-04）：正式入口已接代码路由 ——
+        //   代码路由的特效源在 app/fx/code-fx-sources.ts（动态 import 效果模块），
+        //   pixelfx 是 MIT、零依赖的纯 JS 库，随入口图打进产物即可（不引 npm 依赖）。
+        //   效果模块走**动态 import** ⇒ 单独成 chunk ⇒ 取不到时战场静默回落 sheet 路由。
         // ★ 顺序要紧：字符串别名是「前缀匹配」，'pixelfx' 会连 'pixelfx/fx/…' 一起吃掉 ——
         //   所以更长的那个必须排在前面。
         'pixelfx/fx': resolve(__dirname, 'vendor', 'pixelfx', 'src', 'fx'),

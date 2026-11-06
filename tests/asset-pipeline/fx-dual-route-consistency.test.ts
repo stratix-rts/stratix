@@ -16,7 +16,7 @@
  *   ① **帧原点**：pixelfx 的 createFrame(w, h, ox, oy) 里 ox/oy 是「画布左上角在 world
  *      里的位置」，**不是**效果原点；效果原点由 createFx 的 x/y 决定。烘焙链用的是
  *      createFrame(w, h, 0, 0)（tools/lib/fxlib.mjs 的 renderFrames），代码路由必须一致
- *      （src/app/dev/fx-code-pixelfx.ts 已对齐），否则效果会被画到画布角上并被裁掉大半。
+ *      （src/app/fx/fx-code-pixelfx.ts 已对齐），否则效果会被画到画布角上并被裁掉大半。
  *   ② **步进**：烘焙链按固定步长推进仿真（inst.update(1 / fps)），代码路由按同样的步长推
  *      （handle.update(1000 / fps) → fx.update(1 / fps)）—— 两边必须落在同一时间点上。
  *   ③ **色彩空间**：烘焙产物落 PNG 时走 canvas.paste，那一步把 RGB 按 alpha **预乘**了；
@@ -46,7 +46,7 @@ import * as path from 'node:path';
 import * as healAoe from 'pixelfx/fx/holy/heal-aoe';
 import * as hitSpark from 'pixelfx/fx/impacts/hit-spark';
 
-import { toCodeFxSource, type PixelfxEffectModule } from '../../src/app/dev/fx-code-pixelfx';
+import { toCodeFxSource, type PixelfxEffectModule } from '../../src/app/fx/fx-code-pixelfx';
 import {
   EFFECT_SPECS,
   RENDER_FPS,

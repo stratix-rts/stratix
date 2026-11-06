@@ -10,7 +10,7 @@
  *
  * why 能直接测真模块：Phaser 在 node 环境跑不起来（无 window/document），
  *   所以把 'phaser' 模块替换成最小桩 —— 切换策略只碰 SceneManager 的 stop/start，
- *   素材场景只碰 registry.get + load.atlas，桩足够（纹理仓库用一张共享 Map 模拟）。
+ *   素材场景只碰 registry.get + load.atlas + load.json，桩足够（纹理仓库用一张共享 Map 模拟）。
  *
  * @jest-environment node
  */
@@ -30,6 +30,8 @@ jest.mock('phaser', () => {
       atlas: jest.fn((key: string) => {
         textures.set(key, { frames: [] });
       }),
+      // 变体清单（发布期烘焙产物，task_194）：dev 下会 404 ⇒ 静默 ⇒ 没有变体。
+      json: jest.fn(),
     };
     cameras = { main: { setBackgroundColor: jest.fn() } };
     add = { graphics: jest.fn() };

@@ -184,6 +184,20 @@ export class CodeFxLayer {
     return this.renderHz;
   }
 
+  /**
+   * 这个 kind 有没有登记的特效源（路由裁决用）。
+   *
+   * why 要这个口：路由要**先**问「代码路由能不能播」，才能决定走代码还是回落 sheet
+   *   （DESIGN §1.3「效果缺失 ⇒ 静默回落」）—— 判据在本层（源登记在这儿），
+   *   裁决在 objects/fx-router.ts。
+   *
+   * @param kind 语义 kind。
+   * @returns 有源 = true。
+   */
+  hasKind(kind: string): boolean {
+    return this.sources.has(kind);
+  }
+
   /** 上一次 tick 的实测耗时（ms；dev 观测用）。 */
   get lastTickCostMs(): number {
     return this.lastCostMs;

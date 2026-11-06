@@ -1,14 +1,21 @@
 /**
- * 文件职责：**pixelfx 效果 → Stratix 代码路由特效源**的适配器（@since v3.3，task_162，dev-only）。
+ * 文件职责：**pixelfx 效果 → Stratix 代码路由特效源**的适配器（@since v3.3，task_162；
+ *   @since v3.3 task_194 / AP-04 从 dev 入口搬进生产链路）。
  *
  *   这一层把 pixelfx 的 API 形状（createFx / createFrame / composite）翻译成
  *   world 层认的那套契约（CodeFxSource / CodeFxHandle）——
  *   world 层不认 pixelfx，也不该认（外部库的知识只留在适配器里）。
  *
- * ★ 为什么适配器住在 app/dev 而不是 world：
- *   ① 引入 pixelfx 运行时依赖这件事本身**还没定论**（见评审文档 §5.3 的落地前置条件），
- *      所以适配器不进生产产物 —— 它只在 dev 验收入口里被引用；
+ * ★ 为什么适配器住在 app 而不是 world：
+ *   ① pixelfx 是**第三方库**（MIT、vendor 进仓，见 task_191 / AP-01）——
+ *      world 层不该认识它的形状，适配器是唯一接触点；
  *   ② app 层是唯一同时认识 hud 与 world 的地方（组合根口径），适配器要碰两边时住这儿最自然。
+ *
+ * ★ 为什么从 dev 搬上来（task_194 / AP-04）：
+ *   评审结论（docs/research/pixelfx-runtime-poc.md §5.3）里最硬的前置条件
+ *   ——「pixelfx 的分发方式」—— 已由 task_191 / AP-01 解决（源码 vendor 进仓，
+ *   别名指仓内，构建只打入口图）。剩下的落地条件（生产接线 / 降级兜底 / reduced-motion）
+ *   由 task_194 关闭 ⇒ 代码路由不再是 dev 专属能力，适配器随之进生产。
  *
  * 禁止事项：
  *   1. 把 pixelfx 的类型漏进 world 层 —— world 只认 CodeFxSource 契约；

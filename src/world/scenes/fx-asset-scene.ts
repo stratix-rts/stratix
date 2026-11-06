@@ -18,15 +18,30 @@
  *   纹理到位的瞬间，精灵特效层按纹理事件补登记动画（见 objects/sprite-fx-layer.ts）。
  *
  * 场景本身是个"一次性加载器"：加载完就闲在那儿（无 update、无渲染开销）。
+ *
+ * ============ 变体加载（@since v3.3，task_194 / AP-04）============
+ * 发布期烘焙（task_192 / AP-02）每个效果还烘了 `__s1` 变体（同效果、另一套 seed 分布）——
+ *   运行时在「基础变体 + 变体」里随机挑一套播（见 objects/sprite-fx-layer.ts）。
+ *   变体清单来自烘焙 manifest（fx-bake-manifest.json）：**清单说有、文件才在** ——
+ *   dev 环境没有 manifest ⇒ 一次 404（静默）⇒ 没有变体 ⇒ 行为与 task_161 完全一致。
  */
 
 import Phaser from 'phaser';
 
 import { FX_ASSET_BASE_URL_KEY, fxAssetUrl } from '../appearance/fx-asset-path';
 import { SPRITE_FX_SOURCES } from '../appearance/fx-sources.generated';
+import {
+  FX_BAKE_MANIFEST_NAME,
+  SPRITE_FX_RUNTIME_SKIN,
+  SPRITE_FX_VARIANTS_KEY,
+  spriteFxVariantsFromManifest,
+} from '../appearance/fx-variants';
 
 /** 素材加载场景的 key。 */
 export const FX_ASSET_SCENE_KEY = 'fx-assets';
+
+/** 烘焙 manifest 在 Phaser 缓存里的 key（只是缓存键，不进 registry）。 */
+const FX_BAKE_MANIFEST_CACHE_KEY = 'fx:bake-manifest';
 
 /**
  * 特效素材加载场景：只预载 sheet，不参与演出。
@@ -51,10 +66,38 @@ export class FxAssetScene extends Phaser.Scene {
         fxAssetUrl(base, source.jsonPath)
       );
     }
+    // 变体清单（发布期烘焙产物）：dev 没有这个文件 ⇒ 404 ⇒ 静默（Phaser 的 File 失败不打日志）
+    //   ⇒ 没有变体 ⇒ sheet 路由只播基础变体（行为与 task_161 一致）。
+    this.load.json(FX_BAKE_MANIFEST_CACHE_KEY, fxAssetUrl(base, FX_BAKE_MANIFEST_NAME));
   }
 
-  /** 加载完就没什么可做的了（留着场景实例，方便观测加载状态）。 */
+  /**
+   * 加载变体（同一 kind 的另一套 seed 分布），并把清单登记进 registry。
+   *
+   * why 在 create() 里加载而不是 preload：变体清单**本身**是 preload 拉回来的 JSON，
+   *   拉到之后才知道有哪些变体文件 ⇒ 加载顺序天然是「先清单、后图」。
+   * why 登记进 registry 而不是构造函数注入：变体是**并行**到达的（战场 create() 早于它们），
+   *   精灵特效层每次播放现读 registry（见 objects/sprite-fx-layer.ts）。
+   */
   create(): void {
-    // 刻意为空：本场景只负责把素材放进 texture manager。
+    const base = this.registry.get(FX_ASSET_BASE_URL_KEY) as string | undefined;
+    if (!base) return;
+    const manifest = this.cache.json.get(FX_BAKE_MANIFEST_CACHE_KEY);
+    const variants = spriteFxVariantsFromManifest(manifest, SPRITE_FX_RUNTIME_SKIN);
+    // 没有变体（dev / 未烘焙 / manifest 缺失）⇒ 什么都不做，基础变体照播。
+    if (variants.length === 0) return;
+
+    for (const variant of variants) {
+      this.load.atlas(
+        variant.atlasKey,
+        fxAssetUrl(base, variant.pngPath),
+        fxAssetUrl(base, variant.jsonPath)
+      );
+    }
+    // 监听器先挂再启动：LoaderPlugin 在 preload 之外需要显式 start()（Phaser 文档口径）。
+    this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+      this.registry.set(SPRITE_FX_VARIANTS_KEY, variants);
+    });
+    this.load.start();
   }
 }

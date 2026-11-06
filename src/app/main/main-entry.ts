@@ -149,6 +149,8 @@ import { createMainScreen } from '../../hud/screens/main-screen';
 //   组合根只订阅总线接线（hud 组件零总线依赖 —— 与 toast-host / sfx-service 同一口径）。
 //   音频根 URL 由组合根算（入口深度的事实源在 app 层：entry-paths 的 ENTRY_PATH_DEPTH）。
 import { createSoundEngine, sfxBaseUrl } from '../../hud/sound-engine';
+// 特效调色板的热读口（@since v3.3，task_194 / AP-04）：代码路由特效的颜色随皮肤走。
+import { readFxPaletteTokens } from '../../hud/theme/fx-palette-reader';
 import { createThemeController, defaultThemeStorage } from '../../hud/theme/theme-controller';
 import { demoMode } from '../../hud/theme/demo-mode';
 import defaultCss from '../../hud/theme/tokens-default.css?inline';
@@ -172,7 +174,9 @@ import { createSfxService, sfxKeyForEvent } from '../../hud/components/sfx/sfx-s
 import { CharacterComposer } from '../../world/appearance/character-composer';
 // 角色上场的长相裁决（@since v3.8，task_140）：角色没自带外观时按 agent 种类取品牌预设 / 随机合成。
 import { resolveCharacterLook } from '../../world/appearance/character-look';
+import { CODE_FX_SOURCES_KEY } from '../../world/appearance/code-fx-sources';
 import { FX_ASSET_BASE_URL_KEY, fxBaseUrl } from '../../world/appearance/fx-asset-path';
+import { FX_PALETTE_KEY } from '../../world/appearance/fx-palette';
 import { PartRegistry } from '../../world/appearance/part-registry';
 // 动效降级标志（@since v3.8，task_140）：reduced-motion 时入场直接落位（world 零 DOM，判在 app 层）。
 import { REDUCED_MOTION_KEY } from '../../world/motion';
@@ -191,6 +195,9 @@ import { FxAssetScene } from '../../world/scenes/fx-asset-scene';
 import { switchToBattlefield, switchToLobby } from '../../world/scenes/scene-switch';
 // 入口 HTML 相对站点根的目录层数（音频基址等相对 URL 的事实源，见 app/entry-paths.ts）。
 import { ENTRY_PATH_DEPTH } from '../entry-paths';
+// 代码路由特效源（@since v3.3，task_194 / AP-04）：pixelfx 效果 → world 契约的装配。
+//   动态 import：加载失败不炸启动，只是没有代码源 ⇒ 战场静默回落 sheet 路由。
+import { loadProductionCodeFxSources } from '../fx/code-fx-sources';
 // 当日回放读取口（@since v3.3，task_082）：读 service 的只读 REST（当天 task_run 事件流）。
 import { createDayReplayPort } from '../services/day-replay';
 // 站位种子的归属裁决（@since v3.3，task_185 / M1-11）：单位 → 所属副本（纯翻译，读档侧独有）。
@@ -1405,6 +1412,14 @@ async function boot(): Promise<void> {
     hudSide,
   );
 
+  // ===== 代码路由特效源（@since v3.3，task_194 / AP-04）=====
+  // 装配生产代码路由的效果源（pixelfx 效果 → world 契约）。
+  // why 在建 Phaser **之前** await：战场 create() 要一次读走 registry 里的源（场景由 Phaser
+  //   实例化，构造器拿不到注入 —— 与形象源 / 调色板同一模式）。
+  // why 失败不炸启动：装配函数内部逐个 try/catch —— 取不到就少那一路代码源 ⇒
+  //   战场自动回落 sheet 路由（不弹错、不少演，DESIGN §1.3）。
+  const codeFxSources = await loadProductionCodeFxSources();
+
   // ===== world 侧：Phaser 战场（BattlefieldScene 内部自带 world ↔ core 桥接层）=====
   const game = new Phaser.Game({
     type: Phaser.AUTO,
@@ -1432,8 +1447,21 @@ async function boot(): Promise<void> {
         // 精灵特效素材根的绝对 URL（@since v3.3，task_161）：场景 preload 时据此取 sheet。
         // why 也在 app 层算：world 零 DOM —— document.baseURI 只有组合根能碰（同上口径）。
         booting.registry.set(FX_ASSET_BASE_URL_KEY, fxBaseUrl(document.baseURI, ENTRY_PATH_DEPTH));
+        // 代码路由特效源（@since v3.3，task_194 / AP-04）：战场 create() 时读走。
+        // 没登记 ⇒ 代码路由没有源 ⇒ 触点全程走 sheet 路由（静默回落，演出不少）。
+        booting.registry.set(CODE_FX_SOURCES_KEY, codeFxSources);
+        // 代码路由特效的调色板（@since v3.3，task_194 / AP-04）：皮肤 token 的热读结果。
+        // why 在 app 层读：world 零 DOM —— getComputedStyle 只有组合根能碰（同上口径）。
+        booting.registry.set(FX_PALETTE_KEY, readFxPaletteTokens(document));
       },
     },
+  });
+
+  // 皮肤一变就重推特效调色板（@since v3.3，task_194 / AP-04）：下一个代码路由特效实例立刻用新色
+  //   —— 不需要重跑任何生成脚本（这正是代码路由相对 sheet 的核心优势：调色板是热读的）。
+  // why 订阅在这里（组合根）：hud 侧能读 DOM、world 侧不能；两边唯一的公共面是 registry。
+  const stopThemePalette = themeController.subscribe(() => {
+    game.registry.set(FX_PALETTE_KEY, readFxPaletteTokens(document));
   });
 
   // ===== world 场景切换（@since v3.3，task_186 / M1-12）：project.changed ⇒ 大厅 ⇄ 战场 =====
@@ -1632,6 +1660,8 @@ async function boot(): Promise<void> {
       onboarding.dispose();
       // 场景切换订阅（task_186）：退总线订阅（页面销毁前退干净，与其它订阅同一纪律）。
       stopSceneSwitch();
+      // 特效调色板的皮肤订阅（task_194 / AP-04）：退订（页面销毁前退干净）。
+      stopThemePalette();
       // 预览实例（Phaser）由向导屏 / 角色屏在各自卸载时销毁；这里再兜一次底（两个屏都没挂过时也不会有事）。
       appearancePreview.destroy();
       // 升级 toast 订阅（task_041）：与其它总线订阅同一卸载纪律 —— 页面销毁前退干净。

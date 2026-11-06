@@ -14,6 +14,12 @@
  *   appearance/ 是零渲染依赖的纯逻辑层（appearance/fx-atlas.ts），两者分工同 unit-animation。
  *
  * 生命周期：宿主（TaskFxLayer）在 create() 里建本层 → 每帧 tick() 推进回收 → shutdown 时 destroy()。
+ *
+ * ============ 变体消费（@since v3.3，task_194 / AP-04）============
+ * 同一个 kind 可以有多套 seed 变体（发布期烘焙，DESIGN §1.1「烘 K 变体随机选」）：
+ * 播放时在「基础变体 + 变体」里**随机挑一套**播 ⇒ 同一条特效反复播不会一模一样。
+ * 变体清单由素材加载场景从烘焙 manifest 登记进 game.registry（appearance/fx-variants.ts），
+ * 本层每次播放现读（变体是并行加载的，晚到的变体下一次播放就参与挑选）。
  */
 
 import Phaser from 'phaser';
@@ -26,6 +32,11 @@ import {
   type SpriteFxKind,
   type SpriteFxSource,
 } from '../appearance/fx-atlas';
+import {
+  pickSpriteFxCandidate,
+  readSpriteFxVariants,
+  spriteFxCandidates,
+} from '../appearance/fx-variants';
 import { SPRITE_FX_METRICS } from '../theme';
 
 export interface SpriteFxLayerOptions {
@@ -76,6 +87,12 @@ export class SpriteFxLayer {
   /**
    * 播一个特效。
    *
+   * ★ 变体消费（@since v3.3，task_194 / AP-04）：同一个 kind 有多套 seed 变体时
+   *   **随机挑一套播**（DESIGN §1.1「seed → 烘 K 变体随机选」）——
+   *   否则同一条特效反复播看起来一模一样。
+   *   变体清单来自发布期烘焙的 manifest（见 appearance/fx-variants.ts）；
+   *   没有变体（dev / 未烘焙）⇒ 候选只剩基础变体 ⇒ 行为与 task_161 完全一致。
+   *
    * @param kind 语义 kind。
    * @param x 挂载点 x（世界坐标）。
    * @param y 挂载点 y（世界坐标）。
@@ -83,10 +100,17 @@ export class SpriteFxLayer {
    */
   play(kind: SpriteFxKind, x: number, y: number): boolean {
     if (this.destroyed) return false;
-    const source = this.sources.get(kind);
-    if (!source) return false;
+    const base = this.sources.get(kind);
+    if (!base) return false;
+    // 候选 = 基础变体 + 已到位的变体（变体是并行加载的，没到位的当它不存在）。
+    const variants = readSpriteFxVariants(this.scene.registry);
+    const ready = spriteFxCandidates(base, variants).filter((candidate) =>
+      this.scene.textures.exists(candidate.atlasKey),
+    );
     // 素材没到位（加载失败 / 还在路上）→ 不播，也不假装播了。
-    if (!this.scene.textures.exists(source.atlasKey)) return false;
+    if (ready.length === 0) return false;
+    const source = pickSpriteFxCandidate(ready);
+    if (!source) return false;
     // 动画按需登记：素材是**并行**加载的（见 scenes/fx-asset-scene.ts），
     // 战场 create() 跑在素材到位之前 —— 首次播放时纹理才到，动画这时才建。
     this.ensureAnimation(source);
