@@ -98,6 +98,19 @@ export class PartRegistry {
   private readonly metadata = new Map<string, PartMetadata>();
   /** 类别 → 部位列表（键含素材自身的 typeName 与别名表映射出的代码类别）。 */
   private readonly byCategory = new Map<string, PartMetadata[]>();
+  /**
+   * **目录存在性探针索引**（@since v3.3，task_209 / CP-04）。
+   *
+   * 键 = 体型 + 插值后的图层目录前缀（如 'male|eyes/human/adult/default/'）；
+   * 值 = 该目录下的**兄弟变体文件名**集合（同一目录里的所有部位共享同一套变体文件）。
+   *
+   * why 需要它：区分「合法缺失」与「真缺件」的唯一可判定依据是**动画目录在不在**
+   *   （目录不存在 = 素材库这层这动画本就没有文件 ⇒ 合法缺失；
+   *     目录在、只是文件缺 ⇒ 真缺件）。静态服务没有目录列表，目录内容列不出来，
+   *   但**目录里的兄弟变体文件可以试**：任一变体文件取得到 ⇒ 目录存在。
+   *   索引按体型**懒建**（第一次问才建）—— 用不到的问法不付这份算力。
+   */
+  private readonly probeIndexes = new Map<BodyType, Map<string, Set<string>>>();
   private readonly fetchImpl: FetchLike;
   private readonly basePath: string;
   private loaded = false;
@@ -158,6 +171,8 @@ export class PartRegistry {
   parseMetadata(data: unknown): void {
     this.metadata.clear();
     this.byCategory.clear();
+    // 探针索引是元数据的派生物 —— 元数据换了，索引必须跟着重建。
+    this.probeIndexes.clear();
 
     if (typeof data !== 'object' || data === null || Array.isArray(data)) return;
 
@@ -265,6 +280,79 @@ export class PartRegistry {
       return supportsAnimation(meta, animation);
     }
     return true;
+  }
+
+  /**
+   * 某部位某层某体型下的**同目录兄弟变体文件**（目录存在性探针集）。
+   *
+   * ★ 这是 task_209 / CP-04「缺件分级」的判定依据（@since v3.3）：
+   *   合法缺失 = 素材库该层该动画**本就没有文件**（动画目录压根不存在）；
+   *   真缺件   = 元数据声称有、目录也在，只是**文件丢了/坏了**。
+   *   两者的区别只落在「目录在不在」上 —— 而静态服务不提供目录列表，
+   *   于是判定办法是**试目录里的兄弟变体文件**：任一取得到 ⇒ 目录存在 ⇒ 真缺件。
+   *
+   * why 是「同目录的兄弟」：LPC 的图层目录（插值后的前缀，如 `eyes/human/adult/default/`）
+   *   被多个部位共用（同一前缀 ⇒ 同一批变体文件），
+   *   所以探针取的是**整个前缀下所有部位的变体并集** —— 哪怕被问的部位自己只有一个变体，
+   *   也能借到兄弟部位的变体当探针（实测：LPC 的 `body/wound/climb/` 只剩 brain.png，
+   *   借 wound_brain 的变体就能证明目录存在）。
+   *
+   * @param itemId 部位条目 id。
+   * @param layerNum 图层号（1 起）。
+   * @param bodyType 体型（决定用哪套图层路径 —— 不同体型的目录不同）。
+   * @returns 变体**文件名**（已按素材的文件名规整：小写 + 空格转下划线）；
+   *   该部位/图层/体型没有目录 → 空数组（调用方据此判「不可判定」）。
+   */
+  getDirectoryProbeFiles(itemId: string, layerNum: number, bodyType: BodyType): string[] {
+    const meta = this.metadata.get(itemId);
+    if (!meta) return [];
+    const layer = meta.layers?.[`layer_${layerNum}`];
+    if (!layer) return [];
+    const rawPath = (layer as Record<string, string | undefined>)[bodyType];
+    if (!rawPath) return [];
+    const prefix = interpolateLayerPath(rawPath, meta, bodyType);
+    if (!prefix) return [];
+
+    const bucket = this.getProbeIndex(bodyType).get(prefix);
+    if (!bucket) return [];
+
+    // 本部位自己的变体排前面：目录真存在时，它自己的变体最可能就在目录里
+    // （探针命中得更快 ⇒ 少发无谓的取图请求）。
+    const own = meta.variants.map((variant) => variantToFilename(variant));
+    const ownSet = new Set(own);
+    const others = Array.from(bucket).filter((file) => !ownSet.has(file));
+    return [...own, ...others];
+  }
+
+  /**
+   * 某体型的**探针索引**（懒建 + 缓存）。
+   *
+   * 键 = 插值后的图层目录前缀；值 = 该前缀下所有部位的变体文件名并集。
+   */
+  private getProbeIndex(bodyType: BodyType): Map<string, Set<string>> {
+    const cached = this.probeIndexes.get(bodyType);
+    if (cached) return cached;
+
+    const index = new Map<string, Set<string>>();
+    for (const meta of this.metadata.values()) {
+      for (const layer of Object.values(meta.layers ?? {})) {
+        const rawPath = (layer as Record<string, string | undefined>)[bodyType];
+        if (!rawPath) continue;
+        const prefix = interpolateLayerPath(rawPath, meta, bodyType);
+        if (!prefix) continue;
+        let bucket = index.get(prefix);
+        if (!bucket) {
+          bucket = new Set<string>();
+          index.set(prefix, bucket);
+        }
+        for (const variant of meta.variants) {
+          bucket.add(variantToFilename(variant));
+        }
+      }
+    }
+
+    this.probeIndexes.set(bodyType, index);
+    return index;
   }
 
   /** 版权署名（按部位 id 汇总并去重）。 */

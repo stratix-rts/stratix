@@ -16,6 +16,7 @@
 
 import type { CharacterAppearance } from '../../core/types';
 import { characterBakeKey } from '../../world/appearance/bake-cache-key';
+import { ANIMATION_OFFSETS } from '../../world/appearance/constants';
 import {
   createFixtureComposer,
   createPaintingCanvas,
@@ -40,11 +41,17 @@ async function createService(
     composerVersion?: string;
     failImages?: boolean;
     failMetadata?: boolean;
+    /** 整个动画目录不存在（合法缺失）。 */
+    missingDirs?: readonly string[];
+    /** 目录在、文件缺（真缺件）。 */
+    missingPaths?: readonly string[];
   } = {}
 ) {
   const { composer, registry, images } = await createFixtureComposer({
     failImages: options.failImages ?? false,
     failMetadata: options.failMetadata ?? false,
+    ...(options.missingDirs ? { missingDirs: options.missingDirs } : {}),
+    ...(options.missingPaths ? { missingPaths: options.missingPaths } : {}),
   });
   // 烘焙服务自己那张整精灵图画布（合成目标就画在它上面）。
   const sheetCanvas = createPaintingCanvas();
@@ -184,6 +191,62 @@ describe('烘焙夹具 · 降级路径（纪律 2：静默降级，用户永远�
 
     await expect(service.ensureBaked(AGENT_ID, APPEARANCE)).resolves.toBe('failed');
     await expect(service.loadCachedSheet(AGENT_ID, APPEARANCE)).resolves.toBeNull();
+  });
+});
+
+/**
+ * 缺件分级（@since v3.3，task_209 / CP-04）。
+ *
+ * ★ 背景：LPC 真素材的人眼层**没有 climb 动画文件**
+ *   （`eyes/human/adult/default/climb/` 目录不存在，而元数据声称支持 climb）。
+ *   分级之前，这一格缺图 ⇒ 整表判 parts-missing ⇒ 带眼睛的角色永远进不了烘焙缓存。
+ *
+ * ★ 两级缺件：
+ *   - **合法缺失**（目录压根不存在）⇒ 该格留空/透明 ⇒ **烘焙照常成功并入缓存**；
+ *   - **真缺件**（目录在、文件缺）⇒ 维持 parts-missing 静默降级。
+ */
+describe('烘焙夹具 · 缺件分级（task_209 / CP-04）', () => {
+  /** 眼睛层 climb 动画目录（素材库里压根不存在）。 */
+  const EYES_CLIMB_DIR = '/spritesheets/eyes/human/adult/default/climb/';
+  /** 眼睛层 walk 动画的一张图（目录在，文件缺 = 真缺件）。 */
+  const EYES_WALK_BLUE = '/spritesheets/eyes/human/adult/default/walk/blue.png';
+
+  test('合法缺失（eyes×climb 目录不存在）⇒ 烘焙成功入缓存（该格留空）', async () => {
+    const { service, store, storeSize, logs, sheetCanvas } = await createService({
+      missingDirs: [EYES_CLIMB_DIR],
+    });
+
+    const outcome = await service.ensureBaked(AGENT_ID, APPEARANCE);
+
+    // 烘焙成功 —— 合法缺失不阻断。
+    expect(outcome).toBe('baked');
+    expect(storeSize()).toBe(1);
+    // 内部日志里没有 parts-missing（合法缺失不是失败面）。
+    expect(hasDegradeLog(logs, 'parts-missing')).toBe(false);
+    // 产物可用：运行时能读回整图。
+    const sheet = await service.loadCachedSheet(AGENT_ID, APPEARANCE);
+    expect(sheet).not.toBeNull();
+    expect(sheet?.width).toBe(832);
+    // 该格留空：climb 那一行没有画眼睛那张图。
+    const climbY = ANIMATION_OFFSETS.climb;
+    const climbDraws = sheetCanvas.draws
+      .filter((draw) => draw.y === climbY)
+      .map((draw) => draw.src);
+    expect(climbDraws).not.toContain(`${EYES_CLIMB_DIR}blue.png`);
+  });
+
+  test('真缺件（目录在、文件缺）⇒ 维持 parts-missing 静默降级（不落盘）', async () => {
+    const { service, storeSize, logs } = await createService({
+      missingPaths: [EYES_WALK_BLUE],
+    });
+
+    const outcome = await service.ensureBaked(AGENT_ID, APPEARANCE);
+
+    expect(outcome).toBe('failed');
+    expect(storeSize()).toBe(0);
+    expect(hasDegradeLog(logs, 'parts-missing')).toBe(true);
+    // 运行时读不到缓存 ⇒ 调用方直合成（用户看到的仍是可用结果）。
+    expect(await service.loadCachedSheet(AGENT_ID, APPEARANCE)).toBeNull();
   });
 });
 

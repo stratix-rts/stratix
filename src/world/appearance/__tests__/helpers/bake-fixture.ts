@@ -302,12 +302,33 @@ export function createPaintingCanvas(): PaintingCanvas {
  * why 要分两种尺寸：LPC 的**素材条**是 576×256（一个动画的 4 行），
  *   而烘焙缓存里的**整精灵图**是 832×3456（data URL）——
  *   尺寸不同，画上去的范围就不同（坐标断言会依赖它）。
+ *
+ * ★ 缺件注入（@since v3.3，task_209 / CP-04）：素材库要能区分两种「取不到」——
+ *   - `missingDirs`：整个动画目录**不存在**（素材库这层这动画本就没有文件）⇒ **合法缺失**；
+ *   - `missingPaths`：目录在、**文件缺** ⇒ **真缺件**；
+ *   - `fail`：所有图都取不到（模拟取图通道/网络整体坏了）。
+ *   夹具按真实素材目录结构回答「目录在不在」—— 缺件分级就靠这条区分。
  */
-export function createFixtureImageFactory(options: { fail?: boolean } = {}): {
+export function createFixtureImageFactory(
+  options: {
+    fail?: boolean;
+    /** 这些目录下的文件全部取不到（合法缺失：目录不存在）。 */
+    missingDirs?: readonly string[];
+    /** 这些文件取不到（真缺件：目录在、文件缺）。 */
+    missingPaths?: readonly string[];
+  } = {}
+): {
   createImage: () => HTMLImageElement;
   requested: string[];
 } {
   const requested: string[] = [];
+
+  /** 这个 src 在素材库里取不到吗？ */
+  const isMissing = (src: string): boolean => {
+    if (options.fail) return true;
+    if (options.missingPaths?.includes(src)) return true;
+    return (options.missingDirs ?? []).some((dir) => src.startsWith(dir));
+  };
 
   const createImage = (): HTMLImageElement => {
     let currentSrc = '';
@@ -334,7 +355,7 @@ export function createFixtureImageFactory(options: { fail?: boolean } = {}): {
           image.height = STRIP_HEIGHT;
         }
         setTimeout(() => {
-          if (options.fail) {
+          if (isMissing(value)) {
             image.onerror?.();
           } else {
             image.onload?.();
@@ -371,7 +392,14 @@ export async function createFixtureRegistry(
 
 /** 夹具里的合成器（真 CharacterComposer + 会落像素的画布 + 假图片工厂）。 */
 export async function createFixtureComposer(
-  options: { failImages?: boolean; failMetadata?: boolean } = {}
+  options: {
+    failImages?: boolean;
+    failMetadata?: boolean;
+    /** 整个动画目录不存在（合法缺失）。 */
+    missingDirs?: readonly string[];
+    /** 目录在、文件缺（真缺件）。 */
+    missingPaths?: readonly string[];
+  } = {}
 ): Promise<{
   composer: CharacterComposer;
   registry: PartRegistry;
@@ -379,7 +407,11 @@ export async function createFixtureComposer(
   images: ReturnType<typeof createFixtureImageFactory>;
 }> {
   const registry = await createFixtureRegistry({ failMetadata: options.failMetadata ?? false });
-  const images = createFixtureImageFactory({ fail: options.failImages });
+  const images = createFixtureImageFactory({
+    fail: options.failImages,
+    ...(options.missingDirs ? { missingDirs: options.missingDirs } : {}),
+    ...(options.missingPaths ? { missingPaths: options.missingPaths } : {}),
+  });
   const painting = createPaintingCanvas();
   const composer = new CharacterComposer({
     registry,

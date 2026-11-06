@@ -19,7 +19,10 @@
  * ★ 纪律 2 的四类失败面（@since v3.3，task_196 / CP-02）：
  *   失败一律回落「运行时直接合成」（CP-01 之前的现状路径），用户永远看到可用结果；
  *   失败只进**内部日志**（agent / 皮肤 / 原因俱全，事后可定位），不弹错、不阻塞、不冒泡到 UI 层。
- *   ① 部件缺件（parts-missing）：元数据取不到 / 某层素材取不到 / 合成计划为空 / 画出全透明；
+ *   ① 部件缺件（parts-missing）：元数据取不到 / **真缺件**（目录在、文件缺）/ 合成计划为空 / 画出全透明；
+ *      —— 真缺件与**合法缺失**是两级（@since v3.3，task_209 / CP-04）：
+ *      合法缺失 = 素材库该层该动画本就没有文件（目录不存在，如 LPC 人眼层的 eyes×climb）
+ *      ⇒ 该格留空/透明（与运行时直合成结果一致）⇒ **不阻断烘焙**。
  *   ② 渲染失败（render-failed）：合成抛错 / 整图 PNG 编码失败；
  *   ③ 缓存目录不可写（cache-unwritable）：落盘失败（权限 / 磁盘满 / IPC 断）；
  *   ④ 版本损坏（cache-corrupt）：缓存产物版本 / 键 / 指纹 / 结构对不上，或文件本身坏了。
@@ -291,6 +294,13 @@ export function createCharacterBakeService(
     // why 缺件也算失败：合成器对单张缺图是「跳过该层照常出图」的降级，
     //   但那是一张**少了几层**的图 —— 烤进缓存就等于把坏素材永久固化（DESIGN §2.2 纪律 1 的原意）。
     //   宁可这次不烘（运行时直合成，用户看到的与今天一致），并把缺件名单记进内部日志。
+    //
+    // ★ 缺件分两级（@since v3.3，task_209 / CP-04）：
+    //   failedParts = **真缺件**（元数据声称有、动画目录也在，只是文件丢了/坏了）
+    //     → 失败面：静默降级（回落运行时直合成）。
+    //   missingParts = **合法缺失**（素材库该层该动画本就没有文件 ⇒ 目录不存在，
+    //     如 LPC 人眼层的 eyes×climb）→ 该格留空/透明，与运行时直合成**结果一致**，
+    //     不是坏素材 ⇒ 不阻断烘焙（只记一条内部日志，便于事后看素材覆盖度）。
     const missing = composed.failedParts ?? [];
     if (missing.length > 0) {
       logDegrade(
@@ -301,6 +311,13 @@ export function createCharacterBakeService(
       );
       failedAt.set(key, Date.now());
       return 'failed';
+    }
+    const absent = composed.missingParts ?? [];
+    if (absent.length > 0) {
+      logger(
+        `[CharacterBake] 合法缺失 ${absent.length} 格（素材库该层该动画本就没有文件）：` +
+          `${absent.slice(0, 5).join('、')}`
+      );
     }
     if (composed.parts.length === 0) {
       logDegrade('parts-missing', agentId, appearance, '合成计划为空（没有可画的层）');

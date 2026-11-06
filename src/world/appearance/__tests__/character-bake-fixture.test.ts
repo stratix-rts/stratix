@@ -189,3 +189,109 @@ describe('夹具保真（夹具元数据与真素材形状一致）', () => {
     expect(fixtureEyes.replaceInPath).toEqual(realEyes.replaceInPath);
   });
 });
+
+/**
+ * 缺件分级（@since v3.3，task_209 / CP-04）。
+ *
+ * ★ 两种缺件（权威口径见 .long-run-agent/tasks/task_209.md）：
+ *   ① **合法缺失**：素材库该层该动画**本就没有文件**（动画目录不存在）——
+ *      LPC 真素材的人眼层就是这一类（`eyes/human/adult/default/climb/` 目录不存在，
+ *      而元数据声称支持 climb）⇒ 该格留空/透明，烘焙照常成功。
+ *   ② **真缺件**：元数据声称存在、目录也在，只是**文件丢了/坏了** ⇒ 仍走 parts-missing 失败面。
+ *
+ * ★ 判定依据 = 素材目录结构：目录在不在 ⇒ 用「同目录兄弟变体文件能否取到」来探
+ *   （静态服务没有目录列表，列不出目录内容 —— 见 character-composer.ts 的 classifyFailure）。
+ */
+describe('缺件分级（task_209 / CP-04）：合法缺失 vs 真缺件', () => {
+  /** 眼睛层 climb 动画目录（素材库里压根不存在）。 */
+  const EYES_CLIMB_DIR = '/spritesheets/eyes/human/adult/default/climb/';
+  /** 眼睛层 walk 动画目录（素材库里存在）。 */
+  const EYES_WALK_BLUE = '/spritesheets/eyes/human/adult/default/walk/blue.png';
+
+  test('合法缺失（动画目录不存在）⇒ 该格留空，合成照常成功（不算缺件）', async () => {
+    const { composer, painting } = await createFixtureComposer({
+      missingDirs: [EYES_CLIMB_DIR],
+    });
+
+    const result = await composer.composeCharacter(SELECTIONS, {
+      bodyType: 'male',
+      animations: ['walk', 'climb'],
+    });
+
+    // 分类正确：climb 那格是**合法缺失**，不是真缺件。
+    expect(result.missingParts).toEqual([
+      `${EYES_CLIMB_DIR}blue.png`,
+    ]);
+    expect(result.failedParts).toEqual([]);
+
+    // 该格**透明**：climb 那一行没有画眼睛那张图（别的层照画）。
+    const climbY = ANIMATION_OFFSETS.climb;
+    const climbDraws = painting.draws.filter((draw) => draw.y === climbY).map((draw) => draw.src);
+    expect(climbDraws).not.toContain(`${EYES_CLIMB_DIR}blue.png`);
+    expect(climbDraws.length).toBeGreaterThan(0);
+  });
+
+  test('合法缺失不影响同一层的其它动画（眼睛的 walk 照常画）', async () => {
+    const { composer, painting } = await createFixtureComposer({
+      missingDirs: [EYES_CLIMB_DIR],
+    });
+
+    await composer.composeCharacter(SELECTIONS, {
+      bodyType: 'male',
+      animations: ['walk', 'climb'],
+    });
+
+    const walkY = ANIMATION_OFFSETS.walk;
+    const walkDraws = painting.draws.filter((draw) => draw.y === walkY).map((draw) => draw.src);
+    expect(walkDraws).toContain(EYES_WALK_BLUE);
+  });
+
+  test('真缺件（目录在、文件缺）⇒ 计入缺件面（烘焙期的失败面）', async () => {
+    const { composer } = await createFixtureComposer({
+      missingPaths: [EYES_WALK_BLUE],
+    });
+
+    const result = await composer.composeCharacter(SELECTIONS, {
+      bodyType: 'male',
+      animations: ['walk'],
+    });
+
+    expect(result.failedParts).toEqual([EYES_WALK_BLUE]);
+    expect(result.missingParts).toEqual([]);
+  });
+
+  test('取图通道整体坏了（一格都没成功）⇒ 保守判真缺件，不误判成合法缺失', async () => {
+    const { composer } = await createFixtureComposer({ failImages: true });
+
+    const result = await composer.composeCharacter(SELECTIONS, {
+      bodyType: 'male',
+      animations: ['walk'],
+    });
+
+    // 全部失败 ⇒ 判真缺件（降级比烤进一张坏图安全）。
+    expect(result.failedParts?.length).toBeGreaterThan(0);
+    expect(result.missingParts).toEqual([]);
+  });
+
+  test('目录存在性探针集 = 同目录兄弟变体文件（注册表口径）', async () => {
+    const { registry } = await createFixtureComposer();
+
+    // 眼睛层的兄弟变体（夹具元数据里眼睛层有 4 个变体）。
+    expect(registry.getDirectoryProbeFiles('eye_color', 1, 'male')).toEqual([
+      'blue',
+      'brown',
+      'gray',
+      'green',
+    ]);
+    // 不同体型 → 不同目录 → 不同探针集（child 走 child 目录）。
+    expect(registry.getDirectoryProbeFiles('eye_color', 1, 'child')).toEqual([
+      'blue',
+      'brown',
+      'gray',
+      'green',
+    ]);
+    // 查不到的部位/图层 ⇒ 空集（调用方据此判「不可判定」）。
+    expect(registry.getDirectoryProbeFiles('eye_color', 9, 'male')).toEqual([]);
+    expect(registry.getDirectoryProbeFiles('no_such_item', 1, 'male')).toEqual([]);
+  });
+});
