@@ -3,6 +3,8 @@
  *   ① 启动恢复：loadSnapshot（IPC → 主进程 DAO）→ 构造「注入 core store 的角色/单位 + 交给战场的站位种子」；
  *   ② 档案落库：订阅 core 广播，characters 数组实质变化时把**变化的档案**存回主进程；
  *   ③ 站位落库：订阅 world 通道的 unit.position 事件，防抖（默认 3s）批量存回主进程。
+ *      ★ 落库时**带上副本归属**（@since v3.3，task_210 / M2-11）：站位是按副本归属的事实，
+ *        不带归属的行会被 COALESCE 归回默认沙盒 ⇒ 非沙盒副本读站位读不到。
  * 输入：GameSaveApi（preload 暴露的 IPC 面）、core/bus、core/store。
  * 输出：注入用的 RestoreInjection；两条 IPC 写通道的调用。
  * 禁止事项：
@@ -24,6 +26,7 @@
  */
 
 import { onState, onWorldEvent, type Unsubscribe } from '../../../core/bus';
+import { scopeOf } from '../../../core/project/entity-scope';
 import { worldStore, type CoreStore } from '../../../core/store';
 import { type CharacterView } from '../../../core/types';
 
@@ -34,6 +37,7 @@ import {
   type RestoreInjection,
 } from './character-record';
 import type { GameSaveSnapshot, PersistedCharacterRecord, PersistedUnitPosition } from './game-save-dao';
+import { writeSideInstanceId } from './instance-scope';
 
 // ============================================================================
 // IPC 面（与 src/electron/preload.ts 的 gameSave 段保持同构 —— 那边是实现，这边是形状）
@@ -56,7 +60,13 @@ export interface GameSaveApi {
   loadSnapshot(): Promise<GameSaveSnapshotResult>;
   /** 批量 upsert 角色档案。 */
   saveCharacters(records: readonly PersistedCharacterRecord[]): Promise<GameSaveWriteResult>;
-  /** 批量 upsert 单位站位。 */
+  /**
+   * 批量 upsert 单位站位。
+   *
+   * ★ 条目可带 `instanceId`（@since v3.3，task_210 / M2-11）：副本归属随条目一起落库
+   *   （主进程那层拿不到副本归属 —— 归属由渲染侧在**事件到达时**盖上，见 start 里的说明）。
+   *   不带 = 未归属 ⇒ 行落 NULL（步 N2 的 COALESCE 口径归默认沙盒）。
+   */
   saveUnitPositions(entries: readonly PersistedUnitPosition[]): Promise<GameSaveWriteResult>;
 }
 
@@ -205,7 +215,20 @@ export function createGameSaveCoordinator(options: GameSaveCoordinatorOptions): 
       const characterId = characterIdFromUnitId(event.unitId);
       // 非角色单位（无前缀）或台账外单位不入库：unit_positions 的键必须是真实角色。
       if (characterId === null || !knownCharacters.has(characterId)) return;
-      positionBuffer.set(characterId, { characterId, x: event.x, y: event.y });
+      // 副本归属（@since v3.3，task_210 / M2-11）：站位是**按副本归属的事实** ⇒ 落库要带归属，
+      //   否则该行会被 COALESCE 归回默认沙盒 ⇒ 非沙盒副本读站位读不到。
+      //   why 在**事件到达时**取归属（不是落库时）：防抖窗口（默认 3s）里可能切副本
+      //   ⇒ 落库那一刻再取会把上一副本的坐标盖上下一副本的归属。
+      //   why 归属源 = 当前活跃副本（store.activeInstanceId）：与 M1 桥接层的过滤同源
+      //   （world/bridge/bus-adapter.ts 的 currentScope = scopeOf(state.activeInstanceId)）。
+      const instanceId = writeSideInstanceId(scopeOf(store.getState().activeInstanceId));
+      positionBuffer.set(characterId, {
+        characterId,
+        x: event.x,
+        y: event.y,
+        // 默认沙盒 ⇒ 不带这个键（行保持 NULL ⇒ 沙盒路径与写侧补齐前逐字节一致）。
+        ...(instanceId ? { instanceId } : {}),
+      });
       scheduleFlush();
     });
 

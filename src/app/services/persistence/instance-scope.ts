@@ -19,6 +19,11 @@
  *   ⇒ 谓词（instanceScopeCondition / instanceScopeWhere）、加列（ensureInstanceIdColumn）、
  *   表清单（INSTANCE_SCOPED_TABLES）三件事各只有**一份**出处。
  *
+ * ============ 写侧载荷（@since v3.3，task_210 / M2-11）============
+ *   读侧按副本过滤之后，**写侧也必须带归属**（否则副本里的行会被 COALESCE 归回沙盒）——
+ *   这条口径的出处是本文件的 `writeSideInstanceId`：默认沙盒 ⇒ 不带归属（行保持 NULL，
+ *   沙盒路径零变化）；其它副本 ⇒ 显式带上该副本 id。
+ *
  * @since v3.3（task_198 / M2-01）。
  */
 
@@ -136,4 +141,26 @@ export function ensureInstanceIdColumn(db: InstanceScopeDatabase, table: string)
   if (columns.length === 0) return; // 表还不存在：交给建表路径（建表 DDL 自带该列）
   if (columns.some((column) => column.name === INSTANCE_ID_COLUMN)) return;
   db.exec(`ALTER TABLE ${table} ADD COLUMN ${INSTANCE_ID_COLUMN} TEXT`);
+}
+
+/**
+ * **写侧**的归属载荷（@since v3.3，task_210 / M2-11）：副本 scope ⇒ 该写进 `instance_id` 列的值。
+ *
+ * 口径（与步 N2 的读侧口径同源）：
+ *   - **默认沙盒**（`DEFAULT_INSTANCE_ID`）⇒ **不带归属**（`undefined` ⇒ 落 NULL）
+ *     ⇒ 该行按步 N2 的 COALESCE 口径归默认沙盒 —— 与写侧补齐前**逐字节一致**
+ *     （沙盒路径零变化：老行仍 NULL，新行仍 NULL）。
+ *   - **其它副本** ⇒ **显式带上**该副本 id
+ *     ⇒ why 必须显式：COALESCE 把 NULL 归成沙盒 ⇒ 不带归属的行会被算进**沙盒**名下
+ *     ⇒ 副本里角色的站位在本副本读不回来（这正是 M2-10 验收记下的那笔写侧欠账）。
+ *
+ * why 沙盒要**特判**而不是统一写 'wsp_sandbox'：统一写会把「未归属」的老行改写成
+ *   「显式归属沙盒」（一次真实的数据改写），与步 N2「落库不改写」相悖；
+ *   而 COALESCE 口径下两者**读起来完全等价** ⇒ 没有任何收益，只有风险。
+ *
+ * @param scope 当前活跃副本的 scope（已按 COALESCE 口径归一：缺省 ⇒ 默认沙盒）。
+ * @returns 该带的归属值；`undefined` = 不带归属（落 NULL）。
+ */
+export function writeSideInstanceId(scope: ProjectInstanceId): ProjectInstanceId | undefined {
+  return scope === DEFAULT_INSTANCE_ID ? undefined : scope;
 }

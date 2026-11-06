@@ -523,6 +523,11 @@ function setupIPC() {
       if (!dataStoreService.isInitialized()) return { ok: false, error: 'data store not initialized' };
       const db = getDatabase().getDatabase();
       ensureGameSaveTables(db);
+      // 副本归属（@since v3.3，task_210 / M2-11）：**归属随条目一起过来**（这一层拿不到活跃副本
+      //   ⇒ 由渲染侧在坐标事件到达时盖上，见 game-save-coordinator）。
+      //   why 选「载荷带归属」而不是「主进程自己取活跃副本」：后者要在主进程另建一份
+      //   「当前是哪个副本」的状态（多一条同步通道 + 一份生命周期），口径会分裂到两个进程。
+      //   DAO 层按 COALESCE 语义落库：来件没带归属就**不清**原值。
       upsertUnitPositions(db, entries);
       return { ok: true };
     } catch (error: any) {

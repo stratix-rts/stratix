@@ -171,7 +171,13 @@ export interface ElectronAPI {
     loadSnapshot: () => Promise<{ ok: boolean; characters?: PersistedCharacterRecord[]; unitPositions?: PersistedUnitPosition[]; error?: string }>;
     /** 批量 upsert 角色档案。 */
     saveCharacters: (records: PersistedCharacterRecord[]) => Promise<{ ok: boolean; error?: string }>;
-    /** 批量 upsert 单位站位。 */
+    /**
+     * 批量 upsert 单位站位。
+     *
+     * ★ 条目可带 `instanceId`（@since v3.3，task_210 / M2-11）：**副本归属随条目一起过来**
+     *   （主进程那层拿不到副本归属 ⇒ 归属由渲染侧盖好再走 IPC —— 这一跳是原样透传的）。
+     *   不带 = 未归属 ⇒ 行落 NULL（步 N2 的 COALESCE 口径归默认沙盒）。
+     */
     saveUnitPositions: (entries: PersistedUnitPosition[]) => Promise<{ ok: boolean; error?: string }>;
     /** 写一条角色对话历史（@since v3.15，task_036）。 */
     saveChatMessage: (message: ChatMessageInsert) => Promise<{ ok: boolean; error?: string }>;

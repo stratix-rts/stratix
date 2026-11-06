@@ -25,6 +25,10 @@
  * 查询按 `COALESCE(instance_id, 'wsp_sandbox')` 命中，**落库不改写**旧行。
  * why 列加在 DDL 末尾：与 ALTER ADD 落地的列序一致（新建库与老库升级后形状逐列相同）。
  * why 谓词与加列不写在这里：口径只有一份出处（instance-scope.ts），本文件只调用它。
+ * ============ 写侧补齐（@since v3.3，task_210 / M2-11）============
+ *   `characters` 的写侧（M2-05…M2-08）早补齐了，`unit_positions` 的写侧一直欠账
+ *   ⇒ 站位行永远落 NULL ⇒ 非沙盒副本读站位读不到（读口是按副本过滤的）。
+ *   本单把写侧补上：冲突时 `COALESCE(excluded.instance_id, <原值>)`（来件没带归属就不清原值）。
  *
  * ============ 身份维度：role_id 列 + 复合唯一索引（@since v3.3，task_199 / M2-02）============
  * `characters` 加一列 `role_id`（**可空、无 DEFAULT**）—— design §1.3.2 步 **N4a**：
@@ -107,6 +111,18 @@ export interface PersistedUnitPosition {
   readonly characterId: string;
   readonly x: number;
   readonly y: number;
+  /**
+   * 所属副本（`instance_id` 列镜像；@since v3.3，task_210 / M2-11）。
+   *
+   * why 现在写这一列：读口按副本过滤（`COALESCE(instance_id, 'wsp_sandbox')` ——
+   *   步 N2 口径），而 M2-01 只加了列、**写侧一直没写** ⇒ 站位行永远落 NULL
+   *   ⇒ 非沙盒副本里角色的站位在本副本**读不回来**（反倒算进默认沙盒的名下）。
+   *   与 characters / character_tasks / sessions / session_events 同一套口径。
+   *
+   * 缺省 / null = **未归属**（老行 / 不带归属的来件）⇒ 按步 N2 的 COALESCE 口径归默认沙盒。
+   *   why 默认沙盒**不带**归属（沙盒路径与写侧补齐前逐字节一致，见 game-save-coordinator 的说明）。
+   */
+  readonly instanceId?: ProjectInstanceId | null;
 }
 
 /** 启动恢复用的完整快照（loadSnapshot 一次取齐，渲染层一次 IPC 拿走）。 */
@@ -299,29 +315,54 @@ export function loadCharacters(
   }));
 }
 
-/** 批量 upsert 单位站位（按 characterId 冲突时覆盖坐标）。 */
+/**
+ * 批量 upsert 单位站位（按 characterId 冲突时覆盖坐标）。
+ *
+ * ★ `instance_id` 的写侧（@since v3.3，task_210 / M2-11）：
+ *   冲突时用 `COALESCE(excluded.instance_id, <原值>)` —— 来件**没带**归属就**不清**原值。
+ *   why 不能直接覆盖成 NULL：归属一旦写上（副本里的角色 / N7 迁移后的行），
+ *   后续一笔不带归属的来件（老渲染层 / 沙盒路径）会把归属**抹成 NULL**
+ *   ⇒ 该副本的站位又会被 COALESCE 归回沙盒 ⇒ 副本隔离失效。
+ *   与 upsertCharacters / upsertTask 同一款口径（同一族的写侧补齐）。
+ */
 export function upsertUnitPositions(
   db: SqliteDatabaseLike,
   entries: readonly PersistedUnitPosition[]
 ): void {
   const stmt = db.prepare(`
-    INSERT INTO ${UNIT_POSITIONS_TABLE} (character_id, x, y, updated_at)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO ${UNIT_POSITIONS_TABLE} (character_id, x, y, updated_at, instance_id)
+    VALUES (?, ?, ?, ?, ?)
     ON CONFLICT(character_id) DO UPDATE SET
       x = excluded.x,
       y = excluded.y,
-      updated_at = excluded.updated_at
+      updated_at = excluded.updated_at,
+      instance_id = COALESCE(excluded.instance_id, ${UNIT_POSITIONS_TABLE}.instance_id)
   `);
   const now = Date.now();
   for (const p of entries) {
-    stmt.run(p.characterId, p.x, p.y, now);
+    stmt.run(p.characterId, p.x, p.y, now, normalizeInstanceId(p.instanceId));
   }
+}
+
+/**
+ * 归属值的**入库形态**（@since v3.3，task_210 / M2-11）。
+ *
+ * why 要洗一遍：IPC 载荷是**进程边界上的不可信输入** —— 一个空串 / 非串的 instanceId
+ *   落进库里就成了一条「归属 = 垃圾」的站位行（再也查不回来）。
+ *   口径：只有**非空字符串**才算归属，其余一律按「未归属」（NULL ⇒ 步 N2 归默认沙盒）处理。
+ */
+function normalizeInstanceId(instanceId: ProjectInstanceId | null | undefined): string | null {
+  return typeof instanceId === 'string' && instanceId.length > 0 ? instanceId : null;
 }
 
 /**
  * 全量读单位站位。
  *
  * @param options.instanceId 给了 ⇒ 只读该副本的行（步 N2 的 COALESCE 命中口径）。
+ *
+ * 归属镜像（@since v3.3，task_210）：读出 `instance_id`（NULL ⇒ **不带**这个键，往返保真）——
+ *   与 loadCharacters / loadRecentTasks 同一款口径：本 DAO 的职责是**行 ↔ 记录的双向映射**
+ *   （文件头），声明了 instanceId 的记录类型，读口就该把那一列原样带回来。
  */
 export function loadUnitPositions(
   db: SqliteDatabaseLike,
@@ -329,12 +370,16 @@ export function loadUnitPositions(
 ): PersistedUnitPosition[] {
   const scope = instanceScopeWhere(options.instanceId);
   const rows = db
-    .prepare(`SELECT character_id, x, y FROM ${UNIT_POSITIONS_TABLE} ${scope.sql}`)
+    .prepare(`SELECT character_id, x, y, instance_id FROM ${UNIT_POSITIONS_TABLE} ${scope.sql}`)
     .all(...scope.params) as Array<Record<string, unknown>>;
   return rows.map((row) => ({
     characterId: String(row.character_id),
     x: Number(row.x),
     y: Number(row.y),
+    // 归属镜像：NULL = 未归属（老行 / 沙盒行）⇒ 不带这个键（不凭空造归属）。
+    ...(row.instance_id === null || row.instance_id === undefined
+      ? {}
+      : { instanceId: String(row.instance_id) }),
   }));
 }
 
