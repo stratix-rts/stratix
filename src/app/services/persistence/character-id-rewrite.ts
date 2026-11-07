@@ -114,8 +114,14 @@ export interface RewritePlan {
   readonly rows: readonly RewritePlanRow[];
   /** **阻断性**前置问题（任一条非空 ⇒ 整批不许动：宁可不改，也不要改出坏数据）。 */
   readonly blockers: readonly string[];
-  /** 默认沙盒的行 id（**一律不改**；校验时逐个确认原样还在）。 */
-  readonly sandboxIds: readonly string[];
+  /**
+   * 默认沙盒里的**角色行 id**（**一律不改**；校验时逐个确认原样还在）。
+   *
+   * @since v3.3（task_225 / QA-05）原名 `sandboxIds` → `sandboxCharacterIds`：
+   *   这里的每个值是「默认沙盒里那些**角色行**的 id」，与「沙盒**实例** id」
+   *   （= `DEFAULT_INSTANCE_ID = 'wsp_sandbox'`，单值）撞形 ⇒ 改名消歧。
+   */
+  readonly sandboxCharacterIds: readonly string[];
   /** 已经是派生 id 的行（重跑时命中 ⇒ 幂等，不再改）。 */
   readonly alreadyDerivedIds: readonly string[];
   /** 重写前的 characters 行数（校验①的基线）。 */
@@ -239,7 +245,7 @@ export function planCharacterIdRewrite(
 
   const blockers: string[] = [];
   const planRows: RewritePlanRow[] = [];
-  const sandboxIds: string[] = [];
+  const sandboxCharacterIds: string[] = [];
   const alreadyDerivedIds: string[] = [];
   const existingIds = new Set<string>();
   for (const row of rows) existingIds.add(String(row.id));
@@ -255,7 +261,7 @@ export function planCharacterIdRewrite(
 
     // ① 默认沙盒行：id 一律不改（保持历史 id）。
     if (instanceId === DEFAULT_INSTANCE_ID) {
-      sandboxIds.push(id);
+      sandboxCharacterIds.push(id);
       continue;
     }
     if (options.instanceIds && !options.instanceIds.includes(instanceId)) {
@@ -289,7 +295,7 @@ export function planCharacterIdRewrite(
   return {
     rows: planRows,
     blockers,
-    sandboxIds,
+    sandboxCharacterIds,
     alreadyDerivedIds,
     characterCount: rows.length,
   };
@@ -470,15 +476,15 @@ export function validateCharacterIdRewrite(
   checks.push(participantCheck);
 
   // 附加：默认沙盒行 id 未被改动（设计硬规则：默认沙盒行 id 一律不改）。
-  if (context.plan && context.plan.sandboxIds.length > 0) {
-    const changed = context.plan.sandboxIds.filter((id) => !characterIds.has(id));
+  if (context.plan && context.plan.sandboxCharacterIds.length > 0) {
+    const changed = context.plan.sandboxCharacterIds.filter((id) => !characterIds.has(id));
     checks.push({
       id: 'sandbox-ids-unchanged',
       title: '默认沙盒行 id 一律不改',
       status: changed.length === 0 ? 'pass' : 'fail',
       detail:
         changed.length === 0
-          ? `${context.plan.sandboxIds.length} 个沙盒行 id 原样保留`
+          ? `${context.plan.sandboxCharacterIds.length} 个沙盒行 id 原样保留`
           : `${changed.length} 个沙盒行 id 不见了`,
       samples: changed.slice(0, 10),
     });

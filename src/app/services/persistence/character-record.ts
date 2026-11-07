@@ -90,6 +90,11 @@ export function recordToCharacterView(record: PersistedCharacterRecord): Charact
     // why 带上：副本维度的容量判定按「行带着归属」计账（落库层 capacity-limits.ts），
     //   视图不带归属 ⇒ 回写时行会落 NULL ⇒ 副本计数失准。
     ...(record.instanceId ? { instanceId: record.instanceId } : {}),
+    // 身份镜像（@since v3.3，task_225 / QA-05）：行上的 role_id ⇒ 视图上的 roleId。
+    // why 带上：「它是 roster 里哪个角色」只能由 role_id 回答（行 id 是派生值，
+    //   历史 id 里也可能有下划线 ⇒ 解析 id 字符串判身份是错的 —— design §1.3.2 N4b 规则①）。
+    //   缺省 / null = 未绑定到契约角色（老行、手建散兵）⇒ 字段缺省，不编造。
+    ...(record.roleId ? { roleId: record.roleId } : {}),
   };
 }
 
@@ -112,6 +117,9 @@ export function characterViewToRecord(character: CharacterView, createdAt: numbe
     // 归属（@since v3.3，task_205 / M2-08）：视图带归属 ⇒ 行带 instance_id
     //   （副本维度的容量计账靠它；缺省 = 未归属 ⇒ 不带这个键，行落 NULL）。
     ...(character.instanceId ? { instanceId: character.instanceId } : {}),
+    // ⚠️ **不带 roleId**（@since v3.3，task_225 / QA-05）：`role_id` 是**只读镜像**，
+    //   唯一写者是 roster 物化（roster-materializer.ts）⇒ 档案回写不碰它，
+    //   免得老渲染层的来件把归属抹成 NULL。
   };
 }
 

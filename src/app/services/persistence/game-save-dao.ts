@@ -104,6 +104,16 @@ export interface PersistedCharacterRecord {
    * 缺省 / null = 未归属（老行、用户手建的散兵 —— 与 core 的 CharacterView.instanceId 同款语义）。
    */
   readonly instanceId?: ProjectInstanceId | null;
+  /**
+   * 逻辑角色 id（`role_id` 列镜像；@since v3.3，task_225 / QA-05）。
+   *
+   * ★ **只读镜像**：本 DAO 的 upsert **不写**这一列 —— `role_id` 的唯一写者是
+   *   roster 物化（`roster-materializer.ts`，design §1.3.2 步 N4a：role_id = 角色行的
+   *   **权威归属声明**）。写侧留白 ⇒ 老渲染层回写档案时不会把归属抹成 NULL。
+   * 缺省 / null = **未回填 / 未绑定到契约角色**（老行、手建散兵 —— 与 core 的
+   *   `CharacterView.roleId` 同款语义）。
+   */
+  readonly roleId?: string | null;
 }
 
 /** unit_positions 表的一行：角色 → 战场世界坐标。 */
@@ -232,6 +242,10 @@ function ensureContextEnabledColumn(db: SqliteDatabaseLike): void {
  *   冲突时用 `COALESCE(excluded.instance_id, <原值>)` —— 来件**没带**归属就**不清**原值。
  *   why 不能直接覆盖成 NULL：老渲染层回写的档案不带归属（M2-01 的写侧欠账），
  *   直接覆盖会把 roster 物化时写好的副本归属**抹成 NULL** ⇒ 副本维度的容量计账失准。
+ *
+ * ★ `role_id` 列**不写**（@since v3.3，task_225 / QA-05）：本 DAO 的角色档案 upsert 不含该列
+ *   ⇒ 冲突更新也不会碰它 ⇒ roster 物化写好的身份归属不会被回写冲掉
+ *   （`role_id` 的唯一写者是 `roster-materializer.ts`）。
  */
 export function upsertCharacters(db: SqliteDatabaseLike, records: readonly PersistedCharacterRecord[]): void {
   const stmt = db.prepare(`
@@ -286,7 +300,7 @@ export function loadCharacters(
   const scope = instanceScopeWhere(options.instanceId);
   const rows = db
     .prepare(
-      `SELECT id, name, kind, persona, level, exp, appearance, body_type, skin_id, external_session_id, context_enabled, created_at, instance_id
+      `SELECT id, name, kind, persona, level, exp, appearance, body_type, skin_id, external_session_id, context_enabled, created_at, instance_id, role_id
               FROM ${CHARACTERS_TABLE} ${scope.sql} ORDER BY created_at ASC, id ASC`
     )
     .all(...scope.params) as Array<Record<string, unknown>>;
@@ -312,6 +326,10 @@ export function loadCharacters(
     ...(row.instance_id === null || row.instance_id === undefined
       ? {}
       : { instanceId: String(row.instance_id) }),
+    // 身份镜像（@since v3.3，task_225 / QA-05）：role_id 列 = 「它是 roster 里哪个角色」。
+    // why 缺省不写这个键：未回填的行**不带** roleId 键（与读出前的形状一致 ⇒ 往返保真）。
+    //   消费点拿它判身份，**不许**解析行 id 字符串（design §1.3.2 N4b 规则①）。
+    ...(row.role_id === null || row.role_id === undefined ? {} : { roleId: String(row.role_id) }),
   }));
 }
 

@@ -40,7 +40,7 @@
  *   ⇒ 本模块对沙盒**直接返回 skipped**，一个字节都不写。
  *
  * ============ 容量护栏（性能硬约束）============
- *   单副本的角色数不超过 `MAX_CHARACTERS`（core 契约上限）⇒ 物化**不撑爆**广播体积。
+ *   单副本的角色数不超过 `MAX_CHARACTERS_PER_INSTANCE`（core 契约上限，**每副本**口径）⇒ 物化**不撑爆**广播体积。
  *
  * 输入：better-sqlite3 兼容连接 + roster 角色定义清单（读盘半在 `project-context-loader.ts`）。
  * 输出：物化结果（建了哪些 / 刷了哪些 / 跳过的哪些）。
@@ -53,8 +53,8 @@
  * @since v3.3（task_202 / M2-05）。
  */
 
-import { MAX_CHARACTERS_TOTAL } from '../../../core/capacity';
-import { DEFAULT_INSTANCE_ID, MAX_CHARACTERS, type ProjectInstanceId } from '../../../core/types';
+import { MAX_CHARACTERS_PER_INSTANCE, MAX_CHARACTERS_TOTAL } from '../../../core/capacity';
+import { DEFAULT_INSTANCE_ID, type ProjectInstanceId } from '../../../core/types';
 import {
   readRosterRoleDefinitions,
   type RosterRoleDefinition,
@@ -262,8 +262,8 @@ export function materializeRosterCharacters(
 
     const now = options.now ?? Date.now();
     const existing = loadMaterializedRows(db, instanceId);
-    // 容量护栏：本副本的角色数不超过 MAX_CHARACTERS（core 契约上限）。
-    let budget = Math.max(0, MAX_CHARACTERS - countInstanceCharacters(db, instanceId));
+    // 容量护栏：本副本的角色数不超过 MAX_CHARACTERS_PER_INSTANCE（core 契约上限，**每副本**口径）。
+    let budget = Math.max(0, MAX_CHARACTERS_PER_INSTANCE - countInstanceCharacters(db, instanceId));
     // 全局护栏（@since v3.3，task_205 / M2-08）：`characters` 表**跨副本**累积 ——
     //   副本一多，每副本 64 条会叠成无界的行数（落库表整体驻留内存）。
     //   ⇒ 全库再钉一条 MAX_CHARACTERS_TOTAL；满了就**拒新**（不物化），已有行一概不动。
@@ -289,7 +289,7 @@ export function materializeRosterCharacters(
       }
       if (budget <= 0) {
         logger(
-          `[RosterMaterializer] 副本 ${instanceId} 的角色数已达上限（${MAX_CHARACTERS}）⇒ 余下的 roster 角色本轮不物化`
+          `[RosterMaterializer] 副本 ${instanceId} 的角色数已达上限（${MAX_CHARACTERS_PER_INSTANCE}）⇒ 余下的 roster 角色本轮不物化`
         );
         break;
       }

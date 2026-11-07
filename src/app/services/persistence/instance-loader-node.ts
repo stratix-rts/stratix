@@ -34,10 +34,10 @@
 
 import { existsSync } from 'fs';
 
+import { MAX_CHARACTERS_PER_INSTANCE } from '../../../core/capacity';
 import { toCharacterUnit } from '../../../core/character';
 import type { EntitySnapshot } from '../../../core/store';
 import {
-  MAX_CHARACTERS,
   MAX_SESSIONS,
   MAX_TASKS,
   type CharacterTask,
@@ -169,7 +169,8 @@ export function createSqliteInstanceDataSource(
 
     const characters: CharacterView[] = [];
     for (const record of loadCharacters(db, { instanceId })) {
-      if (characters.length >= MAX_CHARACTERS) break;
+      // 上限 = **每副本**口径（本 loader 只读该副本的行）。
+      if (characters.length >= MAX_CHARACTERS_PER_INSTANCE) break;
       const view = recordToCharacterView(record);
       // 脏行（id / name 为空）跳过 —— 与 buildRestoreInjection 同一口径（不编造档案）。
       if (view) characters.push(view);

@@ -16,7 +16,7 @@
  *
  * 输入：库目录 --data-dir（默认 stratix-data）+ 库文件名 --filename（默认 stratix.db，不含 .sqlite 后缀）
  *   + --strict（告警项也判失败）+ --report（**读入**迁移报告 n4b-report.json 作基线，
- *   取其中的 characterCountBefore 与 sandboxIds；不给基线时行数基线无从比对）。
+ *   取其中的 characterCountBefore 与 sandboxCharacterIds；不给基线时行数基线无从比对）。
  *   库文件口径 = <dataDir>/<filename>.sqlite。
  * 输出：stdout 的四条校验结果（每条带 ✓/✗/! 标记 + 明细 + 样本）与「校验结果：通过 / 不通过」结论；
  *   本脚本**只判定不改数据**（校验层关库时跳过落盘，不写库、不写文件，--report 只是读基线不是产物路径）。

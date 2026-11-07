@@ -86,7 +86,7 @@ describe('N4b 一次性 character id 重写（M2-04）', () => {
     const plan = planCharacterIdRewrite(db);
     expect(plan.blockers).toEqual([]);
     // 默认沙盒两行（instance_id = NULL 与显式沙盒值）都不在计划里。
-    expect(plan.sandboxIds).toEqual(
+    expect(plan.sandboxCharacterIds).toEqual(
       expect.arrayContaining([SANDBOX_CHARACTER_ID, SANDBOX_CHARACTER_ID_2])
     );
     expect(plan.rows.map((row) => row.oldId)).toEqual(

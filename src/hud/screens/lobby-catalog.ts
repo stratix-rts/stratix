@@ -76,7 +76,15 @@ export const LOBBY_NEVER_ENTERED = '从未进入';
 // 渲染用模型
 // ============================================================================
 
-/** 副本的**实例级**状态（design §7.1 M1-14 行：active / idle / missing）。 */
+/**
+ * 副本的**实例级**状态（design §7.1 M1-14 行：active / idle / missing）。
+ *
+ * ★ 与 core 契约 `ProjectStatus` **同义**（@since v3.3，task_225 / QA-05 —— N2 口径统一）：
+ *   `'active'` = **它正是 `activeInstanceId`**（= design §2.4 的「status = idle，除非它正是
+ *   activeInstanceId ⇒ active」）；不是「有没有在办的事」。
+ *   本类型比 `ProjectStatus` 少两个值（archived / missing 之外）：卡片层只展示
+ *   「当前副本 / 闲置 / 路径丢失」三态 —— 归档的副本压根不进卡片列表。
+ */
 export type LobbyCardStatus = 'active' | 'idle' | 'missing';
 
 /** 状态 → 中文标签。 */

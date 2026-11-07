@@ -285,3 +285,47 @@ Time:        33.886 s
 | B 类 105 条 | legacy 包（99）与 `export default`（37）的导出，随包退役一并处理 | 随退役 |
 | C 类 728 条 | 「仅内部使用」的 `export` 关键字多余 —— 可选清理 | 低优先 |
 | N1–N7 | 命名一致性 7 条实质问题 + 6 条待确认 | 见 §3.3 的拍板人 |
+
+---
+
+## 6. 拍板执行记录（2026-11-07 · task_225 / QA-05）
+
+> **拍板原文（用户 2026-11-07 10:56）**：「文档和代码冲突的以文档为准，其他你自行判断即可，你的建议没问题。」
+> 本节是 §3 的 **N1–N7** 七条命名问题的落地记录：逐条处置 + 账本登记 + 验证。
+> ★ **冻结文档（`docs/DESIGN-*.md`）零改动** —— 文档侧的自相矛盾只**登记**、不替文档 owner 改文档。
+
+### 6.1 逐条处置
+
+| # | 拍板 | 落地动作 | 落点 |
+|---|------|---------|------|
+| **N1** | **修**（契约缺口） | ① `CharacterView` 增 `readonly roleId?: string \| null`（可选增补 ⇒ 不破既有构造点）；② `instanceId` 的注释里「**行 id** 才是…」改正为「**`roleId`**（= `role_id` 列）才是…」并补「禁止解析 id 字符串判身份」；③ **生产侧填充**：DAO 读口 `SELECT … role_id` ⇒ `PersistedCharacterRecord.roleId` ⇒ `recordToCharacterView` 填进视图；④ 补测试（5 条） | `src/core/types.ts`（CharacterView）<br>`src/app/services/persistence/game-save-dao.ts`（读口 + 记录类型）<br>`src/app/services/persistence/character-record.ts`（翻译层）<br>`src/app/__tests__/persistence/character-view-role-id.test.ts`（新增） |
+| **N2** | 文档为准 → **§2.4 语义胜出** | `ProjectStatus` 契约注释改为 §2.4 语义（`'active'` = **它正是 `activeInstanceId`**；`'idle'` = 副本存在但不是当前活跃副本），**旧注释「active = 有未终结的编组任务」删除**。代码侧本就与 §2.4 一致（大厅卡片按 `activeInstanceId` 判 active / idle；默认沙盒恒写 `'idle'`）⇒ **只改注释，零行为变更**；顺带给 HUD 的 `LobbyCardStatus` 补一句「与契约同义」的口径指针（那一词两义的疑点本就在这两处之间） | `src/core/types.ts`（`ProjectStatus`）<br>`src/hud/screens/lobby-catalog.ts`（`LobbyCardStatus` 口径指针）<br>矛盾登记见 §6.2 的 **D-1** |
+| **N3** | 文档为准 → **N4b 规则①胜出** | **代码现状不动、零数据迁移**：角色行 id 仍是 `<roleId>_<instanceId>`，身份判定仍**只看 `role_id` 列**（`planCharacterIdRewrite` 已是这个口径）。附录 A / D9 的互斥表述**只登记**，等文档 owner 统一 | 无代码改动<br>矛盾登记见 §6.2 的 **D-2** |
+| **N4** | 低风险改名（建议已批） | ① `MAX_CHARACTERS` 补**口径注释**（= **每 instance** 上限 64；跨副本总量是另一条线 `MAX_CHARACTERS_TOTAL`）；② **副本口径调用点**改用别名 `MAX_CHARACTERS_PER_INSTANCE`（core manager 建档守门 / MCP 工具快筛 / roster 物化护栏 / instance 加载 四处）；③ MCP-SPEC 三处引用加**口径说明**（注释级澄清，未新增版本行 —— §5.5 只记**工具面变更**） | `src/core/types.ts`、`src/core/capacity.ts`<br>`src/core/character/manager.ts`<br>`src/stratix-gateway/mcp/tools/character.ts`<br>`src/app/services/persistence/{roster-materializer,instance-loader-node}.ts`<br>`docs/MCP-SPEC.md`（:179 / :980 / :1125） |
+| **N5** | 低风险改名（建议已批） | `RewritePlan.sandboxIds` → **`sandboxCharacterIds`**（含**迁移脚本输出字段**同步改：报告 JSON 的 `sandboxIds` → `sandboxCharacterIds`，独立校验脚本读基线同步改） | `src/app/services/persistence/character-id-rewrite.ts`<br>`src/app/services/persistence/n4b-migration.ts`<br>`scripts/verify-n4b-character-ids.ts`<br>`src/app/__tests__/persistence/character-id-rewrite-n4b.test.ts` |
+| **N6** | 等退役 | **账本登记**，不改代码（见 §6.2 的 **D-3**） | — |
+| **N7** | 记账 | **账本登记**，不改代码（见 §6.2 的 **D-4**） | — |
+
+### 6.2 账本登记（不改代码 / 不改冻结文档，等 owner 处理）
+
+| 编号 | 事项 | 性质 | 现状与处置口径 |
+|------|------|------|-------------|
+| **D-1** | **N2 的文档矛盾**：`docs/DESIGN-project-map.md` §1.2.1 说「`'active'` = 有未终结的编组任务」，§2.4 说「`status` = idle（除非它正是 `activeInstanceId` ⇒ active）」—— **同一份冻结文档内部互斥** | 冻结文档只读 ⇒ **本单不改文档**；按 §2.4 落地（更具体、且与代码现状一致） | 待**文档 owner + 架构**统一 §1.2.1 的措辞（建议把 §1.2.1 的 `ProjectStatus` 注释改成 §2.4 口径）。本单已把 core 契约注释指向 §2.4 并注明出处 |
+| **D-2** | **N3 的文档矛盾**：附录 A（`:1521` 附近）与 D9（`:30`）写 `chr_<instanceId>_<roleId>`，而 §1.3.2 N4b **规则①**（`:488` 附近）写 `<roleId>_<instanceId>` —— **顺序相反、前缀不同** | 冻结文档只读 ⇒ **本单不改文档、不做数据迁移**；代码跟**规则①**（它是 N4b 执行的专项冻结规则，更具体；且已落库） | 待 **task_160 文档作者**统一附录 A / D9 的表述。⚠️ 在文档统一之前**不得**按附录 A / D9 改 id 格式（那是数据迁移级动作） |
+| **D-3** | **N6**：`src/electron/preload.ts` 同一个 public API 文件里 `instanceId` 指两件事 —— `provider.create(instanceId, …)` = **LLM provider 实例**；`loadSessionExternalRef(characterId, instanceId)` = **项目副本**（附录 A 规定 `instanceId` ⇒ 物理副本，全仓唯一含义） | public API（渲染进程可见）+ 属**遗留 agent-platform**（在退役路径上） | **不改**：改名会破 renderer 侧契约；随该模块退役一并消失最省事。待**退役时间表 owner** 排期 |
+| **D-4** | **N7**：默认沙盒的**逻辑项目 id** = `'spx_sandbox'`（`DEFAULT_SANDBOX_PROJECT_ID`），不是「`spx_` + 22 位 base62」那种生成式 id（附录 A 词表） | 目前只在**内存注册表**用一处，**无落库、无外部消费** ⇒ 现状无实际冲突 | **不改**：若将来沙盒条目要落 `workspaces.json`，须改成按 base62 生成的真 id，或在附录 A 词表里把沙盒**列为例外**。待 **task_159 契约作者**确认 |
+
+### 6.3 口径附注（改名前先说清「谁该用哪个」）
+
+- **N4 的两处「故意不改」**（改了就是误标口径）：
+  - `src/core/store.ts` 的 `replaceEntities` —— 那条 `MAX_CHARACTERS` 是**广播体积**口径的截断
+    （WorldState 全量广播必须有数），不是副本名册口径；
+  - `src/app/services/persistence/character-record.ts` 的 `buildRestoreInjection` —— 它消费的快照
+    **可能跨副本**（`loadGameSnapshot(db)` 不带 instanceId ⇒ 全库行）⇒ 那是**全局**口径。
+- **N5 的改名理由**：`sandboxIds` 里的每个值是「默认沙盒里那些**角色行**的 id」，
+  与「沙盒**实例** id」（`DEFAULT_INSTANCE_ID = 'wsp_sandbox'`，**单值**）撞形 ⇒ 改名消歧。
+  报告 JSON 的字段名同步改 ⇒ **旧报告文件不再被读作基线**（重跑一次迁移即重新生成）。
+
+### 6.4 验证（原样贴出）
+
+见本单的任务回执（`npx tsc --noEmit` + 全仓 `npx jest --maxWorkers=2` 的原样输出）。

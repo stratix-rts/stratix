@@ -21,7 +21,8 @@
  *   1. 在这里写判定 / 归档逻辑 —— 本模块只有**数值**；判定与滚动归档在
  *      `app/services/persistence/capacity-limits.ts` 与 `session-event-archive.ts`；
  *   2. 抄第二份「每 instance 角色上限」—— 那条上限的既有定义在 core/types.ts 的 `MAX_CHARACTERS`
- *      （core manager / MCP 工具 / roster 物化三处共用），本模块只**转出别名**，单一事实源不许分叉；
+ *      （core manager / MCP 工具 / roster 物化 / instance 加载四处**按副本口径**共用本模块转出的别名），
+ *      本模块只**转出别名**，单一事实源不许分叉；
  *   3. import 存储 / IO / DOM —— 常量模块是依赖图的叶子（谁都能引，谁都不许它引）。
  *
  * @since v3.3（task_205 / M2-08）。
@@ -33,8 +34,14 @@ import { MAX_CHARACTERS } from './types';
  * 每 instance 的角色上限（= 现状值 64）。
  *
  * why 是别名而不是新数字：`MAX_CHARACTERS`（core/types.ts）是**既有**的 roster 上限 ——
- *   core manager 建档守门、MCP 工具快筛、roster 物化护栏三处都在用它；
+ *   core manager 建档守门、MCP 工具快筛、roster 物化护栏、instance 加载四处**按副本口径**用它；
  *   容量层只是把同一条上限**按副本口径**再命名一次（便于读代码时一眼看出「这是每副本的那条」）。
+ *
+ * ★ 谁该用哪个（@since v3.3，task_225 / QA-05）：
+ *   - **每副本**口径的判定点（名册上限按副本计）⇒ 用本别名；
+ *   - **全局/广播体积**口径的截断点（`core/store.ts` 的 `replaceEntities`、
+ *     `app/services/persistence/character-record.ts` 的 `buildRestoreInjection` ——
+ *     后者的快照可能跨副本）⇒ 用 `MAX_CHARACTERS` 原名，别误标成「每副本」。
  */
 export const MAX_CHARACTERS_PER_INSTANCE = MAX_CHARACTERS;
 

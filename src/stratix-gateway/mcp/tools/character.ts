@@ -15,12 +15,12 @@
  *      MCP 侧再自设一层更紧的上限，见 MAX_PERSONA_LEN）。
  */
 
+import { MAX_CHARACTERS_PER_INSTANCE } from '../../../core/capacity';
 import { findCharacterDeleteBlock } from '../../../core/character/delete-guard';
 import { hasDuplicateCharacterName } from '../../../core/character/profile';
 import { SKINS } from '../../../core/theme/skin-registry';
 import {
   AGENT_KINDS,
-  MAX_CHARACTERS,
   MAX_CHARACTER_NAME_LEN,
   type CharacterView,
   type WorldState,
@@ -131,8 +131,9 @@ export const characterCreateTool: ToolSpec = {
         hint: '换一个名字（重名按大小写不敏感判定），或用 stratix_registry 看现有名册',
       });
     }
-    if (state.characters.length >= MAX_CHARACTERS) {
-      throw new McpToolError('invalid_arguments', `名册已满（上限 ${MAX_CHARACTERS} 位角色）`, {
+    // 名册上限 = **每副本**口径（当前副本的名册；跨副本的总量上限另在落库层）。
+    if (state.characters.length >= MAX_CHARACTERS_PER_INSTANCE) {
+      throw new McpToolError('invalid_arguments', `名册已满（上限 ${MAX_CHARACTERS_PER_INSTANCE} 位角色）`, {
         hint: '先在界面里移除不需要的角色，再建新的',
       });
     }
@@ -205,7 +206,7 @@ function toCharacterPayload(character: CharacterView): Record<string, unknown> {
  * `stratix_character_delete` —— **名册清理**（`character_create` 的逆向工具）。
  *
  * why 需要它：试错 / 评估型 agent 建了一堆角色就再也删不掉（复测留下的废角色会永久占着名册，
- *   顶到 MAX_CHARACTERS 就连正常建档都建不出来）—— 名册只进不出是一处结构性缺口。
+ *   顶到 MAX_CHARACTERS_PER_INSTANCE（每副本 64）就连正常建档都建不出来）—— 名册只进不出是一处结构性缺口。
  *
  * 输入：character_id（必填）。
  * 输出：删除回执 —— 删掉的角色 id / 名字 + 一并撤下的战场单位 id + 下一步指引。

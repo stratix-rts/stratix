@@ -711,6 +711,12 @@ export const MAX_EXTERNAL_SESSION_ID_LEN = 200;
  * why 必须有界：characters 随 WorldState **全量**广播，每次广播都带着整份档案；
  * 不设上限则角色数无界增长、广播体积无界增长（perf 硬约束：数据不许无限增长）。
  * 超限时**拒绝新建并回 Notice**，绝不静默挤掉已有角色（角色是用户亲手建的，丢掉即数据丢失）。
+ *
+ * ★ **口径 = 每 instance（每个副本）**：64 是**单个副本**的名册上限（design §1.4 M2 行）。
+ *   跨副本的落库总量另有一条线（`MAX_CHARACTERS_TOTAL`，见 `core/capacity.ts`）——
+ *   这是**两条不同的线**，别把 64 当成全库上限。
+ *   按副本口径使用本常量的调用点请用别名 `MAX_CHARACTERS_PER_INSTANCE`（core/capacity.ts 转出的同值别名，
+ *   读代码时一眼看出「这是每副本的那条」）。
  */
 export const MAX_CHARACTERS = 64;
 
@@ -903,11 +909,23 @@ export interface CharacterView {
    * @since v3.3（task_175 / M1-01）所属项目实例 id。
    * ★ **null 语义写死**：缺省 / null = **未归属**（老角色、或用户手建的散兵）。
    *   默认沙盒有真实 id（`DEFAULT_INSTANCE_ID = 'wsp_sandbox'`），不用 null 表示。
-   * 本字段是**冗余但权威**的归属声明：行 id 才是「它是 roster 里哪个角色」——
-   *   只有行 id ⇒ 不知道这个角色住在哪个副本；只有 instanceId ⇒ 不知道它是谁。
+   * 本字段是**冗余但权威**的归属声明：`roleId`（= 库的 `role_id` 列）才是「它是 roster 里哪个角色」——
+   *   只有 roleId ⇒ 不知道这个角色住在哪个副本；只有 instanceId ⇒ 不知道它是谁。
+   *   ⚠️ **禁止解析 id 字符串判身份**（design §1.3.2 N4b 规则①）：行 id 只是**派生结果**
+   *   （`<roleId>_<instanceId>`），历史 id 里也可能有下划线 ⇒ 解析必错。
    * 走可选增补：契约增补不许破既有 CharacterView 构造点的编译。
    */
   readonly instanceId?: ProjectInstanceId | null;
+  /**
+   * @since v3.3（task_225 / QA-05）对应的**逻辑角色 id**
+   *   （= `.stratix/roster/<role-id>.json` 的 id = `characters.role_id` 列）。
+   * 缺省 / null = **未绑定到契约角色**（老角色、或用户手建的散兵 —— 与 `role_id IS NULL` 同义）。
+   * why 要它：`id` 是**行 id**（落库主键；N4b 之后 = `<roleId>_<instanceId>` 的派生值），
+   *   它**不回答**「它是 roster 里哪个角色」⇒ 消费点一律读本字段，
+   *   **不许解析 id 字符串**（design §1.3.2 N4b 规则①）。
+   * 走可选增补：契约增补不许破既有 CharacterView 构造点的编译。
+   */
+  readonly roleId?: string | null;
 }
 
 // ============================================================================
@@ -1180,12 +1198,20 @@ export type ProjectId = string;
 
 /**
  * @since v3.3（task_175 / M1-01）项目状态（**实例级**运行层投影）。
- *   - 'active'   有未终结的编组任务（地图上有活儿）；
- *   - 'idle'     副本存在但没有在办的事；
+ *   - 'active'   该副本**正是当前活跃副本**（= `WorldState.activeInstanceId` 指向它）；
+ *   - 'idle'     副本存在，但不是当前活跃副本（默认沙盒没被激活时也是 idle）；
  *   - 'archived' 用户归档（大厅里收起，默认不展示）；
  *   - 'missing'  目录不存在（被移动/重命名）—— 不自动删，给「路径已移动」的修复入口。
  * why 落在实例级不在 project 级：「目录不存在」是**物理副本**的属性，而逻辑 project
  *   （随 git 传播的契约）没有目录 ⇒ 对它说 missing 无意义。
+ *
+ * ★ 口径来源（@since v3.3，task_225 / QA-05 —— 用户 2026-11-07 拍板「文档与代码冲突以文档为准」）：
+ *   'active' / 'idle' 的判据 = **「它是不是 `activeInstanceId`」**（design §2.4：
+ *   「`status` = idle（除非它正是 `activeInstanceId` ⇒ active）」）。
+ *   ⇒ 旧的「active = 有未终结的编组任务」那条说法**已作废**（design §1.2.1 的同段文字与之互斥，
+ *   冻结文档只读 ⇒ 矛盾登记在 `docs/CODE-REVIEW-TRIAGE-QA03.md` §6 的账本里，等文档 owner 统一）。
+ *   代码侧现状与 §2.4 一致：hud 的大厅卡片按 `activeInstanceId` 判 active / idle
+ *   （`src/hud/screens/lobby-catalog.ts`），默认沙盒恒写 'idle'（`app/services/persistence/default-sandbox.ts`）。
  */
 export type ProjectStatus = 'active' | 'idle' | 'archived' | 'missing';
 

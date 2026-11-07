@@ -194,7 +194,7 @@ export async function runN4bMigration(options: N4bMigrationOptions): Promise<N4b
 
       const plan = planCharacterIdRewrite(db, rewriteOptions);
       log(
-        `      · 计划：重写 ${plan.rows.length} 行；默认沙盒 ${plan.sandboxIds.length} 行（id 一律不改）；已是派生 id ${plan.alreadyDerivedIds.length} 行`
+        `      · 计划：重写 ${plan.rows.length} 行；默认沙盒 ${plan.sandboxCharacterIds.length} 行（id 一律不改）；已是派生 id ${plan.alreadyDerivedIds.length} 行`
       );
       for (const row of plan.rows) {
         log(`        · ${row.oldId} → ${row.newId}（role_id=${row.roleId}，副本 ${row.instanceId}）`);
@@ -463,15 +463,15 @@ export async function runN4bVerification(
   await db.initialize();
   db.setAutoSaveEnabled(false);
   try {
-    let baseline: { characterCount?: number; sandboxIds?: string[] } = {};
+    let baseline: { characterCount?: number; sandboxCharacterIds?: string[] } = {};
     if (options.reportPath && fs.existsSync(options.reportPath)) {
       const raw = JSON.parse(fs.readFileSync(options.reportPath, 'utf8')) as {
         characterCountBefore?: number;
-        sandboxIds?: string[];
+        sandboxCharacterIds?: string[];
       };
       baseline = {
         characterCount: raw.characterCountBefore ?? undefined,
-        sandboxIds: raw.sandboxIds ?? [],
+        sandboxCharacterIds: raw.sandboxCharacterIds ?? [],
       };
       log(`已读入迁移报告基线：${options.reportPath}`);
     }
@@ -480,7 +480,7 @@ export async function runN4bVerification(
       plan: {
         rows: [],
         blockers: [],
-        sandboxIds: baseline.sandboxIds ?? [],
+        sandboxCharacterIds: baseline.sandboxCharacterIds ?? [],
         alreadyDerivedIds: [],
         characterCount: baseline.characterCount ?? 0,
       },
@@ -637,7 +637,7 @@ function writeReport(
         applied: payload.applied,
         error: payload.error ?? null,
         characterCountBefore: payload.plan?.characterCount ?? null,
-        sandboxIds: payload.plan?.sandboxIds ?? [],
+        sandboxCharacterIds: payload.plan?.sandboxCharacterIds ?? [],
         rows: payload.plan?.rows ?? [],
         checks: payload.report?.checks ?? [],
       },

@@ -34,9 +34,9 @@
  *   「战场上的组织单位是 Agent 单位」（D5 组织模型），角色建档即入战场。
  */
 
+import { MAX_CHARACTERS_PER_INSTANCE } from '../capacity';
 import { worldStore, type CoreStore } from '../store';
 import {
-  MAX_CHARACTERS,
   NOTICE_TTL_MS,
   type AgentKind,
   type AgentProfile,
@@ -65,7 +65,7 @@ export type CharacterRejectionCode = 'not-found' | GrowthErrorCode | PersonaErro
  * 建档被拒的机器可读原因（@since v3.7）。
  * - ProfileErrorCode：单个档案本身不合法（名字 / agent 种类 / 皮肤 / 人设），来自 profile.ts；
  * - duplicate-name：状态里已有同名角色（**要看状态，故判在 manager**，不在纯函数里）；
- * - limit-exceeded：角色数已达上限（MAX_CHARACTERS）—— 拒绝新建，绝不静默挤掉已有角色。
+ * - limit-exceeded：角色数已达上限（MAX_CHARACTERS_PER_INSTANCE = 每副本 64）—— 拒绝新建，绝不静默挤掉已有角色。
  */
 export type CharacterCreateRejectionCode = ProfileErrorCode | 'duplicate-name' | 'limit-exceeded';
 
@@ -187,7 +187,10 @@ export type CharacterNameResult =
 export interface CharacterManagerOptions {
   /** 状态持有者；默认 worldStore 单例。单测用 createStore() 隔离。 */
   readonly store?: CoreStore;
-  /** 角色档案条数上限；默认契约常量 MAX_CHARACTERS（perf：characters 全量广播，必须有界）。 */
+  /**
+   * 角色档案条数上限；默认契约常量 `MAX_CHARACTERS_PER_INSTANCE`（= `MAX_CHARACTERS`，
+   * **每副本**口径 —— 名册是当前副本的名册；perf：characters 全量广播，必须有界）。
+   */
   readonly maxCharacters?: number;
   /** 角色 id 生成器；默认按 `character_<时间戳>_<序号>` 生成（与 mission 域同一形状）。 */
   readonly createId?: (prefix: string) => string;
@@ -324,7 +327,7 @@ function createRejectionLabel(code: CharacterCreateRejectionCode, maxCharacters:
 
 export function createCharacterManager(options: CharacterManagerOptions = {}): CharacterManager {
   const store = options.store ?? worldStore;
-  const maxCharacters = options.maxCharacters ?? MAX_CHARACTERS;
+  const maxCharacters = options.maxCharacters ?? MAX_CHARACTERS_PER_INSTANCE;
   let seq = 0;
   // id 生成器与 mission 域同一形状（时间戳 + 序号）：同一毫秒内连建两个角色也不会撞号。
   const createId = options.createId ?? ((prefix: string): string => `${prefix}_${Date.now()}_${++seq}`);

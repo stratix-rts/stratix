@@ -176,7 +176,7 @@ Stratix 是本地 agent 团队指挥台：角色绑定 CLI agent（Claude Code /
 
 **规则**：① **默认摘要，展开按需** —— 任何可能很大的字段（任务输出全文、任务指令全文、角色人设、聊天历史）默认只回摘要，全文用显式参数按需展开；② **列表默认有界** —— 任何列表返回带截断标记（`truncated` + `returned` / `total`）；③ **不回内部噪声** —— 不返回数据库主键、内部序号、渲染用 id、协议行（如 `PLAN_WAIT` 标记）；④ **默认响应体量目标**：单工具默认响应 ≤ **约 800 token**；⑤ **不重复上下文里已有的东西** —— 快照类工具不重复回灌模型刚拿到的回执。
 
-**正例**：`stratix_task_status` 默认返回**摘要**输出 —— Stratix 本身就这样设计：`CharacterTask.output` 在 core 里**只存摘要**（上限 `MAX_TASK_SUMMARY_LEN = 2000`，`src/core/types.ts` 第 82 行），全文落 SQLite 的 `tasks` 表（第 351 行注）；MCP 沿用这个分寸，`include_output=true` 才去取全文。`stratix_world_snapshot` 同理：`missions` 上限 100（`MAX_MISSIONS`）、`tasks` 上限 100（`MAX_TASKS`）、`characters` 上限 64（`MAX_CHARACTERS`），一次全量回灌必然撑爆上下文，故默认按 `filters` 切片 + `limit` 收口。
+**正例**：`stratix_task_status` 默认返回**摘要**输出 —— Stratix 本身就这样设计：`CharacterTask.output` 在 core 里**只存摘要**（上限 `MAX_TASK_SUMMARY_LEN = 2000`，`src/core/types.ts` 第 82 行），全文落 SQLite 的 `tasks` 表（第 351 行注）；MCP 沿用这个分寸，`include_output=true` 才去取全文。`stratix_world_snapshot` 同理：`missions` 上限 100（`MAX_MISSIONS`）、`tasks` 上限 100（`MAX_TASKS`）、`characters` 上限 64（`MAX_CHARACTERS` —— **每副本**口径：单副本的名册上限；跨副本的落库总量上限是另一条线，落库层的 `MAX_CHARACTERS_TOTAL`），一次全量回灌必然撑爆上下文，故默认按 `filters` 切片 + `limit` 收口。
 
 **反例**：`{ "ok": true, "data": { "characters": [/* 64 个角色，含完整人设 */], "tasks": [/* 100 条任务，含每条完整输出全文 */], "missions": [/* 100 条，含指派名单 */], "notices": [/* 50 条 */] } }` —— 这是把 `WorldState` 整个 JSON 化发给模型：几万 token，且九成内容与当前决策无关。模型真正需要的通常只是"现在谁在忙、有什么在办"。
 
@@ -977,7 +977,7 @@ why 拆成两个动作：**撤任务不等于撤活儿** —— 已开工的任�
 
 **准入判定只有一份**：重名与名册上限的**权威裁决**在 core 的 `createCharacter`（同一次 `setState` 内判，防并发抢名）；工具只在发命令**前**做一次快筛（口径直接复用 core 的 `hasDuplicateCharacterName`），好让调用方立刻拿到可读的拒绝理由，而不是"建了但没建成"。
 
-**错误码不新增**：名册已满（`MAX_CHARACTERS = 64`）没有对应的专用错误码（附录 A 只有 `mission_capacity_exceeded` / `task_capacity_exceeded`），故按附录 A 的"不新增码"纪律复用 `invalid_arguments`，并在 `hint` 里说清下一步（先移除不需要的角色再试）—— 复用码的代价是这一档不叫"容量已满"，靠 message / hint 把它说清楚。
+**错误码不新增**：名册已满（`MAX_CHARACTERS = 64` —— **每副本**口径，即当前副本的名册上限；跨副本的落库总量上限另在落库层 `MAX_CHARACTERS_TOTAL`）没有对应的专用错误码（附录 A 只有 `mission_capacity_exceeded` / `task_capacity_exceeded`），故按附录 A 的"不新增码"纪律复用 `invalid_arguments`，并在 `hint` 里说清下一步（先移除不需要的角色再试）—— 复用码的代价是这一档不叫"容量已满"，靠 message / hint 把它说清楚。
 
 **持久化边界**：角色档案的落库由 core 的存档协调器（`app/services/persistence/game-save-coordinator.ts`）按名册 diff 写回 SQLite —— 那条链路挂在**渲染进程**一侧。纯 headless 的 gateway 进程里，MCP 建的角色只存在于内存世界态（进程重启即失），这是 §0.5 拓扑的既有分界，**不是**本工具引入的偏差。
 
@@ -1122,7 +1122,7 @@ why 拆成两个动作：**撤任务不等于撤活儿** —— 已开工的任�
 | **编组任务只有 `running` 才能被回报完成** | `core/mission/machine.ts` 的 `complete` 分支（仅认 `running`） | 不存在"直接置完成"的 MCP 工具；完成只能由 `running → done` 到达 |
 | 终态不改写历史 | 两个 machine 的终态守卫 | 重复取消 / 重复回报一律拒绝；终态任务不接受检查点记账 → `mission_terminal` |
 | 失败不自动重试 | `core/task/machine.ts`（无 retry 动作） | 重派 = 新的一次 `stratix_task_assign` |
-| 队列/历史上限 | `MAX_TASKS=100` / `MAX_MISSIONS=100` / `MAX_CHARACTERS=64` | 满则拒绝并回 `*_capacity_exceeded`，绝不静默挤掉在办条目（角色名册满 → `invalid_arguments` + hint 先移除不需要的角色，§2.16） |
+| 队列/历史上限 | `MAX_TASKS=100` / `MAX_MISSIONS=100` / `MAX_CHARACTERS=64`（**每副本**口径 = 单副本名册上限；跨副本总量上限另在落库层 `MAX_CHARACTERS_TOTAL`） | 满则拒绝并回 `*_capacity_exceeded`，绝不静默挤掉在办条目（角色名册满 → `invalid_arguments` + hint 先移除不需要的角色，§2.16） |
 
 **"非 running 不能被回报完成"要特别说清**：第一期**不提供**任何"把 mission 置为完成"的工具。编组任务的收尾只有一条路径 —— 挂在它下面的角色任务到达终态，由 app 层 `task-service` 的终态回报链（`task_076` 引入的 `missionId` 关联）驱动 `completeMission` / `cancelMission`。MCP 想让一条 mission 收尾，正确做法是派一条带 `mission_id` 的任务，而不是找一个"直接完成"的工具 —— 后者若存在，就等于给 MCP 开了一条绕过状态机的后门。
 
