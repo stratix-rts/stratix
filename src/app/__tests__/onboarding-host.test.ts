@@ -1,6 +1,8 @@
 /**
  * 集成测试：首启向导覆盖层的挂载管理（app/main/onboarding-host.ts）。
- * 覆盖：该挂才挂、只挂一次、完成 / 跳过后收起且不再弹、dispose 收干净。
+ * 覆盖：该挂才挂、只挂一次、完成 / 跳过后收起且不再弹、dispose 收干净，
+ *   以及 @since v3.3（task_226）：force 路径**无条件挂**（入口不再替扫描结果做裁决）、
+ *   非 force 路径（首启判定）行为不变。
  * @jest-environment jsdom
  *
  * 边界说明：宿主只做"挂不挂 / 什么时候收"—— 屏内四步由 hud/screens/onboarding-screen.ts 负责，
@@ -182,6 +184,9 @@ describe('首启向导覆盖层', () => {
   /**
    * 主动建档（@since v3.10，task_154）：顶栏「+ 角色」/ 空态 CTA / ⌘K 都要能**再次**拉起向导 ——
    * 哪怕已经建过角色（建第 2 个角色同样要向导），否则一级入口就成了死路。
+   *
+   * @since v3.3（task_226，设计文档 §3.A）：force 路径改为**无条件挂** ——
+   *   不再要求「探到可建档的 agent」（扫描竞态的温床）；扫描态交给向导的扫描步自己呈现。
    */
   describe('主动建档：reopen({ force: true })', () => {
     test('已经有角色 + 探到可建档的 agent → 仍挂上向导（不守首启门槛）', () => {
@@ -211,23 +216,80 @@ describe('首启向导覆盖层', () => {
       expect(h.screen()).not.toBeNull();
     });
 
-    test('没探到可建档的 agent → 不挂（挂了也是走不通的死路，由调用方兜底）', () => {
+    test('没探到可建档的 agent → 仍挂上向导（@since v3.3，task_226：入口无条件挂）', () => {
       const h = setup();
       h.controller.evaluate(stateWith({ detectedAgents: [] }));
 
       h.controller.reopen({ force: true });
 
-      expect(h.screen()).toBeNull();
-      expect(h.controller.mounted).toBe(false);
+      // why 挂上：扫描竞态 —— 检测逐条广播，点按钮瞬间可能一个结果都还没到。
+      //   「能不能建」由向导的扫描步自己呈现（正在等扫描结果… / 0 结果空态），入口不再替它裁决。
+      expect(h.screen()).not.toBeNull();
+      expect(h.controller.mounted).toBe(true);
     });
 
-    test('探到的 agent 不可建档（T2/T3 只探测）→ 不挂', () => {
+    test('探到的 agent 不可建档（T2/T3 只探测）→ 仍挂上向导（同样口径）', () => {
       const h = setup();
       h.controller.evaluate(
         stateWith({ detectedAgents: [detected({ kind: 'gemini', tier: 'T2', installed: true, status: 'installed' })] })
       );
 
       h.controller.reopen({ force: true });
+
+      expect(h.screen()).not.toBeNull();
+    });
+
+    test('0 角色 + 0 agent（最坏情况）→ 挂上向导（入口永远可达）', () => {
+      const h = setup();
+      h.controller.evaluate(stateWith({ detectedAgents: [], characters: [] }));
+
+      h.controller.reopen({ force: true });
+
+      expect(h.screen()).not.toBeNull();
+    });
+
+    test('还没见过任何状态（连 evaluate 都没跑）→ 仍挂上向导（force 不看状态）', () => {
+      const h = setup();
+
+      h.controller.reopen({ force: true });
+
+      expect(h.screen()).not.toBeNull();
+    });
+  });
+
+  /**
+   * 非 force 路径（首启判定）行为不变（task_226 验收：③）。
+   */
+  describe('非 force 路径：首启判定行为不变', () => {
+    test('0 角色 + 探到 agent → 照旧挂上（首启该弹就弹）', () => {
+      const h = setup();
+      h.controller.evaluate(stateWith({ detectedAgents: [CLAUDE] }));
+
+      h.controller.reopen();
+
+      expect(h.screen()).not.toBeNull();
+    });
+
+    test('0 角色 + 没探到 agent → 照旧不挂（首启门槛仍在）', () => {
+      const h = setup();
+      h.controller.evaluate(stateWith({ detectedAgents: [] }));
+
+      h.controller.reopen();
+
+      expect(h.screen()).toBeNull();
+      expect(h.controller.mounted).toBe(false);
+    });
+
+    test('已经有角色 → 照旧不挂（不是首启）', () => {
+      const h = setup();
+      h.controller.evaluate(
+        stateWith({
+          detectedAgents: [CLAUDE],
+          characters: [{ id: 'c1', name: 'Neo', persona: '', level: 1, experience: 0 }],
+        })
+      );
+
+      h.controller.reopen();
 
       expect(h.screen()).toBeNull();
     });

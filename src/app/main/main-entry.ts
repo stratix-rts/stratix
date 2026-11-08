@@ -173,6 +173,8 @@ import { createOcclusionController } from '../../hud/layers/occlusion';
 import { registerAppAction } from '../../hud/lib/app-actions';
 // 大厅面板（@since v3.3，task_188 / M1-14）：副本卡片网格 —— 大厅态的 HUD 面。
 import { levelUpToastText } from '../../hud/screens/appearance-unlock-catalog';
+// 角色中心的「＋ 新建角色」事件名（@since v3.3，task_226）：HUD 派事件、组合根接线（与战场空态同口径）。
+import { CHARACTER_CREATE_EVENT } from '../../hud/screens/character-screen';
 import { mountLobbyPanel } from '../../hud/screens/lobby-panel';
 import { createMainScreen } from '../../hud/screens/main-screen';
 // 恢复 toast 的 kind 显示名（词表单一真相源在 onboarding-catalog，与 agent-panel 同源）。
@@ -973,10 +975,11 @@ async function boot(): Promise<void> {
   };
 
   // ===== 建档向导入口（@since v3.9，task_148）=====
-  // 「去新建角色」的**唯一**通路：既有首启向导（core/character 的建档口径在向导里）；
-  //   向导起不来（没探到可建档的 agent）→ 退到角色中心（既有路由 ui.navigate）。
+  // 「去新建角色」的**唯一**通路：既有首启向导（core/character 的建档口径在向导里）。
   // why 前向声明：新建任务对话框（死按钮的出口）与战场空态（空态出口）都挂得比向导早，
   //   但它们指向的是**同一条路** —— 一处口径，别写两份。
+  // @since v3.3（task_226）：这个兜底（向导还没建好时的占位）不再是死胡同 ——
+  //   角色中心 0 角色时也有「＋ 新建角色」入口（设计文档 §3.B）。
   let openCharacterWizard: () => void = (): void => {
     adapter.dispatch({ type: 'ui.navigate', screen: 'character' });
   };
@@ -1260,15 +1263,24 @@ async function boot(): Promise<void> {
   // 向导建好了 → 把「去新建角色」的出口指向**真正的**建档向导（task_148）。
   openCharacterWizard = (): void => {
     // @since v3.10（task_154）：force = 用户**主动**要建档（顶栏「+ 角色」/ 空态 CTA / ⌘K）——
-    //   忽略"已经有角色了"这道首启门槛（建第 2 个角色同样要向导），但仍要求探得到可建档的 agent。
+    //   忽略"已经有角色了"这道首启门槛（建第 2 个角色同样要向导）。
     //   why 不 force 的话：只要建过一个角色，reopen 就永远挂不上向导 → 顶栏按钮成了死路
     //   （用户原话「不知道如何添加 agent」正是这么来的）。
+    //
+    // @since v3.3（task_226，设计文档 docs/DESIGN-character-creation.md §3.A）：force 下**向导总是挂上**
+    //   （reopen 不再要求探到可建档的 agent）—— 扫描中 / 0 结果由向导的扫描步自己呈现。
+    //   why 删掉「挂不起就 navigate('character')」兜底：那正好把用户退进 0 角色时的角色中心死胡同
+    //   （CC-B1，本单同时补上该屏的建角色出口）；入口一次定生死也是扫描竞态的温床。
     onboarding.reopen({ force: true });
-    // 向导起不来（没探到可建档的 agent）→ 退到角色中心（既有路由 ui.navigate），不给死按钮。
-    if (!onboarding.mounted) {
-      adapter.dispatch({ type: 'ui.navigate', screen: 'character' });
-    }
   };
+
+  // ===== 角色中心「＋ 新建角色」（@since v3.3，task_226）=====
+  // 角色中心（子屏）顶栏常驻钮 + 空态 CTA 派 `strat-character-create`（冒泡 + composed）→ 这里接成
+  //   与战场空态 / 主屏顶栏**同一条路**（openCharacterWizard）：一处口径，入口永远可达。
+  const onCharacterCreate = (): void => {
+    openCharacterWizard();
+  };
+  hudRoot.addEventListener(CHARACTER_CREATE_EVENT, onCharacterCreate);
 
   // ===== 战场空态覆盖层（@since v3.8，task_136）=====
   // 0 单位 → 亮出「战场待命中」；建了角色（core 投影出单位）→ 消失；删了 → 回来。
@@ -1802,6 +1814,8 @@ async function boot(): Promise<void> {
       stopPipelineBus();
       // 角色抽屉先卸（退订总线；在跑的对话由主进程超时 / 页面销毁兜底）。
       hudRoot.removeEventListener('stratix:chat-open', onChatOpen);
+      // 角色中心「＋ 新建角色」（task_226）：撤事件监听（与其它 hudRoot 监听同一卸载纪律）。
+      hudRoot.removeEventListener(CHARACTER_CREATE_EVENT, onCharacterCreate);
       unmountCharacterDrawer();
       unmountToastHost();
       // 新建任务对话框（task_112）：撤事件监听 + 卸元素（元素内部退订总线与遮挡登记）。

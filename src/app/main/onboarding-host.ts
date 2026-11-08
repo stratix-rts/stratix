@@ -15,7 +15,6 @@
 import type { WorldState } from '../../core/types';
 import type { AppearancePreviewPort } from '../../hud/screens/appearance-preview-port';
 import type { CustomAgentsPort } from '../../hud/screens/custom-agents-port';
-import { resolveBindableKinds } from '../../hud/screens/onboarding-catalog';
 import {
   ONBOARDING_COMPLETE_EVENT,
   ONBOARDING_SKIPPED_EVENT,
@@ -56,12 +55,16 @@ export interface OnboardingHost {
    * 重新拉起向导（@since v3.8，task_136）—— 用户从别处（战场空态的「新建角色」）主动要建档时用。
    * why 需要它：向导原本只在"首启"这一次性判定里挂（settled 之后永不再弹），
    *   但"新建角色"是**随时可发起**的动作，不该被首启语义锁死。
-   * 口径：清掉 settled 态 → 按最近一次见到的状态重新判定（characters 非空 / 没探到 agent → 不挂，
-   *   由调用方兜底；这里绝不硬挂一个走不通的向导）。
    *
    * @since v3.10（task_154）：`force: true` = **用户主动要建档**（顶栏「+ 角色」/ 空态 CTA / ⌘K）——
-   *   忽略"已有角色"这道首启门槛（建第 2 个角色同样要向导），但仍要求「探到可建档的 agent」，
-   *   否则向导第二步没名字可起（挂了也是死路，由调用方退到角色中心）。
+   *   忽略"已有角色"这道首启门槛（建第 2 个角色同样要向导）。
+   *
+   * @since v3.3（task_226，设计文档 docs/DESIGN-character-creation.md §3.A）：
+   *   `force: true` 时**无条件挂向导**（不再要求「探到可建档的 agent」）。
+   *   why：入口处一次定生死是**扫描竞态**的温床 —— service 侧检测是逐条广播的，
+   *   用户点按钮的那一瞬间 lastState 可能还没收到任何结果（0 结果 / 扫描中）；
+   *   「能不能建」的判定挪进向导的扫描步（它本来就有「正在等扫描结果…」与 0 结果空态，
+   *   见 onboarding-screen.ts 的 renderScan），入口只负责把面板挂起来。
    */
   reopen(options?: { readonly force?: boolean }): void;
   /** 当前是否挂着向导。 */
@@ -141,22 +144,23 @@ export function createOnboardingHost(options: OnboardingHostOptions): Onboarding
     evaluate,
     /**
      * 重新拉起向导（task_136）：清 settled → 按最近状态重判。
-     * why 不绕过 shouldStartOnboarding 硬挂：没探到可建档的 agent 时向导走不通，
-     *   宁可不起（调用方另有兜底），也不给用户一个点不动的按钮。
      *
-     * @since v3.10（task_154）：`force: true`（用户主动要建档）时忽略"已有角色"这道首启门槛，
-     *   但仍要求「探到 ≥1 个可建档的 agent」—— 没有它，向导第二步没名字可起。
+     * @since v3.10（task_154）：`force: true`（用户主动要建档）时忽略"已有角色"这道首启门槛。
+     *
+     * @since v3.3（task_226，设计文档 §3.A）：`force: true` 时**无条件挂** ——
+     *   不再要求「探到 ≥1 个可建档的 agent」。why：入口一次定生死 = 扫描竞态温床
+     *   （检测逐条广播，点按钮瞬间可能还没结果）；扫描中 / 0 结果由向导的扫描步自己呈现。
+     *   非 force 路径（首启判定）行为不变：仍走 evaluate(lastState) 逐条判定。
      */
     reopen: (options) => {
       close();
       settled = false;
-      if (!lastState) return;
       if (options?.force === true) {
-        // 主动建档：只要还有能建档的 agent 就挂向导（哪怕已经有角色了 —— 建第 2 个角色同样要向导）。
-        if (resolveBindableKinds(lastState).length === 0) return;
+        // 主动建档：向导**总是**挂上（哪怕已经有角色、哪怕一个 agent 都还没探到）。
         mount();
         return;
       }
+      if (!lastState) return;
       evaluate(lastState);
     },
     get mounted() {

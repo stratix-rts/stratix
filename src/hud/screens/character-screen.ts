@@ -60,6 +60,12 @@
  *   growth-chart 组件（纯 canvas，无依赖，057 minimap 同范式）。空数据准则：每个区块
  *   无数据一律引导语（「派一个试试」等），不空白、不编造。
  *
+ * ★ 新建角色出口（@since v3.3，task_226；设计文档 docs/DESIGN-character-creation.md §3.B）：
+ *   0 角色时角色中心原先是**死胡同**（空态只有一句话，主屏顶栏的「＋角色」在子屏不在场）——
+ *   故本屏加两处入口：顶栏常驻「＋ 新建角色」钮（任何角色数都在）+ 空态主 CTA（0 角色时）。
+ *   两者派同一个 DOM 事件 `strat-character-create`（冒泡 + composed），由组合根接既有建档向导
+ *   —— HUD 不发 HudCommand（与战场空态同一装配口径）。
+ *
  * 挂载接线：TODO(v3.task_019) —— 本屏目前只提供 mountCharacterScreen 工厂，
  *   尚未接进 main-screen / hud-dev-entry（由 task_019 的屏位路由接线任务统一挂载，避免两个任务同时改同一处壳）。
  */
@@ -122,6 +128,17 @@ export const CHARACTER_SCREEN_TAG = 'strat-character-screen';
 
 /** 经验增长 DOM 事件名（world 侧像素动画将来订阅它）。 */
 export const EXP_GAINED_EVENT = 'character-exp-gained';
+
+/**
+ * 「新建角色」DOM 事件名（@since v3.3，task_226；设计文档 docs/DESIGN-character-creation.md §3.B）。
+ *
+ * why 是 DOM 事件而不是 HudCommand：本屏是**子屏**（角色中心），它的动作要由组合根接到
+ *   **既有建档向导**（openCharacterWizard）—— 而向导不在 HUD 契约里，HUD 侧没有对应的
+ *   HudCommand。与战场空态（battlefield-empty → `strat-battlefield-action`）同一装配口径：
+ *   **HUD 只派事件，app 层（组合根）接线**。
+ * 冒泡 + composed：事件从本屏的 shadow DOM 内部派发，必须能穿过 shadow 边界冒到 hud-root。
+ */
+export const CHARACTER_CREATE_EVENT = 'strat-character-create';
 
 /** 经验条高亮持续时长（ms）。到期自动摘 .pulse 类，一个定时器即可（perf：同类动画合并）。 */
 export const EXP_PULSE_MS = 600;
@@ -452,6 +469,16 @@ export function defineCharacterScreen(): typeof HTMLElement {
       this._adapter?.dispatch({ type: 'ui.navigate', screen: 'chat' });
     }
 
+    /**
+     * 「新建角色」出口（@since v3.3，task_226，设计文档 §3.B）。
+     * why 只派事件不发命令：本屏是子屏，它的动作要接到**组合根**的建档向导（openCharacterWizard），
+     *   而向导不在 HUD 契约里 —— 与战场空态（battlefield-empty）同一装配口径。
+     * 冒泡 + composed：事件从本屏 shadow 内部派发，要能穿过 shadow 边界冒到 hud-root。
+     */
+    private requestCreateCharacter(): void {
+      this.dispatchEvent(new CustomEvent(CHARACTER_CREATE_EVENT, { bubbles: true, composed: true }));
+    }
+
     // —— 渲染 ——
     private renderChrome(): void {
       const root = this.shadowRoot;
@@ -542,6 +569,10 @@ export function defineCharacterScreen(): typeof HTMLElement {
           .link[data-bound="false"] { color: var(--srf-text-muted); }
           .link-level { color: var(--srf-accent); }
           .empty { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); padding: var(--srf-spacing-lg); text-align: center; border: var(--srf-border-width) dashed var(--srf-border); border-radius: var(--srf-radius); }
+          /* 角色中心空态（task_226）：一句话 + 主 CTA + 多路提示，竖排居中（内容走插槽，样式在本屏作用域）。 */
+          .cards-empty-body { display: flex; flex-direction: column; align-items: center; gap: var(--srf-spacing-sm); }
+          .cards-empty-text { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); }
+          .cards-empty-hint { color: var(--srf-text-muted); font-size: var(--srf-font-size-xs); opacity: 0.85; }
           .hint, .appearance-error { font-size: var(--srf-font-size-sm); }
           .hint { color: var(--srf-warn); }
           .appearance-layout { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: var(--srf-spacing-lg); }
@@ -635,6 +666,7 @@ export function defineCharacterScreen(): typeof HTMLElement {
           <div class="topbar">
             <span class="title">角色</span>
             <div class="topbar-actions">
+              <${STRAT_BUTTON_TAG} icon="plus" label="新建角色" variant="default" data-role="create-character"></${STRAT_BUTTON_TAG}>
               <${STRAT_BUTTON_TAG} label="打开聊天" variant="default" data-role="chat"></${STRAT_BUTTON_TAG}>
               <${STRAT_BUTTON_TAG} label="返回主屏" variant="primary" data-role="back"></${STRAT_BUTTON_TAG}>
             </div>
@@ -665,6 +697,12 @@ export function defineCharacterScreen(): typeof HTMLElement {
       }
       if (target.closest('[data-role="chat"]')) {
         this.openChat();
+        return;
+      }
+      // 「＋ 新建角色」（@since v3.3，task_226）：顶栏常驻钮与空态 CTA 同一动作 ——
+      //   本屏只派 DOM 事件（CHARACTER_CREATE_EVENT），由组合根接既有建档向导。
+      if (target.closest('[data-role="create-character"], [data-role="create-character-empty"]')) {
+        this.requestCreateCharacter();
         return;
       }
       // 编辑中心（task_059）：tab 切换（脏保护在 switchEditorTab 里拦）。
@@ -1433,10 +1471,19 @@ export function defineCharacterScreen(): typeof HTMLElement {
       // 全场总览（task_061）：排行键切换（等级 / 经验 / 完成率 / 活跃度）+ 按键排序的排行卡。
       // 无角色时仍是引导语（排行没有候选可排，不画空壳）。统计行降级口径见 renderCardStats。
       if (model.cards.length === 0) {
+        // 空态**必须带出口**（设计文档 §3.B / 原则二「没有出口的空态是禁止的」）：
+        //   0 角色时这里是用户唯一能建角色的地方 —— 主 CTA「＋ 新建角色」直接派
+        //   strat-character-create（组合根接建档向导），另附一句多路提示，不把用户绑死在单一入口。
         return `
           <div class="group" data-group="cards">
             <div class="group-name">全场总览</div>
-            <${EMPTY_STATE_TAG} data-role="cards-empty">尚无角色档案：建好角色后，这里会显示全部角色</${EMPTY_STATE_TAG}>
+            <${EMPTY_STATE_TAG} data-role="cards-empty">
+              <div class="cards-empty-body">
+                <div class="cards-empty-text">尚无角色档案：建好角色后，这里会显示全部角色</div>
+                <${STRAT_BUTTON_TAG} icon="plus" label="新建角色" variant="primary" data-role="create-character-empty"></${STRAT_BUTTON_TAG}>
+                <div class="cards-empty-hint">也可以回战场点右下角命令行，或按 ⌘K</div>
+              </div>
+            </${EMPTY_STATE_TAG}>
           </div>
         `;
       }

@@ -21,6 +21,7 @@ import {
   type CharacterScreenModel,
 } from '../screens/character-catalog';
 import {
+  CHARACTER_CREATE_EVENT,
   CHARACTER_SCREEN_TAG,
   EXP_GAINED_EVENT,
   EXP_PULSE_MS,
@@ -399,6 +400,67 @@ describe('交互 → HudCommand', () => {
   test('本屏是纯展示：除导航外不发任何业务命令（不改角色数值）', () => {
     const h = mountScreen();
     all(h.screen, '[data-role="card"]').forEach((card) => card.click());
+    expect(h.commands).toEqual([]);
+    h.unmount();
+  });
+});
+
+describe('新建角色入口（@since v3.3，task_226；设计文档 §3.B）', () => {
+  test('0 角色：空态带主 CTA「＋ 新建角色」（空态不许没有出口）', () => {
+    const h = mountScreen({ characters: [] });
+    const cta = h.screen.shadowRoot?.querySelector('[data-role="cards-empty"] [data-role="create-character-empty"]');
+    expect(cta).not.toBeNull();
+    expect(cta?.getAttribute('label')).toBe('新建角色');
+    // 空态文案同步（多路提示，不把用户绑死在单一入口）。
+    expect(text(h.screen, '[data-role="cards-empty"]')).toContain('尚无角色档案');
+    expect(text(h.screen, '[data-role="cards-empty"]')).toContain('⌘K');
+    h.unmount();
+  });
+
+  test('有角色：空态 CTA 不再出现（但顶栏钮仍在）', () => {
+    const h = mountScreen();
+    expect(h.screen.shadowRoot?.querySelector('[data-role="cards-empty"]')).toBeNull();
+    expect(h.screen.shadowRoot?.querySelector('.topbar-actions [data-role="create-character"]')).not.toBeNull();
+    h.unmount();
+  });
+
+  test('顶栏「＋ 新建角色」常驻：0 角色 / 非 0 角色都在（子屏也有一级入口）', () => {
+    const empty = mountScreen({ characters: [] });
+    expect(empty.screen.shadowRoot?.querySelector('.topbar-actions [data-role="create-character"]')).not.toBeNull();
+    empty.unmount();
+
+    const some = mountScreen();
+    expect(some.screen.shadowRoot?.querySelector('.topbar-actions [data-role="create-character"]')).not.toBeNull();
+    some.unmount();
+  });
+
+  test('点空态 CTA → 派 strat-character-create（冒泡出屏，组合根接得到）', () => {
+    const h = mountScreen({ characters: [] });
+    const seen: string[] = [];
+    h.host.addEventListener(CHARACTER_CREATE_EVENT, (ev) => { seen.push(ev.type); });
+
+    clickInScreen(h.screen, '[data-role="cards-empty"] [data-role="create-character-empty"]');
+
+    expect(seen).toEqual([CHARACTER_CREATE_EVENT]);
+    h.unmount();
+  });
+
+  test('点顶栏新建钮 → 派同一个事件（两处入口一条口径）', () => {
+    const h = mountScreen();
+    const seen: string[] = [];
+    h.host.addEventListener(CHARACTER_CREATE_EVENT, (ev) => { seen.push(ev.type); });
+
+    clickInScreen(h.screen, '.topbar-actions [data-role="create-character"]');
+
+    expect(seen).toEqual([CHARACTER_CREATE_EVENT]);
+    h.unmount();
+  });
+
+  test('HUD 不发 HudCommand：新建角色只派 DOM 事件（与战场空态同一装配口径）', () => {
+    const h = mountScreen({ characters: [] });
+    clickInScreen(h.screen, '[data-role="cards-empty"] [data-role="create-character-empty"]');
+    clickInScreen(h.screen, '.topbar-actions [data-role="create-character"]');
+
     expect(h.commands).toEqual([]);
     h.unmount();
   });
