@@ -6,9 +6,20 @@
  *   PERF-02 已把「点进入 → 生效」的延迟压到 24~35ms（docs/PERF-baselines.md §9）⇒
  *   **时延这条线已经达标**；下一刀看**带宽** —— 25ms 一拍的快照，60 秒典型交互发多少字节。
  *
- *   两个场景（同口径对照）：
+ *   原始两个场景（同口径对照）：
  *   · **场景 A · 静默挂机 60s**：进副本后**无任何操作** ⇒ 纯背景广播量（有没有在偷偷广播）。
  *   · **场景 B · 高频交互 60s**：模拟「点击 / 框选 / 右击移动 / 任务记账 / 轮询拉全量」⇒ 交互态广播量。
+ *
+ * ============ PERF-04 补的两个场景（task_234 · 优化循环第 4 链 · 测量单）============
+ *   §10.6 的缺口 2 / 4 / 7 要求补测（docs/PERF-baselines.md §11）：
+ *   · **场景 C · 长跑（默认 360s）**：**无任何用户交互**（不点 / 不选 / 不移动），
+ *     只让**记账路径**持续跑（`mission.checkpoint` 1Hz；后段再加 `mission.create` 造多任务并行）
+ *     ⇒ 量「`missions` 随记账增长到 64 条检查点封顶 / 随任务条数增长到 100 条封顶」的**载荷曲线**。
+ *   · **场景 D · 大战场（20~30 单位）**：用 **roster 注入 24 个角色**（+ 建档补到 28）⇒ 战场 28 单位；
+ *     **交互口径与场景 B 完全一致**（同样的 10Hz 交互环 + 1Hz 辅助环）⇒ 只变规模、不变手法，
+ *     用来验证 `characters` + `units` 的帧内占比**是否随规模漂移**。
+ *
+ *   纪律同前：**不改任何产品码**（`src/**` 一个字节都不动）、独立端口 + 临时 DATA_DIR、可重跑。
  *
  *   每个场景量四组数：
  *   ① **总字节 / 帧数 / 平均帧大小**（帧 = 一条下行 WS 消息）。
@@ -34,13 +45,18 @@
  *   本单量级下可忽略；要算总带宽请加回）。
  *
  * 输入：命令行开关
- *   `--seconds <n>`  每个场景的时长（缺省 60）
- *   `--out <file>`    把原始 JSON 结果写到文件（缺省只打 stdout）
- *   `--keep`          保留临时目录（排障用）
- * 输出：stdout 的 markdown 表（两场景 × 四组数）+ 一段 JSON。
- *   退出码：0 = 两个场景都量完；1 = 中途失败（已量到的数据照打）。
+ *   `--seconds <n>`      场景 A / B / D 的时长（缺省 60）
+ *   `--long-seconds <n>` 场景 C（长跑）的时长（缺省 360）
+ *   `--only <A,B,C,D>`   只跑指定场景（缺省 A B C D 全跑；总耗时 ≈ 2min + 长跑）
+ *   `--out <file>`       把原始 JSON 结果写到文件（缺省只打 stdout）
+ *   `--keep`             保留临时目录（排障用）
+ * 输出：stdout 的 markdown 表（每场景 × 四组数）+ 一段 JSON。
+ *   退出码：0 = 所选场景都量完；1 = 中途失败（已量到的数据照打）。
  *
- * 跑法：node e2e-tests/perf-broadcast.e2e.mjs [--seconds 60] [--out /tmp/perf-broadcast.json]
+ * 跑法：
+ *   node e2e-tests/perf-broadcast.e2e.mjs --seconds 60 --long-seconds 360 --out /tmp/perf-broadcast.json
+ *   node e2e-tests/perf-broadcast.e2e.mjs --only C --long-seconds 360     # 只补长跑
+ *   node e2e-tests/perf-broadcast.e2e.mjs --only D --seconds 60           # 只补大战场
  *
  * 禁止事项：
  *   1. 引入 npm 依赖 —— 只用 node 内建（WebSocket / fetch / fs / child_process）+ 仓内已有的 tsx；
@@ -85,6 +101,25 @@ const UNIT_TARGET = 8;
 const INTERACTION_HZ = 10;
 /** 任务 / 轮询环频率（Hz）—— 1Hz。 */
 const AUX_HZ = 1;
+
+/**
+ * 每个场景的口径表（PERF-04 / task_234 扩到四个场景）。
+ *
+ * · `roster` = **注入名册的角色数**（roster 物化 ⇒ 角色 + 单位，**一角色一单位**：
+ *   单位是角色的投影，见 `src/stratix-gateway/service/world-snapshot.ts` 的 buildSnapshotInjection）。
+ *   名册不够的部分用 `character.create` 补到 `unitTarget`。
+ * · `mode` = 该场景跑哪种负载：`idle`（静默）/ `interaction`（10Hz 交互 + 1Hz 辅助）/ `longrun`（只记账）。
+ * · 场景 D 的**交互手法与场景 B 一模一样**（同一个 `runInteractionScenario`）⇒
+ *   D 与 B 的差异**只有规模**（8 → 28 单位）⇒ 占比漂移可比。
+ */
+const SCENARIOS = {
+  A: { roster: 1, unitTarget: 8, mode: 'idle' },
+  B: { roster: 1, unitTarget: 8, mode: 'interaction' },
+  C: { roster: 1, unitTarget: 8, mode: 'longrun' },
+  D: { roster: 24, unitTarget: 28, mode: 'interaction' },
+};
+/** 场景 C 的默认时长（长跑：>5 分钟 —— 量「载荷上限」而不是「典型值」）。 */
+const DEFAULT_LONG_SECONDS = 360;
 
 // ============================================================================
 // 小工具
@@ -245,6 +280,13 @@ class Meter {
     this.prevTopSizes = null;
     this.samples = [];
     this.upstream = { bytes: 0, ops: 0, byOp: new Map() };
+    /**
+     * 逐帧「载荷曲线」采样（PERF-04 / task_234 场景 C 用）。
+     * why 要它：`missions` 随记账**线性长大**（缺口 4 / 缺口 7）⇒ 聚合数（均帧字节）看不出曲线，
+     *   得知道「检查点写到第 n 条时，一帧快照多大」。
+     */
+    this.seriesEnabled = false;
+    this.series = [];
   }
 
   /** 清零（场景开始前调用 —— setup 阶段的帧不计入）。 */
@@ -262,6 +304,7 @@ class Meter {
     this.prevTopValues = null;
     this.prevTopSizes = null;
     this.samples = [];
+    this.series = [];
     this.upstream = { bytes: 0, ops: 0, byOp: new Map() };
   }
 
@@ -304,6 +347,23 @@ class Meter {
     this.snapshotKeyFrames += 1;
     const stateBytes = [...sizes.values()].reduce((sum, size) => sum + size, 0);
     this.snapshotEnvelopeBytes += bytes - stateBytes;
+
+    // —— 载荷曲线采样（场景 C：missions 随记账长大）——
+    if (this.seriesEnabled) {
+      const missions = Array.isArray(state.missions) ? state.missions : [];
+      this.series.push({
+        t,
+        bytes,
+        missionsBytes: sizes.get('missions') ?? 0,
+        checkpointCount: missions.reduce(
+          (sum, mission) => sum + (Array.isArray(mission?.checkpoints) ? mission.checkpoints.length : 0),
+          0,
+        ),
+        missionCount: missions.length,
+        unitCount: Array.isArray(state.units) ? state.units.length : 0,
+        characterCount: Array.isArray(state.characters) ? state.characters.length : 0,
+      });
+    }
 
     // —— 相邻两帧：相同字段比例（粗粒度 delta 潜力）——
     const flat = new Map();
@@ -435,6 +495,7 @@ class Meter {
       },
       frames: this.frames,
       samples: this.samples,
+      series: this.series,
     };
   }
 }
@@ -563,13 +624,16 @@ async function waitForState(client, predicate, label, { timeoutMs = 60_000 } = {
 }
 
 /**
- * 把场景的「起始状态」准备好（**两个场景完全一致** ⇒ 两组数可直接对照）。
+ * 把场景的「起始状态」准备好（**同一口径的场景之间起始状态完全一致** ⇒ 两组数可直接对照）。
  *
- * 做什么：进副本（roster 物化 ⇒ 战场有单位）→ 补足到 UNIT_TARGET 个单位 → 立一条任务。
+ * 做什么：进副本（roster 物化 ⇒ 战场有单位）→ 补足到 `unitTarget` 个单位 → 立一条任务。
  * why 补单位：只有 1 个单位时 units 字段太小，体积占比会被其它字段淹没 ⇒ 不可外推。
  * why 立任务：missions / 任务相位是本单要归类的体积类别之一，空数组量不出东西。
+ *
+ * PERF-04：战场规模按场景走（`unitTarget`）—— 名册先物化出 `roster` 个单位，
+ *   剩下的用 `character.create` 补（角色与单位 1:1 ⇒ 补完单位数 = 角色数）。
  */
-async function prepareScenario(client, { log: logFn }) {
+async function prepareScenario(client, { log: logFn, unitTarget = UNIT_TARGET }) {
   const enterAck = await client.sendCommand({ type: 'project.enter', instanceId: INSTANCE_B_ID });
   if (!enterAck.ok) {
     throw new Error(`进副本被拒：${JSON.stringify(enterAck.error ?? {})}`);
@@ -587,7 +651,7 @@ async function prepareScenario(client, { log: logFn }) {
 
   const unitCount = () => client.state.lastSnapshot?.units?.length ?? 0;
   let created = 0;
-  while (unitCount() < UNIT_TARGET) {
+  while (unitCount() < unitTarget) {
     created += 1;
     const ack = await client.sendCommand({
       type: 'character.create',
@@ -772,10 +836,74 @@ async function runInteractionScenario(client, meter, durationMs, context) {
 }
 
 // ============================================================================
+// 场景 C · 长跑（只有记账路径，没有用户交互）
+// ============================================================================
+
+/**
+ * 场景 C：**长跑**。客户端**不发任何用户交互**（不点 / 不选 / 不移动）——
+ * 只有**记账路径**在持续跑（等价于 agent 在后台干活、一直往任务上记检查点）。
+ *
+ * 两个阶段（用来把两条增长曲线**分开**量，避免混在一起没法归因）：
+ * · **前 55%**：`mission.checkpoint` 1Hz ⇒ **单条任务**的检查点从 0 长到 64 条**封顶**
+ *   （core 的 `MAX_MISSION_CHECKPOINTS` = 64，超限丢最旧 ⇒ 曲线应当**先涨后平**）。
+ * · **后 45%**：再加 `mission.create`（1.25s 一条）⇒ **任务条数**从 1 长到 100 条**封顶**
+ *   （core 的 `MAX_MISSIONS` = 100 ⇒ 建单被拒 ⇒ 曲线同样**先涨后平**）。
+ *
+ * why 不做用户交互：缺口 7 要的是「**载荷上限**」—— 有交互时字节里混着点击/移动的量，
+ *   看不出「状态自己长多大」。⇒ 本场景只让**状态自己长大**。
+ * why 不做 `task.assign`：`task.assign` 会触发**真的派单链**（可能拉起外部 agent 进程）⇒ 不碰。
+ *   ⇒ `tasks` 字段在本场景恒为空（这一点在报告里如实说明，不假装量到了）。
+ */
+async function runLongRunScenario(client, meter, durationMs, context) {
+  const { unitIds, missionId } = context;
+  meter.reset(Date.now());
+  const deadline = Date.now() + durationMs;
+  const checkpointEveryMs = 1000;
+  const missionEveryMs = 1250;
+  const missionPhaseAt = Date.now() + Math.round(durationMs * 0.55);
+
+  let nextCheckpointAt = Date.now() + checkpointEveryMs;
+  let nextMissionAt = missionPhaseAt;
+  let checkpoints = 0;
+  let missions = 0;
+
+  while (Date.now() < deadline) {
+    const now = Date.now();
+    if (now >= nextCheckpointAt) {
+      meter.currentOp = 'mission.checkpoint';
+      checkpoints += 1;
+      client
+        .sendCommand({
+          type: 'mission.checkpoint',
+          missionId: missionId ?? '',
+          note: `长跑检查点 ${checkpoints}`,
+        })
+        .catch(() => undefined);
+      nextCheckpointAt = now + checkpointEveryMs;
+    }
+    if (now >= nextMissionAt) {
+      meter.currentOp = 'mission.create';
+      missions += 1;
+      client
+        .sendCommand({
+          type: 'mission.create',
+          title: `长跑任务 ${String(missions).padStart(3, '0')}`,
+          unitIds: unitIds.slice(0, 2),
+        })
+        .catch(() => undefined);
+      nextMissionAt = now + missionEveryMs;
+    }
+    await sleep(20);
+  }
+}
+
+// ============================================================================
 // 一个场景的完整跑法（起 service → 准备 → 量 → 收尾）
 // ============================================================================
 
 async function runScenario(name, { seconds, keepTmp }) {
+  const config = SCENARIOS[name];
+  if (!config) throw new Error(`未知场景：${name}`);
   const takenPorts = new Set();
   const servicePort = await pickFreePort(SERVICE_PORT_RANGE, takenPorts);
   if (USER_PORTS.includes(servicePort)) throw new Error('端口纪律破了：挑到了用户端口');
@@ -787,7 +915,9 @@ async function runScenario(name, { seconds, keepTmp }) {
   fs.mkdirSync(sandboxRoot, { recursive: true });
   fs.mkdirSync(instanceBRoot, { recursive: true });
   fs.mkdirSync(dataDir, { recursive: true });
-  writeInstanceFixture(instanceBRoot, ['sentry']);
+  // 名册注入：角色数 = config.roster（PERF-04 场景 D 用 24 个角色 ⇒ 24 个单位起步）。
+  const roleIds = Array.from({ length: config.roster }, (_, index) => `sentry${String(index).padStart(2, '0')}`);
+  writeInstanceFixture(instanceBRoot, roleIds);
 
   let service = null;
   let client = null;
@@ -848,14 +978,21 @@ async function runScenario(name, { seconds, keepTmp }) {
     client.hello();
     await waitForState(client, () => true, '首份快照');
 
-    const context = await prepareScenario(client, { log: (line) => log(`  [场景 ${name}] ${line}`) });
+    const context = await prepareScenario(client, {
+      log: (line) => log(`  [场景 ${name}] ${line}`),
+      unitTarget: config.unitTarget,
+    });
 
     // 静默期：把准备阶段的余波（异步 agent 探测）排干净，再开测量窗口。
     await settle(client);
     log(`  [场景 ${name}] 静默期结束，开始测量 ${seconds}s`);
 
-    if (name === 'A') {
+    if (config.mode === 'idle') {
       await runIdleScenario(client, meter, seconds * 1000);
+    } else if (config.mode === 'longrun') {
+      // 载荷曲线采样（场景 C 要看「missions 随记账长大」）。
+      meter.seriesEnabled = true;
+      await runLongRunScenario(client, meter, seconds * 1000, context);
     } else {
       await runInteractionScenario(client, meter, seconds * 1000, context);
     }
@@ -864,6 +1001,10 @@ async function runScenario(name, { seconds, keepTmp }) {
     result.upstreamBytesTotal = client.state.upstreamBytes;
     result.context = {
       unitCount: context.unitIds.length,
+      characterCount: client.state.lastSnapshot?.characters?.length ?? 0,
+      roster: config.roster,
+      unitTarget: config.unitTarget,
+      mode: config.mode,
       missionId: context.missionId,
     };
     log(
@@ -945,6 +1086,64 @@ function printScenario(result) {
   );
 }
 
+/**
+ * 打印「载荷曲线」（场景 C 用）：**状态自己长大**时，一帧快照多大。
+ *
+ * 两张表：
+ * ① **检查点曲线** —— 单条任务的检查点从 n-1 长到 n 时，快照帧字节 / `missions` 字段字节。
+ * ② **任务条数曲线** —— 任务条数从 m-1 长到 m 时，快照帧字节 / `missions` 字段字节。
+ *
+ * why 取「同一个计数下的**最后一帧**」：同一个计数可能对应多帧（重发 hello / 状态没变时的重推），
+ *   取最后一帧 = 该计数的**稳态**值。
+ */
+function printSeries(result) {
+  const series = result.summary.series ?? [];
+  if (series.length === 0) return;
+
+  const byCheckpoint = new Map();
+  for (const point of series) {
+    byCheckpoint.set(point.checkpointCount, point);
+  }
+  console.log('\n**载荷曲线 · 检查点维度**（检查点累计条数 → 快照帧字节）');
+  console.log('| 检查点条数 | 同期任务条数 | 快照帧字节 | `missions` 字段字节 | 每检查点增量 |');
+  console.log('| --- | --- | --- | --- | --- |');
+  const checkpointCounts = [...byCheckpoint.keys()].sort((a, b) => a - b);
+  for (const count of checkpointCounts) {
+    const point = byCheckpoint.get(count);
+    const previous = byCheckpoint.get(count - 1);
+    const delta = previous ? point.missionsBytes - previous.missionsBytes : null;
+    // 同一区间里若还新建了任务 ⇒ 增量里混着「新任务」那份 ⇒ 如实标出来，不当成纯检查点成本。
+    const confounded = previous ? previous.missionCount !== point.missionCount : false;
+    console.log(
+      `| ${count} | ${point.missionCount} | ${comma(point.bytes)} | ${comma(point.missionsBytes)} | ${
+        delta === null ? '—' : `${delta >= 0 ? '+' : ''}${delta} B${confounded ? '（同期新建任务）' : ''}`
+      } |`,
+    );
+  }
+
+  const byMissionCount = new Map();
+  for (const point of series) {
+    byMissionCount.set(point.missionCount, point);
+  }
+  console.log('\n**载荷曲线 · 任务条数维度**（任务条数 → 快照帧字节）');
+  console.log('| 任务条数 | 检查点合计 | 快照帧字节 | `missions` 字段字节 | 每任务增量 |');
+  console.log('| --- | --- | --- | --- | --- |');
+  const missionCounts = [...byMissionCount.keys()].sort((a, b) => a - b);
+  for (const count of missionCounts) {
+    const point = byMissionCount.get(count);
+    const previous = byMissionCount.get(count - 1);
+    const delta = previous ? point.missionsBytes - previous.missionsBytes : null;
+    const confounded = previous ? previous.checkpointCount !== point.checkpointCount : false;
+    console.log(
+      `| ${count} | ${comma(point.checkpointCount)} | ${comma(point.bytes)} | ${comma(point.missionsBytes)} | ${
+        delta === null
+          ? '—'
+          : `${delta >= 0 ? '+' : ''}${delta} B${confounded ? '（同期还在记账）' : ''}`
+      } |`,
+    );
+  }
+}
+
 /** 收集环境信息（写进基线文档的「环境」栏）。 */
 function environment() {
   let head = 'unknown';
@@ -968,39 +1167,65 @@ function environment() {
     units: UNIT_TARGET,
     interactionHz: INTERACTION_HZ,
     auxHz: AUX_HZ,
+    scenarios: SCENARIOS,
   };
 }
 
 async function main() {
   const argv = process.argv.slice(2);
   const secondsIndex = argv.indexOf('--seconds');
+  const longSecondsIndex = argv.indexOf('--long-seconds');
+  const onlyIndex = argv.indexOf('--only');
   const outIndex = argv.indexOf('--out');
   const keepTmp = argv.includes('--keep');
   const seconds = secondsIndex >= 0 ? Number(argv[secondsIndex + 1]) : 60;
+  const longSeconds = longSecondsIndex >= 0 ? Number(argv[longSecondsIndex + 1]) : DEFAULT_LONG_SECONDS;
+  const selected =
+    onlyIndex >= 0
+      ? String(argv[onlyIndex + 1] ?? '')
+          .split(',')
+          .map((name) => name.trim().toUpperCase())
+          .filter((name) => name.length > 0)
+      : Object.keys(SCENARIOS);
+  for (const name of selected) {
+    if (!SCENARIOS[name]) throw new Error(`--only 里有未知场景：${name}（可用：${Object.keys(SCENARIOS).join(', ')}）`);
+  }
 
   log(
-    `PERF-03 world-sync 广播体积基线：每场景 ${seconds}s（service 端口动态挑，临时 DATA_DIR，裸 WS 客户端）`,
+    `PERF-03/04 world-sync 广播体积基线：场景 ${selected.join('、')}（A/B/D 各 ${seconds}s，C ${longSeconds}s；` +
+      `service 端口动态挑，临时 DATA_DIR，裸 WS 客户端）`,
   );
 
-  const scenarioA = await runScenario('A', { seconds, keepTmp });
-  const scenarioB = await runScenario('B', { seconds, keepTmp });
+  const results = [];
+  for (const name of selected) {
+    const duration = name === 'C' ? longSeconds : seconds;
+    results.push(await runScenario(name, { seconds: duration, keepTmp }));
+  }
 
   const env = environment();
   console.log('\n────────── world-sync 广播体积基线 ──────────');
   console.log(`环境：HEAD=${env.head} node=${env.node} ${env.os}/${env.arch} cpu=${env.cpu}`);
   console.log(
     `口径：裸 WS 客户端（与浏览器收到的是同一份 JSON 载荷）；字节 = UTF-8 载荷字节（不含 WS 帧头）；` +
-      `场景 A = 进副本后静默挂机；场景 B = ${INTERACTION_HZ}Hz 交互环 + ${AUX_HZ}Hz 辅助环；战场 ${UNIT_TARGET} 个单位`,
+      `场景 A = 进副本后静默挂机；场景 B/D = ${INTERACTION_HZ}Hz 交互环 + ${AUX_HZ}Hz 辅助环（战场规模不同）；` +
+      `场景 C = 无用户交互、只让记账路径跑（长跑）`,
   );
-  printScenario(scenarioA);
-  printScenario(scenarioB);
+  for (const result of results) {
+    printScenario(result);
+    if (result.scenario === 'C') printSeries(result);
+  }
   console.log('\n────────────────────────────────────────────\n');
 
   const payload = {
     env,
     seconds,
-    scenarioA: { ...scenarioA, summary: { ...scenarioA.summary, frames: undefined } },
-    scenarioB: { ...scenarioB, summary: { ...scenarioB.summary, frames: undefined } },
+    longSeconds,
+    scenarios: Object.fromEntries(
+      results.map((result) => [
+        result.scenario,
+        { ...result, summary: { ...result.summary, frames: undefined } },
+      ]),
+    ),
   };
   const outPath = outIndex >= 0 ? argv[outIndex + 1] : null;
   if (outPath) {
@@ -1008,8 +1233,12 @@ async function main() {
     log(`原始数据已写入 ${outPath}`);
   }
   log(
-    `汇总：A ${comma(scenarioA.summary.totalBytes)} B / ${comma(scenarioA.summary.totalFrames)} 帧；` +
-      `B ${comma(scenarioB.summary.totalBytes)} B / ${comma(scenarioB.summary.totalFrames)} 帧`,
+    `汇总：${results
+      .map(
+        (result) =>
+          `${result.scenario} ${comma(result.summary.totalBytes)} B / ${comma(result.summary.totalFrames)} 帧`,
+      )
+      .join('；')}`,
   );
 }
 
