@@ -303,8 +303,14 @@ pnpm frontend:start
 
 - 事件矩阵与冲突对见 [docs/DESIGN-canvas-interactions.md](docs/DESIGN-canvas-interactions.md)；
   回归由**交互矩阵套件**兜底（core / hud / world 三层各一份）。
+- **新建角色入口（三处 + 一条捷径，同一条路）**：战场空态「新建角色」/ 顶栏「＋角色」/ ⌘K
+  **一律无条件挂向导**（不再要求先探到 agent —— 能不能建由向导内部判定，入口只负责打开面板）；
+  角色中心另有**常驻入口**（0 角色空态 CTA「＋ 新建角色」+ 子屏顶栏常驻钮，任何角色数都在），
+  接的是同一条路；人设步不想答问卷 ⇒ 点「用默认模板」一步跳过（空人设 = 建档时套默认模板）。
+  口径详见 [docs/DESIGN-character-creation.md](docs/DESIGN-character-creation.md)。
 - **怎么验**：`node e2e-tests/qa-full-flow.e2e.mjs`（冷启动 → 进副本 → 选中/移动 →
-  派单 → 切副本 → 回大厅）。
+  派单 → 切副本 → 回大厅）·
+  `node e2e-tests/character-creation-flow.e2e.mjs`（新建角色 V1/V3/V8 真浏览器回归）。
 
 ### 4. QA 轮的命令速查
 
