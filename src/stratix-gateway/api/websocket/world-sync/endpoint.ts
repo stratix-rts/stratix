@@ -15,9 +15,15 @@
  *   6. 在端点里自行决定「推什么」—— 下行白名单在协议层（createEventPushMessage 判），端点只负责广播。
  *
  * ============ 节流（协议 §3.7 / 任务要求 3）============
- * store 每次变更都推一份全量快照会把带宽与渲染成本打爆 —— 故按 100ms 窗口**合并**：
+ * store 每次变更都推一份全量快照会把带宽与渲染成本打爆 —— 故按 25ms 窗口**合并**：
  *   窗口内发生的多次变更只推**最新**一份（中间态不推）；窗口过后再有变更再开新窗口。
  * 节流丢弃的中间态不影响真相：下一份快照是全量的（客户端整体覆盖，协议 §1.2）。
+ *
+ * ============ 关键事件旁路（@since v3.3，task_231 / PERF-02）============
+ * 「进副本 / 退副本 / 单位上场 / 单位移除」是**结构变化**：用户点了就该立刻看见，等一窗 = 白等
+ *   （实测「点进入→生效」122ms 里 ~100ms 耗在这条节流窗上 —— docs/PERF-baselines.md §6 候选 1）。
+ * 故这类变化**不等节流窗**，立刻发一帧；高频变化（提示 / 选择 / 任务相位…）照旧走 25ms 合并。
+ * why 判定在 **gateway 侧**：时延策略是**传输层**的事，core 零 IO 铁律 —— core 只管状态对不对。
  *
  * ============ 回读核对落点（任务要求 4）============
  * 语义对齐 src/stratix-gateway/mcp/context.ts 的既有口径：**投命令 → 回读状态 → 核对落点**。
@@ -42,7 +48,7 @@ import http from 'http';
 import { WebSocketServer } from 'ws';
 
 import type { CoreStore } from '@/core/store';
-import type { HudCommand, Notice, WorldEvent, WorldState } from '@/core/types';
+import type { HudCommand, Notice, UnitView, WorldEvent, WorldState } from '@/core/types';
 
 import {
   WORLD_SYNC_ACK_TIMEOUT_MS,
@@ -93,6 +99,28 @@ function findRejectionNotice(before: WorldState, after: WorldState): Notice | nu
     if (notice.level === 'warn' || notice.level === 'error') return notice;
   }
   return null;
+}
+
+/**
+ * 单位集合的**结构指纹**（只取 id，按序拼接；分隔符 `\u0000` 保证 id 拼接不撞车）。
+ * why 只看 id：位置 / 忙碌与否是高频变的**表现态**，而「场上有哪些单位」是**结构**。
+ */
+function unitSetSignature(units: readonly UnitView[]): string {
+  return units.map((unit) => unit.id).join('\u0000');
+}
+
+/**
+ * 判定「这是不是一次**结构变化**」（@since v3.3，task_231 / PERF-02；gateway 侧判定）。
+ * 四类关键事件都落在这一个判据里：进副本 / 退副本 ⇒ 激活实例变了；
+ *   单位上场 / 单位移除 ⇒ 单位集合的 id 指纹变了。其余字段（提示 / 选择 / 任务相位…）
+ *   是表现态 —— 高频变，走节流窗合并才对。
+ * @param prev 上一份状态面（null = 首帧 ⇒ 不算结构变化）。
+ */
+function isStructuralChange(prev: WorldState | null, next: WorldState): boolean {
+  if (!prev) return false;
+  if ((prev.activeInstanceId ?? null) !== (next.activeInstanceId ?? null)) return true;
+  if (prev.units === next.units) return false; // 同一个单位数组引用 ⇒ 结构没动
+  return unitSetSignature(prev.units) !== unitSetSignature(next.units);
 }
 
 /**
@@ -205,7 +233,7 @@ export interface WorldSyncEndpointOptions {
   ) => () => void;
   /** 命令回执超时（ms）。缺省 = WORLD_SYNC_ACK_TIMEOUT_MS。 */
   readonly ackTimeoutMs?: number;
-  /** 快照节流窗口（ms）。缺省 = 100。 */
+  /** 快照节流窗口（ms）。缺省 = WORLD_SYNC_SNAPSHOT_THROTTLE_MS（25）。 */
   readonly snapshotThrottleMs?: number;
   /** 心跳间隔（ms）。缺省 = 30000；传 0 = 不起心跳。 */
   readonly heartbeatIntervalMs?: number;
@@ -213,8 +241,12 @@ export interface WorldSyncEndpointOptions {
   readonly logger?: (line: string) => void;
 }
 
-/** 快照节流窗口默认值（ms）—— 任务要求 3。 */
-export const WORLD_SYNC_SNAPSHOT_THROTTLE_MS = 100;
+/**
+ * 快照节流窗口默认值（ms）—— 任务要求 3。
+ * @since v3.3（task_231 / PERF-02）：100 → 25（100ms 窗把「点进入→生效」拖到 122ms，
+ *   service 侧裁决只花 5ms —— docs/PERF-baselines.md §6 候选 1）。关键结构变化走**旁路**。
+ */
+export const WORLD_SYNC_SNAPSHOT_THROTTLE_MS = 25;
 
 /** 心跳间隔默认值（ms）—— 与既有 StatusSync 同口径。 */
 export const WORLD_SYNC_HEARTBEAT_INTERVAL_MS = 30_000;
@@ -267,6 +299,12 @@ export class WorldSyncEndpoint implements WorldSyncEndpointPort {
   /** 已发号的最大 seq（0 = 还没发过；首个 = WORLD_SYNC_SEQ_START）。 */
   private seq = 0;
 
+  /**
+   * 上一份状态面（@since v3.3，task_231 / PERF-02）—— 判「结构变化」的对照基准。
+   * why 端点自己记：store 订阅只给**新**状态；只留引用不深比较（WorldState 不可变）。
+   */
+  private lastState: WorldState | null = null;
+
   /** 待发的节流广播定时器（null = 无待发）。 */
   private broadcastTimer: NodeJS.Timeout | null = null;
 
@@ -296,6 +334,8 @@ export class WorldSyncEndpoint implements WorldSyncEndpointPort {
     this.logger = options.logger ?? ((line: string): void => console.log(line));
 
     if (this.store) {
+      // 结构变化的对照基准 = 端点构造时的那份状态（此刻还没变过）。
+      this.lastState = this.store.getState();
       // 状态面一变就记一笔：先判落点探针，再排节流广播（顺序固定：命令回执早于广播）。
       this.unsubscribeStore = this.store.subscribe((state) => this.handleStateChange(state));
     }
@@ -515,9 +555,16 @@ export class WorldSyncEndpoint implements WorldSyncEndpointPort {
   // 私有
   // -------------------------------------------------------------------------
 
-  /** 状态面变了：先判落点探针，再排节流广播。 */
+  /** 状态面变了：先判落点探针，再排节流广播（结构变化 ⇒ 不等窗，立即发）。 */
   private handleStateChange(state: WorldState): void {
     for (const probe of Array.from(this.probes)) probe.observe(state);
+    const structural = isStructuralChange(this.lastState, state);
+    this.lastState = state;
+    if (structural) {
+      // 关键事件旁路（task_231 / PERF-02）：用户点了就要立刻看见，不等节流窗。
+      this.flushBroadcast();
+      return;
+    }
     this.scheduleBroadcast();
   }
 
@@ -529,6 +576,18 @@ export class WorldSyncEndpoint implements WorldSyncEndpointPort {
       this.broadcastSnapshot();
     }, this.snapshotThrottleMs);
     this.broadcastTimer.unref?.();
+  }
+
+  /**
+   * 立刻发一帧快照（关键事件旁路）。
+   * why 撤掉待发的窗口定时器：这一帧已是「此刻的全量真相」，窗口里那份只会重复同一份变化。
+   */
+  private flushBroadcast(): void {
+    if (this.broadcastTimer) {
+      clearTimeout(this.broadcastTimer);
+      this.broadcastTimer = null;
+    }
+    this.broadcastSnapshot();
   }
 
   /** 广播一份全量 snapshot 给所有**已 hello** 的连接（协议 §4.5：snapshot 是广播）。 */

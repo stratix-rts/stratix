@@ -15,7 +15,7 @@
 | ① MCP 派单后，任务状态**怎么进的 app**？ | **经 world-sync WebSocket 的 `snapshot`**（不是文件、不是轮询、不是 REST）。gateway 进程持有 core 真相 → 状态变更 → 端点节流广播全量快照 → app 侧 `remote-store` 覆盖本地投影 → `state` 通道 → `syncTasks` → 单位相位板 | §2 全链路图；§3 实测 |
 | ② 五型词表够不够表达「单位状态流」？ | **够用，不动协议**。单位态所需的全部信号（任务相位 + 单位忙闲 + 角色归属）本来就在 `WorldState` 里 → `snapshot.state` 全量带出，无需新消息型、无需新字段 | §4 覆盖矩阵 |
 | ③ 实测延迟多少？ | MCP 派单 → app 投影看到 `running` = **122ms**；WS 快照到达 = 110ms；MCP 回执 = 17ms；整段跑完（真跑 CLI）= 2.1s | §3.2 |
-| ④ 延迟 > 3s 要不要调参？ | **不用调**。链路里唯一的时间参数是广播节流窗 100ms（`WORLD_SYNC_SNAPSHOT_THROTTLE_MS`），实测占用 110ms；其余各跳都是毫秒级 | §3.3 |
+| ④ 延迟 > 3s 要不要调参？ | **不用调**。链路里唯一的时间参数是广播节流窗（`WORLD_SYNC_SNAPSHOT_THROTTLE_MS`）—— **@since v3.3 task_231 已由 100ms 降窗到 25ms**（关键结构变化另有旁路直发），本表其余读数是 100ms 窗时期的历史实测；其余各跳都是毫秒级 | §3.3 |
 | ⑤ `world-snapshot.json` 两进程共享吗？ | **不共享**。它是 **gateway 单向**的持久化/重启恢复件（写：gateway 防抖 500ms；读：只有 gateway 启动时 restore）。**app 进程从不读它**，也不是实时通道 | §5 |
 | ⑥ 有缺口吗？ | 有 3 条**语义缺口**（排队中 / 审批中 / 失败原因不透传到单位），**全部不在 world-sync 协议层**，在「core 任务相位 → 单位八态」的映射层。**记录，不实现**（留决策） | §6 |
 
@@ -68,7 +68,7 @@
 │     endpoint.ts:269 store.subscribe                        │        │                                                  │
 │        └─ endpoint.ts:423 handleStateChange                │        │                                                  │
 │           └─ endpoint.ts:429 scheduleBroadcast             │        │                                                  │
-│              ⚡ 节流窗 100ms（WORLD_SYNC_SNAPSHOT_THROTTLE_MS）│      │                                                  │
+│              ⚡ 节流窗 25ms（WORLD_SYNC_SNAPSHOT_THROTTLE_MS）│      │                                                  │
 │                 └─ endpoint.ts:439 broadcastSnapshot        │        │                                                  │
 │                    └─ session.send(snapshot{seq,state})    │        │                                                  │
 │                           ╎                               │        │                                                  │
@@ -105,7 +105,7 @@
 |---|----|------|------------------|------|
 | ① | MCP 客户端 → gateway | **HTTP POST**（JSON-RPC 2.0 over `/mcp`） | `stratix-gateway/index.ts:216` → `mcp/transport/http.ts` → `mcp/tools/task.ts:158` | 17ms（含真派单落库） |
 | ② | 命令 → gateway 的 core | **进程内总线**（`core/bus.ts:42` `emitCommand`）→ runtime 状态机 | `core/runtime.ts:529` → `core/task/manager.ts:98` → `core/store.ts:241` | 同帧（同步） |
-| ③ | 状态变更 → 广播 | **事件驱动 + 100ms 节流窗**（无轮询） | `world-sync/endpoint.ts:269/423/429/439` | ≤100ms（窗内合并） |
+| ③ | 状态变更 → 广播 | **事件驱动 + 25ms 节流窗**（无轮询；关键结构变化旁路直发） | `world-sync/endpoint.ts`（handleStateChange / scheduleBroadcast / flushBroadcast） | ≤25ms（窗内合并；结构变化 ≈0ms） |
 | ④ | gateway → app | **WebSocket 单向广播**（`/ws/world-sync`，全量覆盖） | `remote-store.ts:200` → `main-entry.ts:382` | 9ms（本地 LAN） |
 | ⑤ | 投影 → 场景 | **进程内 `state` 通道** | `core/bus.ts:44` → `bus-adapter.ts:230` → `BattlefieldScene.ts:365` | <1ms |
 | ⑥ | 相位 → 动画 | **纯派生 + 每 tick 应用** | `task-animation.ts:94/137` → `unit-layer.ts:551/1400` → `unit-animation.ts:418` | ≤1 帧（≈16ms） |
@@ -174,7 +174,8 @@ node scripts/measure-unit-state-latency.cjs
 
 链路里唯一的时间参数是广播节流窗：
 
-- `WORLD_SYNC_SNAPSHOT_THROTTLE_MS = 100`（`world-sync/endpoint.ts:194`）
+- `WORLD_SYNC_SNAPSHOT_THROTTLE_MS = 100`（`world-sync/endpoint.ts`）—— **@since v3.3 task_231 已降为 25ms**
+  （并给「进副本 / 退副本 / 单位上场 / 单位移除」加了旁路：不等窗、立即发一帧；见 [PERF-baselines.md](PERF-baselines.md) §9）
 - 实测占用 = 110ms（100ms 窗 + ~10ms 传输/处理）→ **节流窗就是链路延迟的主体**。
 - 但 110ms 远小于 3s 阈值 → **调它没有收益**（调到 0 会让每次状态变更都推一份全量快照，
   带宽与渲染成本按变更次数线性上升 —— 违反 [PERFORMANCE_GUIDELINES.md](PERFORMANCE_GUIDELINES.md)）。
@@ -287,6 +288,7 @@ gateway sees: {"task_id":"task_1793766179018_41","status":"completed","output":"
 
 1. **协议零改动** —— 五型词表够用（§4）。
 2. **参数零改动** —— 实测 122ms，节流窗 100ms 是延迟主体但远小于阈值（§3.3）。
+   （@since v3.3 task_231 已改：节流窗 100 → 25ms + 关键事件旁路 ⇒ 该段降到 24~35ms，见 PERF-baselines §9。）
 3. **代码零改动** —— 本任务唯一新增：本文档 + `scripts/measure-unit-state-latency.cjs`（测量脚本）。
 4. **待决策（不在本任务范围）**：
    - **D1｜正式形态收敛到远程模式**：本地直连模式下 MCP 派单与 app 战场是两个世界（§3.4）——
