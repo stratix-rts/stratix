@@ -8,6 +8,15 @@
  *      **per-agent 独立**（@since v3.14，task_044：人设不再全员共用一份，每个 agent 独立
  *      问卷 / 预设 / 脏保护；预设按 kind 推荐排序，专属预设预填）
  *   ④ 确认 → 逐个 character.create（各带各的 appearance **与 persona**）→ 完成事件。
+ *
+ * ★ @since v3.3（task_227 · CC-02，设计文档 docs/DESIGN-character-creation.md §3.C）——
+ *   向导状态机补全三处（同一轮里把"没有出口的空态"和"静默吞点击"一起收掉）：
+ *   C1 人设步：没配好人设 → 主按钮**禁用** + 页脚说清还差几题；页脚另给「用默认模板」
+ *      （空人设本就合法 —— 建档时套默认模板，问卷不该是强制门槛）；
+ *   C2 扫描步 0 可建档：空态给**三个动作**（重新扫描 / ＋添加自定义 agent / 查看 CLI 安装指引），
+ *      删掉「确认 PATH 里装了 CLI 后重进向导」那句无效指引；
+ *   C3 归属条：向导顶部常驻「将建到：默认沙盒」，项目实例里追加名册契约说明，完成 toast 带归属。
+ *
  *   ★ @since v3.14（task_044）逐个配置化：② ③ 两步顶部有共用的 agent 切换条
  *     （kind 徽标 + 名字 + 已配置✓状态），选中哪个配置哪个 —— 向导从「批量填一份」
  *     改为「逐个初始化」，同一时刻只配置当前选中的 agent。
@@ -84,6 +93,7 @@ import type {
 } from './appearance-preview-port';
 import type { CustomAgentProbeResult, CustomAgentsPort } from './custom-agents-port';
 import {
+  CLI_INSTALL_GUIDE_URL,
   DETECTION_STATUS_LABELS,
   NAME_ERROR_MESSAGES,
   ONBOARDING_STEPS,
@@ -98,12 +108,14 @@ import {
   findDuplicateNames,
   missingPersonaAnswers,
   resolveBindableKinds,
+  resolveOnboardingOwnership,
   resolveScanRows,
   resolveScanStatus,
   validateAgentName,
   validatePersona,
   type AppearanceDraft,
   type OnboardingIdentity,
+  type OnboardingOwnership,
   type OnboardingScanRow,
   type OnboardingStep,
 } from './onboarding-catalog';
@@ -122,6 +134,24 @@ export const ONBOARDING_COMPLETE_EVENT = 'onboarding-complete';
  */
 export const ONBOARDING_SKIPPED_EVENT = 'onboarding-skipped';
 
+/**
+ * 扫描步「重新扫描」事件（冒泡 + composed）—— HUD 只发**意图**，重派检测由组合根接线。
+ *
+ * @since v3.3（task_227 · CC-02，设计文档 docs/DESIGN-character-creation.md §3.C2）：
+ *   扫描步 0 可建档时，空态必须给得出路 —— 「重新扫描」= **重派既有 detection 命令**
+ *   （Electron 主进程那轮 `agent:detected:probe`，app/services/agent-detector.ts 的探测口）。
+ *   why 走 DOM 事件而不是 HUD 自己发命令：检测在**主进程**（Node 侧才有 child_process），
+ *   core 契约里没有对应的 HudCommand（不许为此改契约），而 HUD 不许直接摸 IPC ——
+ *   与战场空态「新建角色」同款口径（hud 发事件 / 组合根接线）。
+ */
+export const ONBOARDING_RESCAN_EVENT = 'strat-onboarding-rescan';
+
+/**
+ * 组合根的回执：「本环境没有本机检测能力」（纯 vite / jest 环境下没有 Electron 那条 IPC）。
+ * 屏据此给出人话提示，而不是让「重新扫描」点了没反应（死按钮）。
+ */
+export const ONBOARDING_RESCAN_UNAVAILABLE_EVENT = 'strat-onboarding-rescan-unavailable';
+
 /** 完成事件的载荷：实际建了哪些角色。 */
 export interface OnboardingCompleteDetail {
   readonly created: readonly {
@@ -131,6 +161,12 @@ export interface OnboardingCompleteDetail {
     /** 选定的形象（@since v3.10）；没选 → null。 */
     readonly appearance: CharacterAppearance | null;
   }[];
+  /**
+   * 建档归属（@since v3.3，task_227 · CC-02 · 设计文档 §3.C3）。
+   * why 带上：完成 toast 由组合根弹（app 层才有 toast 宿主），归属说明得由屏算好后带出去 ——
+   * 组合根不该自己再判一遍"建到哪儿"（两处各判一次必然漂移）。
+   */
+  readonly ownership: OnboardingOwnership;
 }
 
 /** 本屏需要的最小能力面：只要"发命令"与"订阅状态"，与 screens / panels 同一约定。 */
@@ -169,6 +205,15 @@ interface PersonaDraft {
   dirty: boolean;
   /** 当前生效的预设 id（null = 问卷 / 手写模式）。答问卷任一题即退出预设模式。 */
   presetId: string | null;
+  /**
+   * 是否走「空人设 = 建档时套默认模板」口径（@since v3.3，task_227 · CC-02 · 设计文档 §3.C1）。
+   *
+   * why 需要它：空人设**本就合法**（core 建档时空 persona → 套默认模板），问卷不该是强制门槛
+   * （设计实证 CC-B3：按钮亮着、点了没反应）。点「用默认模板」= 明确说"就按默认模板建"。
+   * 语义边界：**不改 persona 落库校验** —— 落库时人设仍是空串，core 照旧套默认模板。
+   * 答问卷 / 选预设 / 手改人设 任一动作即退出本模式（用户改了主意，以用户的为准）。
+   */
+  defaultTemplate: boolean;
 }
 
 /** 自定义元素的对外形状（测试与挂载方按它断言）。 */
@@ -348,6 +393,23 @@ const ONBOARDING_STYLE = `
   .error[hidden] { display: none; }
   .empty { color: var(--srf-text-muted); font-size: var(--srf-font-size-sm); }
   .hint { color: var(--srf-warn); font-size: var(--srf-font-size-sm); }
+  /* 归属条（@since v3.3，task_227 · CC-02）：向导顶部常驻 —— 任何写入都得让用户知道建到哪儿。 */
+  .ownership {
+    flex: 1 0 100%;
+    color: var(--srf-text-muted);
+    font-size: var(--srf-font-size-xs);
+  }
+  .ownership[data-mode="project"] { color: var(--srf-warn); }
+  /* 空态动作区（@since v3.3，task_227 · CC-02）：0 可建档时给得出路（重扫 / 自定义 / 指引）。 */
+  .empty-actions { display: flex; gap: var(--srf-spacing-sm); flex-wrap: wrap; align-items: center; }
+  /* 文档外链（task_227）：走浏览器既有能力（target=_blank + rel 隔离）。 */
+  .doc-link {
+    color: var(--srf-accent);
+    font-size: var(--srf-font-size-sm);
+    text-decoration: underline;
+  }
+  /* 「已用默认模板」状态（task_227）：替代按钮出现，说明这个 agent 已按默认模板建。 */
+  .default-template-state { color: var(--srf-success); font-size: var(--srf-font-size-xs); }
   .question {
     margin: 0;
     display: grid;
@@ -610,6 +672,9 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     }
 
     refresh(): void {
+      // 归属条常驻顶部：副本切换（activeInstanceId 变）时它得跟着变 ——
+      // 但只做**轻量**刷新，不重画整屏（后面几步正在填表，重画会打断输入）。
+      this.refreshOwnershipBar();
       // 只有扫描步会因为 core 广播而重画；后面几步正在填表，重画会打断输入（焦点丢失）。
       if (this._step !== 'scan') return;
       const signature = this.scanSignature();
@@ -724,7 +789,9 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       this.dispatchEvent(new CustomEvent<OnboardingCompleteDetail>(ONBOARDING_COMPLETE_EVENT, {
         bubbles: true,
         composed: true,
-        detail: { created },
+        // 归属一并带出去（task_227 · CC-02）：完成 toast 由组合根弹，归属说明由屏算好 ——
+        // 组合根不再自己判一遍"建到哪儿"（两处各判一次必然漂移）。
+        detail: { created, ownership: resolveOnboardingOwnership(this._state) },
       }));
       this._adapter?.dispatch({ type: 'ui.navigate', screen: 'main' });
       this.renderStep();
@@ -971,9 +1038,9 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     private createPersonaDraft(kind: string): PersonaDraft {
       const preset = presetMatchingKind(kind);
       if (preset) {
-        return { answers: {}, persona: preset.persona, dirty: false, presetId: preset.id };
+        return { answers: {}, persona: preset.persona, dirty: false, presetId: preset.id, defaultTemplate: false };
       }
-      return { answers: {}, persona: '', dirty: false, presetId: null };
+      return { answers: {}, persona: '', dirty: false, presetId: null, defaultTemplate: false };
     }
 
     /**
@@ -988,6 +1055,8 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       const wasPreset = draft.presetId !== null;
       draft.answers[questionId] = optionId;
       draft.presetId = null;
+      // 答题 = 用户改主意了，退出「默认模板」口径（task_227）：问卷路径优先。
+      draft.defaultTemplate = false;
       this.setError(`answer:${kind}:${questionId}`, null);
       if (wasPreset) this.syncPresetSurfaces();
       if (!draft.dirty) {
@@ -995,6 +1064,8 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         this.syncPersonaField();
       }
       this.refreshSwitcherTab(kind);
+      // 人设配好没有 = 主按钮能不能点（task_227）：页脚跟着变。
+      this.refreshFooter();
     }
 
     /** 用户手改人设：记为脏（之后答案变化不再自动覆盖），并点亮「按问卷重新生成」。 */
@@ -1004,9 +1075,12 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       if (!kind || !draft) return;
       draft.persona = text;
       draft.dirty = true;
+      // 手写人设 = 自己配好了，退出「默认模板」口径（task_227）。
+      draft.defaultTemplate = false;
       this.setError(`persona:${kind}`, null);
       this.syncPresetSurfaces();
       this.refreshSwitcherTab(kind);
+      this.refreshFooter();
     }
 
     /**
@@ -1022,6 +1096,8 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       draft.presetId = preset.id;
       draft.persona = preset.persona;
       draft.dirty = false;
+      // 选了预设 = 不用默认模板了（task_227）。
+      draft.defaultTemplate = false;
       this.setError(`persona:${kind}`, null);
       // 预设路径不需要答完问卷：之前因未答被拦的错误一并撒掉。
       for (const question of PERSONA_QUESTIONS) this.setError(`answer:${kind}:${question.id}`, null);
@@ -1036,10 +1112,36 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       draft.persona = buildPersona({ ...draft.answers });
       draft.dirty = false;
       draft.presetId = null;
+      draft.defaultTemplate = false;
       this.setError(`persona:${kind}`, null);
       this.syncPersonaField();
       this.syncPresetSurfaces();
       this.refreshSwitcherTab(kind);
+      this.refreshFooter();
+    }
+
+    /**
+     * 「用默认模板」（@since v3.3，task_227 · CC-02 · 设计文档 §3.C1）：
+     * 把当前 active agent 的人设标成「空 = 建档时套默认模板」口径 —— 一步跳过问卷。
+     *
+     * why 合法：空人设**本就合法**（core 建档时空 persona → 套默认模板，见 personaSectionSummary
+     * 的「（空：建档时套用默认模板）」）。问卷不该是强制门槛（设计实证 CC-B3：按钮亮着、点了没反应）。
+     * **不改落库校验**：人设仍是空串，落库口径照旧。
+     * 作用范围 = 当前 active agent（多 agent 逐个配置，与切换条口径一致）。
+     */
+    private useDefaultTemplate(): void {
+      const kind = this._activeAgentKey;
+      const draft = this.activePersonaDraft();
+      if (!kind || !draft) return;
+      draft.answers = {};
+      draft.presetId = null;
+      draft.persona = '';
+      draft.dirty = false;
+      draft.defaultTemplate = true;
+      this.setError(`persona:${kind}`, null);
+      // 走默认模板就不用答问卷了：之前因未答被拦的错误一并撒掉。
+      for (const question of PERSONA_QUESTIONS) this.setError(`answer:${kind}:${question.id}`, null);
+      this.renderStep();
     }
 
     /** 校验人设步（@since v3.14，task_044：逐 agent 校验）：问卷路径要答全；预设路径免答；长度两路都查。 */
@@ -1065,7 +1167,8 @@ export function defineOnboardingScreen(): typeof HTMLElement {
     /** 校验单个 agent 的人设草稿（返回值 = 合法）：预设路径免答问卷；问卷路径答全；长度两路都查。 */
     private validatePersonaDraft(kind: string, draft: PersonaDraft): boolean {
       let ok = true;
-      if (draft.presetId === null) {
+      // 「用默认模板」路径免答问卷（task_227）：空人设本就合法，建档时 core 套默认模板。
+      if (draft.presetId === null && !draft.defaultTemplate) {
         for (const questionId of missingPersonaAnswers(draft.answers)) {
           this.setError(`answer:${kind}:${questionId}`, '这一题还没选');
           ok = false;
@@ -1137,6 +1240,21 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           return;
         case 'regenerate-persona':
           this.regeneratePersona();
+          return;
+        case 'use-default-template':
+          // 「用默认模板」：该 agent 走「空 = 建档时套默认模板」口径（task_227 · CC-02）。
+          this.useDefaultTemplate();
+          return;
+        case 'rescan':
+          // 「重新扫描」：派意图事件，组合根重派既有 detection 命令（task_227 · CC-02）。
+          this.rescan();
+          return;
+        case 'custom-open-form':
+          // 空态里的「+ 添加自定义 agent」：直接**打开**注册表单（表单已开时按钮不渲染）。
+          this._customFormOpen = true;
+          this._customProbeResult = null;
+          this.setError('custom-form', null);
+          this.renderStep();
           return;
         // —— 自定义 agent 注册（@since v3.32，task_056）——
         case 'custom-toggle-form':
@@ -1241,6 +1359,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
             <div class="topbar-actions">
               <${STRAT_BUTTON_TAG} label="跳过引导" variant="default" data-action="skip"></${STRAT_BUTTON_TAG}>
             </div>
+            ${this.renderOwnershipBar()}
           </div>
           <div class="body" data-role="body"></div>
           <div class="footer" data-role="footer"></div>
@@ -1264,9 +1383,34 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       }).join('');
     }
 
+    /**
+     * 归属条（@since v3.3，task_227 · CC-02 · 设计文档 §3.C3）：向导顶部**常驻**一行。
+     *
+     * why 常驻而不是只在项目里才显示：任何写入都要让用户知道"建到了哪儿"（设计原则④）——
+     *   沙盒实例里也一样（"将建到：默认沙盒"），项目实例里再加一句名册契约的实话。
+     */
+    private renderOwnershipBar(): string {
+      const ownership = resolveOnboardingOwnership(this._state);
+      return `<div class="ownership" data-role="ownership-bar" data-mode="${ownership.projectMode ? 'project' : 'sandbox'}">${escapeHtml(ownership.text)}</div>`;
+    }
+
+    /**
+     * 轻量刷新归属条（不重画整屏）：activeInstanceId 可能变（用户切副本），
+     * 归属说明得跟着变 —— 但整屏重画会打断正在填的表单（与 refreshFooter 同一理由）。
+     */
+    private refreshOwnershipBar(): void {
+      const node = this.shadowRoot?.querySelector('[data-role="ownership-bar"]');
+      if (!node) return;
+      const ownership = resolveOnboardingOwnership(this._state);
+      node.setAttribute('data-mode', ownership.projectMode ? 'project' : 'sandbox');
+      node.textContent = ownership.text;
+    }
+
     private renderStep(): void {
       const root = this.shadowRoot;
       if (!root) return;
+      // 归属条常驻顶部：状态变了（切副本）就跟着变（轻量刷新，不重画整屏）。
+      this.refreshOwnershipBar();
       const stepper = root.querySelector('[data-role="stepper"]');
       if (stepper) stepper.innerHTML = this.renderStepper();
 
@@ -1327,7 +1471,7 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       const status = resolveScanStatus(this._state);
       const list =
         rows.length === 0
-          ? `<div class="empty" data-role="scan-empty">${this._state ? '还没探测到本机 agent：确认 PATH 里装了 CLI 后重进向导' : '正在等扫描结果…'}</div>`
+          ? `<div class="empty" data-role="scan-empty">${this._state ? '还没探测到本机 agent' : '正在等扫描结果…'}</div>`
           : `<ul class="rows">${rows.map((row) => this.renderScanRow(row)).join('')}</ul>`;
       // 扫描没跑完时的提醒：检测是逐条推送的，此刻点下一步只会给**已探到的** agent 建档。
       const pendingHint = status.complete
@@ -1346,10 +1490,54 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           ${selectionSummary}
           ${pendingHint}
           ${list}
+          ${this.renderScanEmptyActions()}
           <div class="error" data-role="scan-selection-error" data-error-key="scan-selection" ${selectionErrorAttr}>${escapeHtml(selectionError)}</div>
         </div>
         ${this.renderCustomAgentGroup()}
       `;
+    }
+
+    /**
+     * 0 可建档时的空态动作区（@since v3.3，task_227 · CC-02 · 设计文档 §3.C2）。
+     *
+     * why 必须有：设计原则②「没有出口的空态是禁止的」—— 0 可建档时向导必须给得出路，
+     *   而不是让用户对着一句「确认 PATH 里装了 CLI 后重进向导」干等（**重进向导对已经站在
+     *   向导里的人无效**，设计实证 CC-B4）。
+     * 三个动作：
+     *   ① 重新扫描 → 重派既有 detection 命令（组合根接线，见 ONBOARDING_RESCAN_EVENT）；
+     *   ② ＋ 添加自定义 agent → 仅在 customAgents 端口存在时显示（纯 vite 环境没有注册面）；
+     *   ③ 查看 CLI 安装指引 → 外链 docs（渲染层开外部浏览器的既有能力）。
+     *
+     * 何时显示：收到过状态（知道探测跑过了）且**一个可建档的都没有**。
+     * 还没收到任何状态时只显示「正在等扫描结果…」—— 那时还没有"扫完"这回事。
+     */
+    private renderScanEmptyActions(): string {
+      if (!this._state) return '';
+      if (resolveBindableKinds(this._state).length > 0) return '';
+      // 自定义 agent 表单已经打开时不再给这个入口（点了也只是"保持打开"= 死按钮）。
+      const customAction =
+        this._customAgents && !this._customFormOpen
+          ? `<${STRAT_BUTTON_TAG} label="+ 添加自定义 agent" variant="default" data-action="custom-open-form"></${STRAT_BUTTON_TAG}>`
+          : '';
+      return `
+        <div class="empty-actions" data-role="scan-empty-actions">
+          <${STRAT_BUTTON_TAG} label="重新扫描" variant="default" data-action="rescan" title="重新探测本机的 agent CLI"></${STRAT_BUTTON_TAG}>
+          ${customAction}
+          <a class="doc-link" data-role="cli-install-guide" href="${escapeHtml(CLI_INSTALL_GUIDE_URL)}" target="_blank" rel="noopener noreferrer">查看 CLI 安装指引</a>
+          <span class="summary">重新扫描会重跑一遍本机 CLI 探测（几秒出结果）</span>
+        </div>
+      `;
+    }
+
+    /**
+     * 「重新扫描」（@since v3.3，task_227 · CC-02）：派**意图**事件，由组合根重派检测。
+     *
+     * why 不在屏里直接调检测：检测跑在主进程（Node 侧才有 child_process），
+     * HUD 既不许摸 IPC（分层铁律），core 契约里也没有对应的 HudCommand（不许为此改契约）。
+     * 与战场空态「新建角色」同款口径：hud 发事件 / 组合根接线。
+     */
+    private rescan(): void {
+      this.dispatchEvent(new CustomEvent(ONBOARDING_RESCAN_EVENT, { bubbles: true, composed: true }));
     }
 
     private renderScanRow(row: OnboardingScanRow): string {
@@ -1676,11 +1864,13 @@ export function defineOnboardingScreen(): typeof HTMLElement {
       return validateAgentName(identity.name).ok;
     }
 
-    /** 人设步的「已配置」判定：预设生效（免问卷）或问卷答全。 */
+    /** 人设步的「已配置」判定：预设生效（免问卷）、走默认模板（task_227）或问卷答全。 */
     private personaConfigured(kind: string): boolean {
       const draft = this._personaDrafts.get(kind);
       if (!draft) return false;
       if (draft.presetId !== null) return true;
+      // 「用默认模板」= 已配置（空人设合法，建档时套默认模板）—— task_227。
+      if (draft.defaultTemplate) return true;
       return missingPersonaAnswers(draft.answers).length === 0;
     }
 
@@ -2020,15 +2210,40 @@ export function defineOnboardingScreen(): typeof HTMLElement {
           ? `<${STRAT_BUTTON_TAG} label="完成建档" variant="primary" data-action="submit"${disabled ? ' disabled' : ''} title="${escapeHtml(reason ?? '完成建档')}"></${STRAT_BUTTON_TAG}>`
           : `<${STRAT_BUTTON_TAG} label="下一步" variant="primary" data-action="next"${disabled ? ' disabled' : ''} title="${escapeHtml(reason ?? '下一步')}"></${STRAT_BUTTON_TAG}>`;
       const reasonMarkup = `<span class="footer-reason" data-role="footer-reason"${reason ? '' : ' hidden'}>${escapeHtml(reason ?? '')}</span>`;
-      return `${reasonMarkup}${back}${primary}`;
+      return `${reasonMarkup}${this.renderDefaultTemplateControl()}${back}${primary}`;
+    }
+
+    /**
+     * 人设步的「用默认模板」控件（@since v3.3，task_227 · CC-02 · 设计文档 §3.C1）。
+     *
+     * 口径（三态，**不出现死按钮**）：
+     *   - 当前 agent 未配置 → 给按钮（default variant）：点一下 = 该 agent 走默认模板口径；
+     *   - 当前 agent 已用默认模板 → 给一句状态说明（按钮消失，避免"再点一次没反应"）；
+     *   - 当前 agent 已用预设 / 问卷 / 手写配好 → 不给控件（没什么可点的了）。
+     */
+    private renderDefaultTemplateControl(): string {
+      if (this._step !== 'persona') return '';
+      const kind = this._activeAgentKey;
+      if (!kind) return '';
+      const draft = this._personaDrafts.get(kind);
+      if (!draft) return '';
+      if (draft.defaultTemplate) {
+        return '<span class="default-template-state" data-role="default-template-state">已用默认模板（建档时套默认模板）</span>';
+      }
+      if (this.personaConfigured(kind)) return '';
+      return `<${STRAT_BUTTON_TAG} label="用默认模板" variant="default" data-action="use-default-template" title="跳过问卷：这个人设留空，建档时套用默认模板"></${STRAT_BUTTON_TAG}>`;
     }
 
     /**
      * 当前步骤的主按钮被什么挡住了（@since v3.10，task_154）：null = 可以走。
      * 口径：起名步 / 确认步要求**每个** agent 都有合法且不重复的名字；
-     *   其它步骤（扫描 / 人设）不挡（人设步有它自己的问卷校验）。
+     *   人设步（@since v3.3，task_227）要求**每个** agent 都配好人设
+     *   （预设 / 问卷答全 / 走默认模板三选一）—— 没配好就把主按钮**禁用**并说清还差几题
+     *   （设计实证 CC-B3：按钮亮着、点了没反应 = 死按钮）；
+     *   扫描步不挡（它自己呈现扫描中 / 0 结果空态）。
      */
     private stepBlockReason(): string | null {
+      if (this._step === 'persona') return this.personaBlockReason();
       if (this._step !== 'identity' && this._step !== 'confirm') return null;
       if (this._identities.length === 0) return null;
       const names = this._identities.map((item) => item.name);
@@ -2039,6 +2254,23 @@ export function defineOnboardingScreen(): typeof HTMLElement {
         if (duplicated.has(result.value)) return NAME_ERROR_MESSAGES['duplicate-name'];
       }
       return null;
+    }
+
+    /**
+     * 人设步的拦截原因（@since v3.3，task_227）：还有哪个 agent 没配好人设、还差几题。
+     *
+     * 口径：优先报**当前 active agent**（用户正看着它），active 已配好则报第一个没配好的；
+     * 措辞带剩余题数 —— 用户要的是"还差多少"，不是一句"人设没配好"（设计原则③）。
+     */
+    private personaBlockReason(): string | null {
+      if (this._identities.length === 0) return null;
+      const pending = this._identities.filter((identity) => !this.personaConfigured(identity.kind));
+      if (pending.length === 0) return null;
+      const active = pending.find((identity) => identity.kind === this._activeAgentKey);
+      const target = active ?? pending[0];
+      const draft = this._personaDrafts.get(target.kind);
+      const missing = draft ? missingPersonaAnswers(draft.answers).length : 0;
+      return `人设还没配好：${target.label} 还差 ${missing} 题（答完问卷、选一个预设，或点「用默认模板」）`;
     }
 
     /**

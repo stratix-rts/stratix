@@ -27,6 +27,7 @@ import { PERSONA_MAX_LEN } from '../../core/character/persona';
 import { DEFAULT_PERSONA_TEMPLATE } from '../../core/character/profile';
 import type { SkinId } from '../../core/theme/skin-registry';
 import {
+  DEFAULT_INSTANCE_ID,
   DETECTABLE_AGENT_KINDS,
   MAX_CHARACTER_NAME_LEN,
   customAgentIdOf,
@@ -521,4 +522,70 @@ export interface OnboardingIdentity {
   /** 皮肤资源键。 */
   readonly skinId: SkinId;
 }
+
+// ============================================================================
+// 归属条（@since v3.3 / task_227 · CC-02 · 设计文档 docs/DESIGN-character-creation.md §3.C3）
+// ============================================================================
+
+/**
+ * 向导的归属结论：建档最终落到哪儿 + 该怎么跟用户说。
+ *
+ * why 要有它（设计原则④「归属必须可见」）：`character.create` **不带 instanceId**，
+ * 落库按 COALESCE 归默认沙盒（app/services/persistence/character-record.ts）——
+ * 在项目实例里建的角色**当下看得见、重载项目后消失**（instance-loader 只 load 本实例实体）。
+ * 用户有权在做之前就知道"建到哪儿"。
+ */
+export interface OnboardingOwnership {
+  /** 归属目标（当前只有默认沙盒一种：建档命令不带 instanceId）。 */
+  readonly target: string;
+  /** 是否在项目实例里（activeInstanceId ≠ DEFAULT_INSTANCE_ID）。 */
+  readonly projectMode: boolean;
+  /** 当前项目实例的标题（清单里查不到 → null，不编造名字）。 */
+  readonly projectTitle: string | null;
+  /** 归属条全文（向导顶部常驻那行）。 */
+  readonly text: string;
+  /** 完成 toast 的归属补充说明；null = 沙盒实例，维持现状文案。 */
+  readonly toastNote: string | null;
+}
+
+/**
+ * 解析向导归属（纯函数，零 DOM）。
+ *
+ * 口径（与 core 的 null 语义一致）：
+ *   - `activeInstanceId` 缺省 / null = **大厅态**（还没进任何副本）→ 归属按沙盒说；
+ *   - `activeInstanceId === DEFAULT_INSTANCE_ID` = **默认沙盒** → 归属按沙盒说；
+ *   - 其余 = **项目实例** → 归属仍是沙盒，但要补一句名册契约的实话。
+ */
+export function resolveOnboardingOwnership(state: WorldState | null): OnboardingOwnership {
+  const activeId = state?.activeInstanceId ?? null;
+  const projectMode = activeId !== null && activeId !== DEFAULT_INSTANCE_ID;
+  if (!projectMode) {
+    return {
+      target: '默认沙盒',
+      projectMode: false,
+      projectTitle: null,
+      text: '将建到：默认沙盒',
+      toastNote: null,
+    };
+  }
+  const projectTitle =
+    state?.projectInstances?.find((item) => item.instanceId === activeId)?.title ?? null;
+  const projectPart = projectTitle ? `当前项目「${projectTitle}」` : '当前项目';
+  return {
+    target: '默认沙盒',
+    projectMode: true,
+    projectTitle,
+    text: `将建到：默认沙盒 · ${projectPart}的角色由名册契约管理（.stratix/roster/），这里建的角色归沙盒`,
+    toastNote: '建到默认沙盒 · 项目角色由名册契约管理（.stratix/roster/）',
+  };
+}
+
+/**
+ * 「查看 CLI 安装指引」的外链（docs 入口）。
+ *
+ * why 指这份文档：它是本仓**唯一**的 CLI 权威清单（docs/AGENT-MATRIX.md）——
+ * 逐家列了支持的 CLI、检测命令（`which claude` 等）与调用方式，用户照着就能装对、验对。
+ * 走 GitHub 链接而不是本地路径：向导跑在渲染层，用户机器上未必有这份仓库。
+ */
+export const CLI_INSTALL_GUIDE_URL = 'https://github.com/stratix-rts/stratix/blob/main/docs/AGENT-MATRIX.md';
 

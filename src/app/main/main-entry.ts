@@ -179,6 +179,9 @@ import { mountLobbyPanel } from '../../hud/screens/lobby-panel';
 import { createMainScreen } from '../../hud/screens/main-screen';
 // 恢复 toast 的 kind 显示名（词表单一真相源在 onboarding-catalog，与 agent-panel 同源）。
 import { agentKindLabel } from '../../hud/screens/onboarding-catalog';
+// 向导扫描步「重新扫描」意图事件（@since v3.3，task_227 · CC-02）。
+//   HUD 派事件、组合根接线 —— HUD 不许直接摸 IPC（分层铁律），core 契约里也没有对应命令。
+import { ONBOARDING_RESCAN_EVENT } from '../../hud/screens/onboarding-screen';
 // 演示声音包（@since v3.3，task_083 建 / task_087 升级）：五音（选中 ack / 派活哒 / 完成 /
 //   报错低鸣 / 里程碑琶音）优先回放 **public/sfx/ 下的真实音源**（Freesound CC0），
 //   文件缺失 / 加载失败时回退到 WebAudio 代码合成（保证任何环境都有声）。
@@ -1247,8 +1250,13 @@ async function boot(): Promise<void> {
       //   角色落库 → core 同一次广播里投影出战场单位（task_153 已通）→ 这里报一声「已上场」。
       //   why 用 toast 不用别的面：toast 是跨面板的顶层反馈面，且浮在弹窗之上（刻度表 toast=55 > modal=50）。
       const names = detail.created.map((c) => c.name).filter((n) => n.length > 0);
+      // @since v3.3（task_227 · CC-02，设计文档 §3.C3）：**归属可见** ——
+      //   项目实例里建的角色归默认沙盒（character.create 不带 instanceId），不说明的话
+      //   用户重载项目会发现角色"没了"。归属由向导屏算好带出来（它才知道当前副本）。
+      const ownershipNote = detail.ownership?.toastNote ?? '';
+      const suffix = ownershipNote ? `（${ownershipNote}）` : '';
       toastHost.show(
-        names.length > 0 ? `「${names.join('、')}」已上场` : '新角色已上场',
+        names.length > 0 ? `「${names.join('、')}」已上场${suffix}` : `新角色已上场${suffix}`,
         'success'
       );
       // 引导走完落在角色屏：用户第一眼看到自己刚建的角色（而不是空荡荡的主屏）。
@@ -1258,6 +1266,23 @@ async function boot(): Promise<void> {
         adapter.dispatch({ type: 'ui.navigate', screen: 'character' });
       });
     },
+  });
+
+  // ===== 向导扫描步的「重新扫描」（@since v3.3，task_227 · CC-02）=====
+  // 向导屏 0 可建档时的空态给三个动作，其中「重新扫描」= **重派既有 detection 命令**。
+  // why 在组合根接：检测跑在主进程（Node 侧才有 child_process），HUD 不许直接摸 IPC（分层铁律），
+  //   core 契约里也没有对应的 HudCommand（不许为此改契约）—— 与战场空态 / 角色中心同款口径：
+  //   HUD 派 DOM 事件，组合根接线。
+  // 无 Electron（纯 vite / jest）时没有那条探测口 → 如实说"本环境没有检测能力"，不给死按钮。
+  onboardingHost.addEventListener(ONBOARDING_RESCAN_EVENT, () => {
+    const probe = detectionApi?.probe;
+    if (!probe) {
+      toastHost.show('当前环境没有本机 CLI 检测能力（Electron 客户端才有）—— 装好 CLI 后再重新扫描', 'warn');
+      return;
+    }
+    void probe().catch(() => {
+      toastHost.show('重新扫描失败：探测进程没能跑起来', 'warn');
+    });
   });
 
   // 向导建好了 → 把「去新建角色」的出口指向**真正的**建档向导（task_148）。
